@@ -9,7 +9,7 @@
 #include "main.h"
 #include "nnue.h"
 
-#if defined(ESP32)
+#if defined(ESP32) && !defined(DOG_NO_SIMD)
 static_assert(HIDDEN_SIZE == 128, "nnue_simd.S kernels are hardcoded for HIDDEN_SIZE == 128");
 extern "C" void nnue_vec_add(std::int16_t *dst, const std::int16_t *src);
 extern "C" void nnue_vec_sub(std::int16_t *dst, const std::int16_t *src);
@@ -50,7 +50,7 @@ struct Network {
 	}
 
 	void add_feature(Accumulator& acc, const int feature_idx) const {
-#if defined(ESP32)
+#if defined(ESP32) && !defined(DOG_NO_SIMD)
 		nnue_vec_add(acc.vals.data(), this->feature_weights[feature_idx].vals.data());
 #else
 		for (int i = 0; i < HIDDEN_SIZE; i++) {
@@ -60,7 +60,7 @@ struct Network {
 	}
 
 	void remove_feature(Accumulator& acc, const int feature_idx) const {
-#if defined(ESP32)
+#if defined(ESP32) && !defined(DOG_NO_SIMD)
 		nnue_vec_sub(acc.vals.data(), this->feature_weights[feature_idx].vals.data());
 #else
 		for (int i = 0; i < HIDDEN_SIZE; i++) {

@@ -30,6 +30,7 @@ TIMEOUTS = {"boot": 30, "test": 600, "bench": 300, "uci": 30, "quit": 30}
 CRITICAL_MARKERS = [
     ("NNUE evaluation test", "OK"),
     ("NNUE incremental update test", "OK"),
+    ("NNUE SIMD kernel test", "OK"),
     ("tt test", "OK"),
     ("SAN parsing test", "OK"),
 ]
@@ -84,6 +85,9 @@ class Session:
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--port", required=True)
+    ap.add_argument("--no-simd", action="store_true",
+                    help="image built without SIMD kernels (DOG_NO_SIMD=1); "
+                         "skip the NNUE SIMD kernel test check (A/B bench only)")
     args = ap.parse_args()
 
     s = Session(args.port)
@@ -107,9 +111,12 @@ def main():
     print("== running test suite ==")
     s.send("test")
     out = s.read_until(PROMPT, TIMEOUTS["test"], "test suite")
-    ok_count = len(re.findall(r"\bOK\b", s.all_text))
-    for name, marker in CRITICAL_MARKERS:
-        results[f"test: {name}"] = marker in s.all_text and "assert fail" not in s.all_text
+    markers = [m for m in CRITICAL_MARKERS
+               if not (args.no_simd and m[0] == "NNUE SIMD kernel test")]
+    for name, marker in markers:
+        # the test name line only prints when the test actually ran
+        ran = name in s.all_text
+        results[f"test: {name}"] = ran and marker in s.all_text and "assert fail" not in s.all_text
     results["test suite complete"] = PROMPT in out
     results["no test failure"] = "assert fail" not in s.all_text
 
@@ -148,9 +155,16 @@ def main():
         results["test: NNUE incremental update test"],
         results["no test failure"],
     ]
+    if not args.no_simd:
+        critical.append(results["test: NNUE SIMD kernel test"])
     ok = all(critical)
-    print("ALL CRITICAL CHECKS PASSED - SIMD NNUE verified bit-exact."
-          if ok else "CRITICAL CHECK FAILED - see output above.")
+    if ok:
+        if args.no_simd:
+            print("ALL CRITICAL CHECKS PASSED (scalar image, A/B bench only).")
+        else:
+            print("ALL CRITICAL CHECKS PASSED - SIMD NNUE verified bit-exact.")
+    else:
+        print("CRITICAL CHECK FAILED - see output above.")
     sys.exit(0 if ok else 1)
 
 

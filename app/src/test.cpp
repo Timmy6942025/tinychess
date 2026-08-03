@@ -10,6 +10,11 @@
 #include "search.h"
 #include "str.h"
 
+#if defined(ESP32) && !defined(DOG_NO_SIMD)
+extern "C" void nnue_vec_add(std::int16_t *dst, const std::int16_t *src);
+extern "C" void nnue_vec_sub(std::int16_t *dst, const std::int16_t *src);
+#endif
+
 
 #define my_assert(x) \
 	if (!(x)) { \
@@ -430,6 +435,73 @@ void tests()
 
 		printf("OK\n");
 	}
+
+#if defined(ESP32) && !defined(DOG_NO_SIMD)
+	// raw SIMD kernels vs scalar reference with saturating semantics
+	{
+		printf("NNUE SIMD kernel test\n");
+
+		constexpr int N = 128; // HIDDEN_SIZE
+
+		auto saturate = [](long long v) -> std::int16_t {
+			if (v > 32767) return 32767;
+			if (v < -32768) return -32768;
+			return (std::int16_t)v;
+		};
+
+		alignas(16) std::int16_t dst[N];
+		alignas(16) std::int16_t ref[N];
+		alignas(16) std::int16_t src[N];
+
+		// deterministic pseudo-random vectors with extreme magnitudes
+		unsigned seed = 0x12345678u;
+		for (int i = 0; i < N; i++) {
+			seed = seed * 1664525u + 1013904223u;
+			dst[i] = (std::int16_t)((seed >> 16) % 60001u) - 30000;
+			seed = seed * 1664525u + 1013904223u;
+			src[i] = (std::int16_t)((seed >> 16) % 60001u) - 30000;
+			ref[i] = dst[i];
+		}
+
+		// add: every lane, bit-exact vs saturating reference
+		nnue_vec_add(dst, src);
+		for (int i = 0; i < N; i++) {
+			ref[i] = saturate((long long)ref[i] + src[i]);
+			my_assert(dst[i] == ref[i]);
+		}
+
+		// subtract back: saturating sub, not an inverse of the add
+		nnue_vec_sub(dst, src);
+		for (int i = 0; i < N; i++) {
+			ref[i] = saturate((long long)ref[i] - src[i]);
+			my_assert(dst[i] == ref[i]);
+		}
+
+		// deterministic saturation corner cases
+		const std::int16_t cases[][4] = {
+			{ 20000,  15000, 32767,  0 }, // add saturates high
+			{-20000, -15000, -32768, 0 }, // add saturates low
+			{ 10000,   5000,  15000, 0 }, // add in range
+			{-20000,  15000, -32768, 1 }, // sub saturates low
+			{ 20000, -15000,  32767, 1 }, // sub saturates high
+			{ 10000,  -5000,  15000, 1 }, // sub in range
+		};
+		for (auto & c : cases) {
+			for (int i = 0; i < N; i++) {
+				dst[i] = c[0];
+				src[i] = c[1];
+			}
+			if (c[3] == 0)
+				nnue_vec_add(dst, src);
+			else
+				nnue_vec_sub(dst, src);
+			for (int i = 0; i < N; i++)
+				my_assert(dst[i] == c[2]);
+		}
+
+		printf("OK\n");
+	}
+#endif
 
 	delete_threads();
 }

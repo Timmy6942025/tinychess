@@ -2,8 +2,9 @@
 # Board validation: flash the firmware to the XIAO ESP32S3 Plus and run the
 # automated serial checks (tools/board_session.py).
 #
-# Usage:  tools/board_check.sh [PORT]
+# Usage:  tools/board_check.sh [PORT] [BUILD_DIR]
 # Example: tools/board_check.sh /dev/ttyACM0
+# Example: tools/board_check.sh /dev/ttyACM0 build-nosimd   (scalar A/B bench image)
 
 set -e
 
@@ -41,7 +42,7 @@ echo "Flashing firmware + book partition ..."
 
 . "$IDF_PATH/export.sh" >/dev/null 2>&1
 cd "$APP_DIR"
-idf.py -p "$PORT" flash
+idf.py -p "$PORT" -B "${2:-build}" flash
 
 echo "Flash done. Running validation session ..."
-exec python3 "$ENGINE_DIR/tools/board_session.py" --port "$PORT"
+exec python3 "$ENGINE_DIR/tools/board_session.py" --port "$PORT" ${2:+--no-simd}

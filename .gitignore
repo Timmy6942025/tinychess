@@ -5,4 +5,5 @@ app/src/build
 app/src/CMakeFiles/
 app/src/CMakeCache.txt
 app/build
+app/build-nosimd
 .dog-recall.txt
