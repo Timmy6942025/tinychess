@@ -139,6 +139,7 @@ add_executable(
 )
 target_compile_options(Dog PRIVATE -DBUILD_TARGET=\"regular\")
 
+if (CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|amd64|i[3-6]86|AMD64")
 add_executable(
   Dog-avx2
   ${APP_SOURCES}
@@ -150,6 +151,7 @@ add_executable(
   ${APP_SOURCES}
 )
 target_compile_options(Dog-avx512 PRIVATE -mavx512f -mavx512vbmi2 -O3 -DBUILD_TARGET=\"AVX512\")
+endif ()
 
 add_executable(
   Dog-native
@@ -170,36 +172,24 @@ include(FindPkgConfig)
 
 if (ASAN EQUAL 1)
 	target_link_libraries(Dog PRIVATE -fsanitize=address,undefined Threads::Threads)
-	target_link_libraries(Dog-avx2 PRIVATE -fsanitize=address,undefined Threads::Threads)
-	target_link_libraries(Dog-avx512 PRIVATE -fsanitize=address,undefined Threads::Threads)
 	target_link_libraries(Dog-native PRIVATE -fsanitize=address,undefined Threads::Threads)
 elseif (TSAN EQUAL 1)
 	target_link_libraries(Dog PRIVATE -fsanitize=thread Threads::Threads)
-	target_link_libraries(Dog-avx2 PRIVATE -fsanitize=thread Threads::Threads)
-	target_link_libraries(Dog-avx512 PRIVATE -fsanitize=thread Threads::Threads)
 	target_link_libraries(Dog-native PRIVATE -fsanitize=thread Threads::Threads)
 elseif (MSAN EQUAL 1)
 	target_link_libraries(Dog PRIVATE -fsanitize=memory Threads::Threads)
-	target_link_libraries(Dog-avx2 PRIVATE -fsanitize=memory Threads::Threads)
-	target_link_libraries(Dog-avx512 PRIVATE -fsanitize=memory Threads::Threads)
 	target_link_libraries(Dog-native PRIVATE -fsanitize=memory Threads::Threads)
 else()
 	target_link_libraries(Dog PRIVATE Threads::Threads)
-	target_link_libraries(Dog-avx2 PRIVATE Threads::Threads)
-	target_link_libraries(Dog-avx512 PRIVATE Threads::Threads)
 	target_link_libraries(Dog-native PRIVATE Threads::Threads)
 endif()
 
 if (GPROF EQUAL 1)
 	target_link_libraries(Dog PRIVATE -pg)
-	target_link_libraries(Dog-avx2 PRIVATE -pg)
-	target_link_libraries(Dog-avx512 PRIVATE -pg)
 	target_link_libraries(Dog-native PRIVATE -pg)
 endif()
 
 target_include_directories(Dog PUBLIC ../../include ../fathom/src)
-target_include_directories(Dog-avx2 PUBLIC ../../include ../fathom/src)
-target_include_directories(Dog-avx512 PUBLIC ../../include ../fathom/src)
 target_include_directories(Dog-native PUBLIC ../../include ../fathom/src)
 target_include_directories(Dog-stats-prober PUBLIC ../../include ../fathom/src)
 

@@ -3,6 +3,7 @@
 // Some parts are not mine (e.g. the inbuf class): see the url
 // above it for details.
 #include <atomic>
+#include <algorithm>
 #include <cassert>
 #include <chrono>
 #include <cinttypes>
@@ -30,6 +31,11 @@
 #include "max.h"
 #include <chrono>
 #include <fcntl.h>
+
+// Reserve this much of the movetime for UCI/serial communication overhead so
+// the bestmove never arrives after the requested time (GUI timeouts, e.g.
+// cutechess-cli, forfeit on any overshoot).
+#define MOVE_OVERHEAD_MS 100
 #include <limits.h>
 #include <pthread.h>
 #include <stdarg.h>
@@ -51,6 +57,11 @@
 #include <esp_task_wdt.h>
 #include <esp_timer.h>
 #include <nvs_flash.h>
+
+// Reserve this much of the movetime for UCI/serial communication overhead so
+// the bestmove never arrives after the requested time (GUI timeouts, e.g.
+// cutechess-cli, forfeit on any overshoot).
+#define MOVE_OVERHEAD_MS 100
 
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
@@ -865,8 +876,9 @@ void main_task()
 			bool is_absolute_time = false;
 			bool is_white         = sp.at(0)->pos.side_to_move() == libchess::constants::WHITE;
 			if (movetime.has_value()) {
-				think_time_min   = movetime.value();
-				think_time_max   = think_time_min;
+				int mt = std::max(1, movetime.value() - MOVE_OVERHEAD_MS);
+				think_time_min   = mt;
+				think_time_max   = mt;
 				is_absolute_time = true;
 			}
 			else {
@@ -980,6 +992,9 @@ void main_task()
 	uci_service->register_option(hash_size_option);
 	libchess::UCIStringOption syzygy_path_option("SyzygyPath", "", syzygy_option_handler);
 	uci_service->register_option(syzygy_path_option);
+#else
+	libchess::UCISpinOption hash_size_option("Hash", 4, 1, 8, hash_size_handler);
+	uci_service->register_option(hash_size_option);
 #endif
 	libchess::UCICheckOption allow_ponder_option("Ponder", allow_ponder, allow_ponder_handler);
 	uci_service->register_option(allow_ponder_option);

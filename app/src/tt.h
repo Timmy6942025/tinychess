@@ -26,7 +26,8 @@ private:
 	tt_entry *entries { nullptr };
 #if defined(ESP32)
 #define ESP32_TT_RAM_SIZE 98304
-	uint64_t n_entries { ESP32_TT_RAM_SIZE / sizeof(tt_entry) };
+#define ESP32_DEFAULT_TT_SIZE (4 * 1024l * 1024l)
+	uint64_t n_entries { ESP32_DEFAULT_TT_SIZE / sizeof(tt_entry) };
 #elif defined(__ANDROID__)
 	uint64_t n_entries { 16 * 1024 * 1024  / sizeof(tt_entry) };
 #elif defined(linux) || defined(_WIN32) || defined(__APPLE__)

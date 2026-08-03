@@ -563,8 +563,12 @@ std::string get_soc_name()
 		case CHIP_ESP32C6:  return "ESP32-C6";
 		case CHIP_ESP32H2:  return "ESP32-H2";
 		case CHIP_ESP32P4:  return "ESP32-P4";
+#ifdef CHIP_ESP32C5
 		case CHIP_ESP32C5:  return "ESP32-C5";
+#endif
+#ifdef CHIP_ESP32C61
 		case CHIP_ESP32C61: return "ESP32-C61";
+#endif
 				    //case CHIP_ESP32H21: my_printf("ESP32-H21"); break;
 		default:
 				    break;

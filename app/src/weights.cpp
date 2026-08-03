@@ -1,6 +1,6 @@
 // xxd -c 26 -i < quantised.bin > weights.cpp
 
-#if defined(ESP32)
+#if 1
 constexpr int weights_size = 197440;
 
 alignas(64) constexpr const uint8_t weights_data[] {

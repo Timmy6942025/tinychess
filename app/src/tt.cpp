@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <cinttypes>
 #include <cstdlib>
 #include <cstring>
@@ -46,17 +47,23 @@ void tt::debug_helper()
 void tt::allocate()
 {
 #if defined(ESP32)
+	size_t requested = n_entries * sizeof(tt_entry);
 	size_t psram_size = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
 	if (psram_size > ESP32_TT_RAM_SIZE) {
-		constexpr const size_t max_sp_size = 4 * 1024l * 1024l;
-		psram_size = std::min(psram_size, max_sp_size);
-		printf("Using %zu bytes of PSRAM\n", psram_size);
-		n_entries = psram_size / sizeof(tt_entry);
-		entries = reinterpret_cast<tt_entry *>(heap_caps_malloc(n_entries * sizeof(tt_entry), MALLOC_CAP_SPIRAM));
+		constexpr const size_t max_sp_size = 6 * 1024l * 1024l;
+		size_t take = std::min(requested, std::min(psram_size, max_sp_size));
+		n_entries = take / sizeof(tt_entry);
+		printf("Using %zu bytes of PSRAM\n", take);
+		entries = reinterpret_cast<tt_entry *>(heap_caps_malloc(take, MALLOC_CAP_SPIRAM));
+		if (entries)
+			return;
+		printf("# PSRAM malloc failed, falling back to SRAM\n");
+		n_entries = ESP32_TT_RAM_SIZE / sizeof(tt_entry);
 	}
-	else {
+	if (!entries) {
 		printf("No PSRAM\n");
-		for(;;) {
+		n_entries = std::min<uint64_t>(n_entries, ESP32_TT_RAM_SIZE / sizeof(tt_entry));
+		for (;;) {
 			auto n_bytes = n_entries * sizeof(tt_entry);
 			printf("Using %zu bytes of RAM\n", size_t(n_bytes));
 			entries = reinterpret_cast<tt_entry *>(malloc(n_bytes));
@@ -67,7 +74,8 @@ void tt::allocate()
 				break;
 		}
 	}
-#else
+#endif
+#if !defined(ESP32)
 	size_t s = n_entries * sizeof(tt_entry);
 #if defined(linux)
 	if (posix_memalign(reinterpret_cast<void **>(&entries), 1024 * 1024 * 2, s)) {
