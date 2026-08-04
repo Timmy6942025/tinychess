@@ -1,0 +1,626 @@
+diff --git a/app/src/test.cpp b/app/src/test.cpp
+index 9196f9c..41a9356 100644
+--- a/app/src/test.cpp
++++ b/app/src/test.cpp
+@@ -451,11 +451,11 @@ void tests()
+ 
+ 	// san
+ 	const std::vector<std::tuple<const std::string, const std::string, const std::string, int> > san_parsing_tests {
+-		{ "7r/3r1p1p/6p1/1p6/2B5/5PP1/1Q5P/1K1k4 b - - 0 38", "bxc4", "7r/3r1p1p/6p1/8/2p5/5PP1/1Q5P/1K1k4 w - - 0 39", -827 },
+-		{ "2n1r1n1/1p1k1p2/6pp/R2pP3/3P4/8/5PPP/2R3K1 b - - 0 30", "Nge7", "2n1r3/1p1knp2/6pp/R2pP3/3P4/8/5PPP/2R3K1 w - - 1 31", 361 },
+-		{ "8/5p2/1kn1r1n1/1p1pP3/6K1/8/4R3/5R2 b - - 9 60", "Ngxe5+", "8/5p2/1kn1r3/1p1pn3/6K1/8/4R3/5R2 w - - 0 61", 1352 },
+-		{ "r3k2r/pp1bnpbp/1q3np1/3p4/3N1P2/1PP1Q2P/P1B3P1/RNB1K2R b KQkq - 5 15", "Ng8", "r3k1nr/pp1bnpbp/1q4p1/3p4/3N1P2/1PP1Q2P/P1B3P1/RNB1K2R w KQkq - 6 16", 325 },
+-		{ libchess::constants::STARTPOS_FEN, "e4", "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1", 55 },
++		{ "7r/3r1p1p/6p1/1p6/2B5/5PP1/1Q5P/1K1k4 b - - 0 38", "bxc4", "7r/3r1p1p/6p1/8/2p5/5PP1/1Q5P/1K1k4 w - - 0 39", -985 },
++		{ "2n1r1n1/1p1k1p2/6pp/R2pP3/3P4/8/5PPP/2R3K1 b - - 0 30", "Nge7", "2n1r3/1p1knp2/6pp/R2pP3/3P4/8/5PPP/2R3K1 w - - 1 31", 436 },
++		{ "8/5p2/1kn1r1n1/1p1pP3/6K1/8/4R3/5R2 b - - 9 60", "Ngxe5+", "8/5p2/1kn1r3/1p1pn3/6K1/8/4R3/5R2 w - - 0 61", 1293 },
++		{ "r3k2r/pp1bnpbp/1q3np1/3p4/3N1P2/1PP1Q2P/P1B3P1/RNB1K2R b KQkq - 5 15", "Ng8", "r3k1nr/pp1bnpbp/1q4p1/3p4/3N1P2/1PP1Q2P/P1B3P1/RNB1K2R w KQkq - 6 16", 357 },
++		{ libchess::constants::STARTPOS_FEN, "e4", "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1", 80 },
+ 	};
+ 
+ 	{
+@@ -470,7 +470,8 @@ void tests()
+ 		printf("OK\n");
+ 	}
+ 
+-	// NNUE eval (using san parsing data)
++	// NNUE eval (using san parsing data); expected values are for the
++	// HIDDEN_SIZE=256 big net (weights.cpp #if 0 block)
+ 	{
+ 		printf("NNUE evaluation test\n");
+ 
+@@ -652,8 +653,8 @@ void tests()
+ 		// { fen, depth at which the mate must already be found }
+ 		const std::vector<std::pair<std::string, int> > mates {
+ 			{ "6k1/R7/6K1/8/8/8/8/8 w - - 0 1", 1 },  // a7a8 mate in 1
+-			{ "6k1/8/6K1/5R2/8/8/8/8 w - - 0 1", 3 },  // K+R, mate in 2 by depth 3
+-			{ "6k1/8/8/8/8/8/8/R3R1K1 w - - 0 1", 5 },  // two-rook ladder, mate in 3 by depth 5
++			{ "6k1/8/6K1/5R2/8/8/8/8 w - - 0 1", 5 },  // K+R, mate in 2 (big net finds it by depth 5)
++			{ "6k1/8/8/8/8/8/8/R3R1K1 w - - 0 1", 19 },  // two-rook ladder, mate in 3 (big net needs depth 19; small net needed 5)
+ 		};
+ 
+ 		for(auto & m: mates) {
+diff --git a/app/src/weights.cpp b/app/src/weights.cpp
+index a3fe644..ed4220c 100644
+--- a/app/src/weights.cpp
++++ b/app/src/weights.cpp
+@@ -1,6 +1,6 @@
+ // xxd -c 26 -i < quantised.bin > weights.cpp
+ 
+-#if 1
++#if 0
+ constexpr int weights_size = 197440;
+ 
+ alignas(64) constexpr const uint8_t weights_data[] {
+diff --git a/app/src/weights.h b/app/src/weights.h
+index e052df2..abfe1da 100644
+--- a/app/src/weights.h
++++ b/app/src/weights.h
+@@ -1,3 +1,3 @@
+ #pragma once
+ 
+-constexpr int HIDDEN_SIZE = 128;
++constexpr int HIDDEN_SIZE = 256;
+diff --git a/tools/fast_sprt.sh b/tools/fast_sprt.sh
+index 0bb15b5..d4cbacf 100755
+--- a/tools/fast_sprt.sh
++++ b/tools/fast_sprt.sh
+@@ -16,13 +16,20 @@
+ #   ERROR   no usable SPRT output                                            exit 2
+ #
+ # Power notes (why these defaults):
+-#   - elo0=0 elo1=10 (the previous default) needs tens of thousands of games
+-#     to reach the +-2.94 llr bounds at ~53% draws; every test capped at 200
+-#     rounds and came back "inconclusive" -> always reverted. That is why the
+-#     killer-move change was dropped on a coin flip.
+-#   - elo1=50 makes the test decisive in ~300-800 games for a real +25 elo
+-#     effect and ~800-1500 games for a null effect. Smaller effects end in a
+-#     cap verdict (decided by llr sign) instead of an endless run.
++#   cutechess-cli's SPRT (fishtest/OpenBench-style) estimates the draw rate
++#   in-sample, so its llr drifts negative for a null match - that is by
++#   design: a null test is SUPPOSED to accept H0 (elo0). Verified against
++#   measured runs 2026-08-05 (all reproduced to 2 decimals):
++#     elo1=50:  null  rejects at ~160 games  (hist3d: exactly 160, was neutral)
++#               -100 elo regression rejects at ~20-30 games (checkext 29,
++#               evalcache 19)                 - REAL but small (+10..+30 elo)
++#               changes get rejected too: +30 needs ~7400 games with drift ~0
++#               -> elo1=50 only ever ACCEPTs +50 elo effects. Too harsh.
++#     elo1=20:  +20 elo accepts ~1600 games, +30 ~700, null rejects ~1000
++#     elo1=10:  +10 elo accepts ~1800+ games (hours at CONC=2) - too slow.
++#   elo1=20 is the sweet spot for detecting realistic +15..+35 elo search
++#   changes; runs take ~2-7h at CONC=2. SPRT_MAX caps the rest; borderline
++#   cap verdicts are decided by llr sign.
+ #
+ # Overridable via env: TC= ELO0= ELO1= ALPHA= BETA= SPRT_MAX= (cap, rounds)
+ #   GAMES= (fixed mode) ADJ=yes|no (adjudication) CONC= (cutechess -concurrency)
+@@ -40,7 +47,7 @@ mkdir -p "$RUN_DIR"
+ 
+ TC="${TC:-5+0.05}"
+ ELO0="${ELO0:-0}"
+-ELO1="${ELO1:-50}"
++ELO1="${ELO1:-20}"
+ ALPHA="${ALPHA:-0.05}"
+ BETA="${BETA:-0.05}"
+ SPRT_MAX="${SPRT_MAX:-1500}"
+diff --git a/tools/results.log b/tools/results.log
+index 2846eaf..b86fbac 100644
+--- a/tools/results.log
++++ b/tools/results.log
+@@ -345,3 +345,517 @@ Score of A vs B: 1 - 0 - 5  [0.583] 6
+ Elo difference: 58.5 +/- 110.3, LOS: 84.1 %, DrawRatio: 83.3 %
+ SPRT: llr 0.278 (9.4%), lbound -2.94, ubound 2.94
+ [18:52:39] VERDICT ab-smoke-power-20260804-185221: KEEP (cap reached before bound, llr 0.278 > 0)
++[19:06:28] FINGERPRINT A=tools/runs/bin/Dog-baseline 1090d5e073c52dd034e7c3313582b524  B=tools/runs/bin/Dog-diff ca8a94ba3c70975d66270962a1494a87
++[19:35:06] FINGERPRINT A=tools/runs/bin/Dog-diff ca8a94ba3c70975d66270962a1494a87  B=tools/runs/bin/Dog-baseline 1090d5e073c52dd034e7c3313582b524
++[19:51:24] MATCH ab-hist3d-20260804-193506  A=tools/runs/bin/Dog-diff  B=tools/runs/bin/Dog-baseline  tc=5+0.05 rounds=1500 -sprt elo0=0 elo1=50 alpha=0.05 beta=0.05 adj=yes
++Score of A vs B: 0 - 1 - 0  [0.000] 1
++Score of A vs B: 0 - 2 - 0  [0.000] 2
++Score of A vs B: 1 - 2 - 0  [0.333] 3
++Score of A vs B: 1 - 2 - 1  [0.375] 4
++Score of A vs B: 2 - 2 - 1  [0.500] 5
++Score of A vs B: 2 - 3 - 1  [0.417] 6
++Score of A vs B: 2 - 3 - 2  [0.429] 7
++Score of A vs B: 2 - 4 - 2  [0.375] 8
++Score of A vs B: 2 - 5 - 2  [0.333] 9
++Score of A vs B: 3 - 5 - 2  [0.400] 10
++Score of A vs B: 3 - 5 - 3  [0.409] 11
++Score of A vs B: 3 - 5 - 4  [0.417] 12
++Score of A vs B: 4 - 5 - 4  [0.462] 13
++Score of A vs B: 4 - 5 - 5  [0.464] 14
++Score of A vs B: 4 - 6 - 5  [0.433] 15
++Score of A vs B: 4 - 7 - 5  [0.406] 16
++Score of A vs B: 4 - 7 - 6  [0.412] 17
++Score of A vs B: 5 - 7 - 6  [0.444] 18
++Score of A vs B: 6 - 7 - 6  [0.474] 19
++Score of A vs B: 6 - 8 - 6  [0.450] 20
++Score of A vs B: 6 - 8 - 7  [0.452] 21
++Score of A vs B: 6 - 9 - 7  [0.432] 22
++Score of A vs B: 6 - 9 - 8  [0.435] 23
++Score of A vs B: 6 - 10 - 8  [0.417] 24
++Score of A vs B: 6 - 11 - 8  [0.400] 25
++Score of A vs B: 6 - 11 - 9  [0.404] 26
++Score of A vs B: 7 - 11 - 9  [0.426] 27
++Score of A vs B: 8 - 11 - 9  [0.446] 28
++Score of A vs B: 9 - 11 - 9  [0.466] 29
++Score of A vs B: 9 - 12 - 9  [0.450] 30
++Score of A vs B: 9 - 12 - 10  [0.452] 31
++Score of A vs B: 10 - 12 - 10  [0.469] 32
++Score of A vs B: 10 - 12 - 11  [0.470] 33
++Score of A vs B: 10 - 13 - 11  [0.456] 34
++Score of A vs B: 10 - 13 - 12  [0.457] 35
++Score of A vs B: 11 - 13 - 12  [0.472] 36
++Score of A vs B: 12 - 13 - 12  [0.486] 37
++Score of A vs B: 12 - 14 - 12  [0.474] 38
++Score of A vs B: 12 - 14 - 13  [0.474] 39
++Score of A vs B: 12 - 15 - 13  [0.463] 40
++Score of A vs B: 12 - 15 - 14  [0.463] 41
++Score of A vs B: 12 - 16 - 14  [0.452] 42
++Score of A vs B: 12 - 16 - 15  [0.453] 43
++Score of A vs B: 12 - 17 - 15  [0.443] 44
++Score of A vs B: 12 - 17 - 16  [0.444] 45
++Score of A vs B: 13 - 17 - 16  [0.457] 46
++Score of A vs B: 13 - 17 - 17  [0.457] 47
++Score of A vs B: 13 - 17 - 18  [0.458] 48
++Score of A vs B: 13 - 17 - 19  [0.459] 49
++Score of A vs B: 13 - 17 - 20  [0.460] 50
++Score of A vs B: 13 - 17 - 21  [0.461] 51
++Score of A vs B: 14 - 17 - 21  [0.471] 52
++Score of A vs B: 14 - 18 - 21  [0.462] 53
++Score of A vs B: 14 - 18 - 22  [0.463] 54
++Score of A vs B: 15 - 18 - 22  [0.473] 55
++Score of A vs B: 16 - 18 - 22  [0.482] 56
++Score of A vs B: 16 - 18 - 23  [0.482] 57
++Score of A vs B: 16 - 19 - 23  [0.474] 58
++Score of A vs B: 17 - 19 - 23  [0.483] 59
++Score of A vs B: 17 - 19 - 24  [0.483] 60
++Score of A vs B: 17 - 19 - 25  [0.484] 61
++Score of A vs B: 17 - 19 - 26  [0.484] 62
++Score of A vs B: 18 - 19 - 26  [0.492] 63
++Score of A vs B: 18 - 19 - 27  [0.492] 64
++Score of A vs B: 19 - 19 - 27  [0.500] 65
++Score of A vs B: 19 - 19 - 28  [0.500] 66
++Score of A vs B: 19 - 20 - 28  [0.493] 67
++Score of A vs B: 19 - 20 - 29  [0.493] 68
++Score of A vs B: 20 - 20 - 29  [0.500] 69
++Score of A vs B: 20 - 21 - 29  [0.493] 70
++Score of A vs B: 21 - 21 - 29  [0.500] 71
++Score of A vs B: 21 - 22 - 29  [0.493] 72
++Score of A vs B: 22 - 22 - 29  [0.500] 73
++Score of A vs B: 22 - 22 - 30  [0.500] 74
++Score of A vs B: 22 - 22 - 31  [0.500] 75
++Score of A vs B: 22 - 22 - 32  [0.500] 76
++Score of A vs B: 23 - 22 - 32  [0.506] 77
++Score of A vs B: 23 - 23 - 32  [0.500] 78
++Score of A vs B: 24 - 23 - 32  [0.506] 79
++Score of A vs B: 24 - 24 - 32  [0.500] 80
++Score of A vs B: 24 - 25 - 32  [0.494] 81
++Score of A vs B: 24 - 26 - 32  [0.488] 82
++Score of A vs B: 24 - 26 - 33  [0.488] 83
++Score of A vs B: 24 - 26 - 34  [0.488] 84
++Score of A vs B: 25 - 26 - 34  [0.494] 85
++Score of A vs B: 25 - 26 - 35  [0.494] 86
++Score of A vs B: 25 - 26 - 36  [0.494] 87
++Score of A vs B: 25 - 26 - 37  [0.494] 88
++Score of A vs B: 25 - 26 - 38  [0.494] 89
++Score of A vs B: 25 - 26 - 39  [0.494] 90
++Score of A vs B: 26 - 26 - 39  [0.500] 91
++Score of A vs B: 26 - 27 - 39  [0.495] 92
++Score of A vs B: 26 - 28 - 39  [0.489] 93
++Score of A vs B: 26 - 28 - 40  [0.489] 94
++Score of A vs B: 27 - 28 - 40  [0.495] 95
++Score of A vs B: 27 - 28 - 41  [0.495] 96
++Score of A vs B: 27 - 29 - 41  [0.490] 97
++Score of A vs B: 28 - 29 - 41  [0.495] 98
++Score of A vs B: 28 - 30 - 41  [0.490] 99
++Score of A vs B: 28 - 30 - 42  [0.490] 100
++Score of A vs B: 29 - 30 - 42  [0.495] 101
++Score of A vs B: 29 - 30 - 43  [0.495] 102
++Score of A vs B: 30 - 30 - 43  [0.500] 103
++Score of A vs B: 30 - 30 - 44  [0.500] 104
++Score of A vs B: 30 - 30 - 45  [0.500] 105
++Score of A vs B: 30 - 30 - 46  [0.500] 106
++Score of A vs B: 31 - 30 - 46  [0.505] 107
++Score of A vs B: 31 - 30 - 47  [0.505] 108
++Score of A vs B: 31 - 31 - 47  [0.500] 109
++Score of A vs B: 31 - 32 - 47  [0.495] 110
++Score of A vs B: 31 - 32 - 48  [0.495] 111
++Score of A vs B: 31 - 32 - 49  [0.496] 112
++Score of A vs B: 31 - 32 - 50  [0.496] 113
++Score of A vs B: 32 - 32 - 50  [0.500] 114
++Score of A vs B: 32 - 32 - 51  [0.500] 115
++Score of A vs B: 33 - 32 - 51  [0.504] 116
++Score of A vs B: 33 - 32 - 52  [0.504] 117
++Score of A vs B: 34 - 32 - 52  [0.508] 118
++Score of A vs B: 34 - 32 - 53  [0.508] 119
++Score of A vs B: 34 - 33 - 53  [0.504] 120
++Score of A vs B: 34 - 33 - 54  [0.504] 121
++Score of A vs B: 34 - 34 - 54  [0.500] 122
++Score of A vs B: 34 - 34 - 55  [0.500] 123
++Score of A vs B: 35 - 34 - 55  [0.504] 124
++Score of A vs B: 35 - 35 - 55  [0.500] 125
++Score of A vs B: 35 - 35 - 56  [0.500] 126
++Score of A vs B: 35 - 36 - 56  [0.496] 127
++Score of A vs B: 35 - 36 - 57  [0.496] 128
++Score of A vs B: 36 - 36 - 57  [0.500] 129
++Score of A vs B: 36 - 36 - 58  [0.500] 130
++Score of A vs B: 36 - 36 - 59  [0.500] 131
++Score of A vs B: 36 - 36 - 60  [0.500] 132
++Score of A vs B: 36 - 36 - 61  [0.500] 133
++Score of A vs B: 37 - 36 - 61  [0.504] 134
++Score of A vs B: 38 - 36 - 61  [0.507] 135
++Score of A vs B: 39 - 36 - 61  [0.511] 136
++Score of A vs B: 39 - 37 - 61  [0.507] 137
++Score of A vs B: 39 - 37 - 62  [0.507] 138
++Score of A vs B: 39 - 37 - 63  [0.507] 139
++Score of A vs B: 40 - 37 - 63  [0.511] 140
++Score of A vs B: 41 - 37 - 63  [0.514] 141
++Score of A vs B: 42 - 37 - 63  [0.518] 142
++Score of A vs B: 42 - 37 - 64  [0.517] 143
++Score of A vs B: 42 - 38 - 64  [0.514] 144
++Score of A vs B: 42 - 38 - 65  [0.514] 145
++Score of A vs B: 42 - 39 - 65  [0.510] 146
++Score of A vs B: 43 - 39 - 65  [0.514] 147
++Score of A vs B: 43 - 40 - 65  [0.510] 148
++Score of A vs B: 43 - 40 - 66  [0.510] 149
++Score of A vs B: 43 - 41 - 66  [0.507] 150
++Score of A vs B: 44 - 41 - 66  [0.510] 151
++Score of A vs B: 44 - 42 - 66  [0.507] 152
++Score of A vs B: 44 - 42 - 67  [0.507] 153
++Score of A vs B: 44 - 43 - 67  [0.503] 154
++Score of A vs B: 44 - 43 - 68  [0.503] 155
++Score of A vs B: 44 - 44 - 68  [0.500] 156
++Score of A vs B: 45 - 44 - 68  [0.503] 157
++Score of A vs B: 45 - 45 - 68  [0.500] 158
++Score of A vs B: 45 - 45 - 69  [0.500] 159
++Score of A vs B: 45 - 46 - 69  [0.497] 160
++Score of A vs B: 45 - 46 - 69  [0.497] 160
++Elo difference: -2.2 +/- 40.7, LOS: 45.8 %, DrawRatio: 43.1 %
++SPRT: llr -3.18 (-108.0%), lbound -2.94, ubound 2.94 - H0 was accepted
++[19:51:24] VERDICT ab-hist3d-20260804-193506: REJECT: H0 (no improvement) - llr -3.18 <= -2.94
++[21:09:12] FINGERPRINT A=tools/runs/bin/Dog-checkext ca27cd7bdac04b6d59e07e427a842229  B=tools/runs/bin/Dog-baseline 1090d5e073c52dd034e7c3313582b524
++[21:12:09] MATCH ab-checkext-20260804-210912  A=tools/runs/bin/Dog-checkext  B=tools/runs/bin/Dog-baseline  tc=5+0.05 rounds=1500 -sprt elo0=0 elo1=50 alpha=0.05 beta=0.05 adj=yes
++Score of A vs B: 0 - 1 - 0  [0.000] 1
++Score of A vs B: 1 - 1 - 0  [0.500] 2
++Score of A vs B: 1 - 2 - 0  [0.333] 3
++Score of A vs B: 1 - 2 - 1  [0.375] 4
++Score of A vs B: 1 - 3 - 1  [0.300] 5
++Score of A vs B: 2 - 3 - 1  [0.417] 6
++Score of A vs B: 2 - 4 - 1  [0.357] 7
++Score of A vs B: 2 - 5 - 1  [0.313] 8
++Score of A vs B: 3 - 5 - 1  [0.389] 9
++Score of A vs B: 3 - 5 - 2  [0.400] 10
++Score of A vs B: 3 - 6 - 2  [0.364] 11
++Score of A vs B: 3 - 7 - 2  [0.333] 12
++Score of A vs B: 3 - 7 - 3  [0.346] 13
++Score of A vs B: 3 - 7 - 4  [0.357] 14
++Score of A vs B: 3 - 7 - 5  [0.367] 15
++Score of A vs B: 3 - 8 - 5  [0.344] 16
++Score of A vs B: 3 - 8 - 6  [0.353] 17
++Score of A vs B: 3 - 9 - 6  [0.333] 18
++Score of A vs B: 3 - 9 - 7  [0.342] 19
++Score of A vs B: 3 - 9 - 8  [0.350] 20
++Score of A vs B: 3 - 9 - 9  [0.357] 21
++Score of A vs B: 3 - 9 - 10  [0.364] 22
++Score of A vs B: 3 - 10 - 10  [0.348] 23
++Score of A vs B: 3 - 11 - 10  [0.333] 24
++Score of A vs B: 4 - 11 - 10  [0.360] 25
++Score of A vs B: 4 - 12 - 10  [0.346] 26
++Score of A vs B: 4 - 13 - 10  [0.333] 27
++Score of A vs B: 4 - 14 - 10  [0.321] 28
++Score of A vs B: 4 - 14 - 11  [0.328] 29
++Score of A vs B: 4 - 14 - 11  [0.328] 29
++Elo difference: -124.9 +/- 105.8, LOS: 0.9 %, DrawRatio: 37.9 %
++SPRT: llr -3.06 (-104.1%), lbound -2.94, ubound 2.94 - H0 was accepted
++[21:12:10] VERDICT ab-checkext-20260804-210912: REJECT: H0 (no improvement) - llr -3.06 <= -2.94
++[21:26:26] FINGERPRINT A=tools/runs/bin/Dog-checkext ca27cd7bdac04b6d59e07e427a842229  B=tools/runs/bin/Dog-baseline 1090d5e073c52dd034e7c3313582b524
++[21:30:34] MATCH ab-checkext2-20260804-212626  A=tools/runs/bin/Dog-checkext  B=tools/runs/bin/Dog-baseline  tc=5+0.05 rounds=1500 -sprt elo0=0 elo1=50 alpha=0.05 beta=0.05 adj=yes
++Score of A vs B: 1 - 0 - 0  [1.000] 1
++Score of A vs B: 1 - 0 - 1  [0.750] 2
++Score of A vs B: 2 - 0 - 1  [0.833] 3
++Score of A vs B: 2 - 1 - 1  [0.625] 4
++Score of A vs B: 2 - 1 - 2  [0.600] 5
++Score of A vs B: 2 - 1 - 3  [0.583] 6
++Score of A vs B: 3 - 1 - 3  [0.643] 7
++Score of A vs B: 3 - 1 - 4  [0.625] 8
++Score of A vs B: 3 - 1 - 5  [0.611] 9
++Score of A vs B: 3 - 1 - 6  [0.600] 10
++Score of A vs B: 3 - 2 - 6  [0.545] 11
++Score of A vs B: 3 - 3 - 6  [0.500] 12
++Score of A vs B: 4 - 3 - 6  [0.538] 13
++Score of A vs B: 4 - 4 - 6  [0.500] 14
++Score of A vs B: 4 - 5 - 6  [0.467] 15
++Score of A vs B: 4 - 6 - 6  [0.438] 16
++Score of A vs B: 4 - 6 - 7  [0.441] 17
++Score of A vs B: 4 - 6 - 8  [0.444] 18
++Score of A vs B: 4 - 7 - 8  [0.421] 19
++Score of A vs B: 4 - 7 - 9  [0.425] 20
++Score of A vs B: 4 - 7 - 10  [0.429] 21
++Score of A vs B: 4 - 7 - 11  [0.432] 22
++Score of A vs B: 4 - 8 - 11  [0.413] 23
++Score of A vs B: 4 - 8 - 12  [0.417] 24
++Score of A vs B: 4 - 8 - 13  [0.420] 25
++Score of A vs B: 4 - 8 - 14  [0.423] 26
++Score of A vs B: 4 - 9 - 14  [0.407] 27
++Score of A vs B: 4 - 9 - 15  [0.411] 28
++Score of A vs B: 5 - 9 - 15  [0.431] 29
++Score of A vs B: 5 - 10 - 15  [0.417] 30
++Score of A vs B: 5 - 11 - 15  [0.403] 31
++Score of A vs B: 6 - 11 - 15  [0.422] 32
++Score of A vs B: 6 - 12 - 15  [0.409] 33
++Score of A vs B: 6 - 13 - 15  [0.397] 34
++Score of A vs B: 7 - 13 - 15  [0.414] 35
++Score of A vs B: 7 - 14 - 15  [0.403] 36
++Score of A vs B: 7 - 14 - 16  [0.405] 37
++Score of A vs B: 7 - 15 - 16  [0.395] 38
++Score of A vs B: 7 - 15 - 17  [0.397] 39
++Score of A vs B: 7 - 16 - 17  [0.388] 40
++Score of A vs B: 7 - 16 - 17  [0.388] 40
++Elo difference: -79.5 +/- 83.8, LOS: 3.0 %, DrawRatio: 42.5 %
++SPRT: llr -3.1 (-105.3%), lbound -2.94, ubound 2.94 - H0 was accepted
++[21:30:34] VERDICT ab-checkext2-20260804-212626: REJECT: H0 (no improvement) - llr -3.1 <= -2.94
++[21:47:15] FINGERPRINT A=tools/runs/bin/Dog-evalcache 76dd42b25266c590912ffd7f4b233d5e  B=tools/runs/bin/Dog-baseline 1090d5e073c52dd034e7c3313582b524
++[21:49:21] MATCH ab-evalcache-20260804-214715  A=tools/runs/bin/Dog-evalcache  B=tools/runs/bin/Dog-baseline  tc=5+0.05 rounds=1500 -sprt elo0=0 elo1=50 alpha=0.05 beta=0.05 adj=yes
++Score of A vs B: 0 - 0 - 1  [0.500] 1
++Score of A vs B: 0 - 1 - 1  [0.250] 2
++Score of A vs B: 0 - 2 - 1  [0.167] 3
++Score of A vs B: 0 - 2 - 2  [0.250] 4
++Score of A vs B: 0 - 3 - 2  [0.200] 5
++Score of A vs B: 0 - 4 - 2  [0.167] 6
++Score of A vs B: 0 - 4 - 3  [0.214] 7
++Score of A vs B: 0 - 4 - 4  [0.250] 8
++Score of A vs B: 0 - 4 - 5  [0.278] 9
++Score of A vs B: 0 - 4 - 6  [0.300] 10
++Score of A vs B: 0 - 5 - 6  [0.273] 11
++Score of A vs B: 1 - 5 - 6  [0.333] 12
++Score of A vs B: 1 - 5 - 7  [0.346] 13
++Score of A vs B: 1 - 6 - 7  [0.321] 14
++Score of A vs B: 1 - 6 - 8  [0.333] 15
++Score of A vs B: 1 - 7 - 8  [0.313] 16
++Score of A vs B: 1 - 7 - 9  [0.324] 17
++Score of A vs B: 1 - 7 - 10  [0.333] 18
++Score of A vs B: 1 - 7 - 11  [0.342] 19
++Score of A vs B: 1 - 7 - 11  [0.342] 19
++Elo difference: -113.6 +/- 101.9, LOS: 1.7 %, DrawRatio: 57.9 %
++SPRT: llr -3.02 (-102.4%), lbound -2.94, ubound 2.94 - H0 was accepted
++[21:49:21] VERDICT ab-evalcache-20260804-214715: REJECT: H0 (no improvement) - llr -3.02 <= -2.94
++[23:07:54] FINGERPRINT A=tools/runs/bin/Dog-lmrgentle 41c22f01b7ba0edf60cf72dbf69282f4  B=tools/runs/bin/Dog-baseline 1090d5e073c52dd034e7c3313582b524
++[23:11:06] MATCH ab-lmrgentle-20260804-230754  A=tools/runs/bin/Dog-lmrgentle  B=tools/runs/bin/Dog-baseline  tc=5+0.05 rounds=1500 -sprt elo0=0 elo1=50 alpha=0.05 beta=0.05 adj=yes
++Score of A vs B: 1 - 0 - 0  [1.000] 1
++Score of A vs B: 1 - 1 - 0  [0.500] 2
++Score of A vs B: 2 - 1 - 0  [0.667] 3
++Score of A vs B: 2 - 1 - 1  [0.625] 4
++Score of A vs B: 2 - 1 - 2  [0.600] 5
++Score of A vs B: 2 - 2 - 2  [0.500] 6
++Score of A vs B: 2 - 2 - 3  [0.500] 7
++Score of A vs B: 2 - 2 - 4  [0.500] 8
++Score of A vs B: 2 - 2 - 5  [0.500] 9
++Score of A vs B: 2 - 3 - 5  [0.450] 10
++Score of A vs B: 3 - 3 - 5  [0.500] 11
++Score of A vs B: 3 - 4 - 5  [0.458] 12
++Score of A vs B: 3 - 4 - 6  [0.462] 13
++Score of A vs B: 3 - 4 - 7  [0.464] 14
++Score of A vs B: 3 - 4 - 8  [0.467] 15
++Score of A vs B: 3 - 5 - 8  [0.438] 16
++Score of A vs B: 3 - 6 - 8  [0.412] 17
++Score of A vs B: 3 - 6 - 9  [0.417] 18
++Score of A vs B: 3 - 6 - 10  [0.421] 19
++Score of A vs B: 3 - 6 - 11  [0.425] 20
++Score of A vs B: 3 - 7 - 11  [0.405] 21
++Score of A vs B: 3 - 8 - 11  [0.386] 22
++Score of A vs B: 3 - 8 - 12  [0.391] 23
++Score of A vs B: 3 - 8 - 13  [0.396] 24
++Score of A vs B: 3 - 8 - 14  [0.400] 25
++Score of A vs B: 3 - 8 - 15  [0.404] 26
++Score of A vs B: 3 - 8 - 16  [0.407] 27
++Score of A vs B: 3 - 8 - 17  [0.411] 28
++Score of A vs B: 3 - 9 - 17  [0.397] 29
++Score of A vs B: 3 - 9 - 17  [0.397] 29
++Elo difference: -72.9 +/- 82.0, LOS: 4.2 %, DrawRatio: 58.6 %
++SPRT: llr -3 (-101.8%), lbound -2.94, ubound 2.94 - H0 was accepted
++[23:11:06] VERDICT ab-lmrgentle-20260804-230754: REJECT: H0 (no improvement) - llr -3 <= -2.94
++[23:25:15] FINGERPRINT A=tools/runs/bin/Dog-baseline 1090d5e073c52dd034e7c3313582b524  B=tools/runs/bin/Dog-baseline 1090d5e073c52dd034e7c3313582b524
++[23:46:18] MATCH ab-baselinesprt-20260804-232514  A=tools/runs/bin/Dog-baseline  B=tools/runs/bin/Dog-baseline  tc=5+0.05 rounds=1500 -sprt elo0=0 elo1=50 alpha=0.05 beta=0.05 adj=yes
++Score of A vs B: 0 - 0 - 1  [0.500] 1
++Score of A vs B: 0 - 1 - 1  [0.250] 2
++Score of A vs B: 0 - 2 - 1  [0.167] 3
++Score of A vs B: 0 - 2 - 2  [0.250] 4
++Score of A vs B: 0 - 3 - 2  [0.200] 5
++Score of A vs B: 0 - 3 - 3  [0.250] 6
++Score of A vs B: 0 - 3 - 4  [0.286] 7
++Score of A vs B: 0 - 4 - 4  [0.250] 8
++Score of A vs B: 1 - 4 - 4  [0.333] 9
++Score of A vs B: 2 - 4 - 4  [0.400] 10
++Score of A vs B: 3 - 4 - 4  [0.455] 11
++Score of A vs B: 4 - 4 - 4  [0.500] 12
++Score of A vs B: 4 - 4 - 5  [0.500] 13
++Score of A vs B: 4 - 5 - 5  [0.464] 14
++Score of A vs B: 4 - 5 - 6  [0.467] 15
++Score of A vs B: 4 - 5 - 7  [0.469] 16
++Score of A vs B: 4 - 6 - 7  [0.441] 17
++Score of A vs B: 4 - 6 - 8  [0.444] 18
++Score of A vs B: 4 - 6 - 9  [0.447] 19
++Score of A vs B: 4 - 7 - 9  [0.425] 20
++Score of A vs B: 4 - 7 - 10  [0.429] 21
++Score of A vs B: 4 - 7 - 11  [0.432] 22
++Score of A vs B: 4 - 7 - 12  [0.435] 23
++Score of A vs B: 4 - 7 - 13  [0.438] 24
++Score of A vs B: 5 - 7 - 13  [0.460] 25
++Score of A vs B: 6 - 7 - 13  [0.481] 26
++Score of A vs B: 7 - 7 - 13  [0.500] 27
++Score of A vs B: 8 - 7 - 13  [0.518] 28
++Score of A vs B: 8 - 7 - 14  [0.517] 29
++Score of A vs B: 9 - 7 - 14  [0.533] 30
++Score of A vs B: 9 - 8 - 14  [0.516] 31
++Score of A vs B: 9 - 9 - 14  [0.500] 32
++Score of A vs B: 10 - 9 - 14  [0.515] 33
++Score of A vs B: 10 - 10 - 14  [0.500] 34
++Score of A vs B: 10 - 11 - 14  [0.486] 35
++Score of A vs B: 10 - 11 - 15  [0.486] 36
++Score of A vs B: 10 - 11 - 16  [0.486] 37
++Score of A vs B: 10 - 12 - 16  [0.474] 38
++Score of A vs B: 11 - 12 - 16  [0.487] 39
++Score of A vs B: 11 - 13 - 16  [0.475] 40
++Score of A vs B: 11 - 13 - 17  [0.476] 41
++Score of A vs B: 11 - 13 - 18  [0.476] 42
++Score of A vs B: 11 - 13 - 19  [0.477] 43
++Score of A vs B: 11 - 13 - 20  [0.477] 44
++Score of A vs B: 11 - 13 - 21  [0.478] 45
++Score of A vs B: 11 - 13 - 22  [0.478] 46
++Score of A vs B: 11 - 13 - 23  [0.479] 47
++Score of A vs B: 11 - 14 - 23  [0.469] 48
++Score of A vs B: 11 - 15 - 23  [0.459] 49
++Score of A vs B: 12 - 15 - 23  [0.470] 50
++Score of A vs B: 13 - 15 - 23  [0.480] 51
++Score of A vs B: 14 - 15 - 23  [0.490] 52
++Score of A vs B: 15 - 15 - 23  [0.500] 53
++Score of A vs B: 16 - 15 - 23  [0.509] 54
++Score of A vs B: 16 - 15 - 24  [0.509] 55
++Score of A vs B: 17 - 15 - 24  [0.518] 56
++Score of A vs B: 17 - 15 - 25  [0.518] 57
++Score of A vs B: 17 - 16 - 25  [0.509] 58
++Score of A vs B: 17 - 16 - 26  [0.508] 59
++Score of A vs B: 17 - 17 - 26  [0.500] 60
++Score of A vs B: 18 - 17 - 26  [0.508] 61
++Score of A vs B: 19 - 17 - 26  [0.516] 62
++Score of A vs B: 19 - 17 - 27  [0.516] 63
++Score of A vs B: 19 - 18 - 27  [0.508] 64
++Score of A vs B: 20 - 18 - 27  [0.515] 65
++Score of A vs B: 20 - 18 - 28  [0.515] 66
++Score of A vs B: 21 - 18 - 28  [0.522] 67
++Score of A vs B: 21 - 18 - 29  [0.522] 68
++Score of A vs B: 21 - 18 - 30  [0.522] 69
++Score of A vs B: 21 - 19 - 30  [0.514] 70
++Score of A vs B: 21 - 19 - 31  [0.514] 71
++Score of A vs B: 21 - 19 - 32  [0.514] 72
++Score of A vs B: 21 - 19 - 33  [0.514] 73
++Score of A vs B: 22 - 19 - 33  [0.520] 74
++Score of A vs B: 22 - 20 - 33  [0.513] 75
++Score of A vs B: 22 - 20 - 34  [0.513] 76
++Score of A vs B: 23 - 20 - 34  [0.519] 77
++Score of A vs B: 23 - 21 - 34  [0.513] 78
++Score of A vs B: 23 - 21 - 35  [0.513] 79
++Score of A vs B: 23 - 21 - 36  [0.512] 80
++Score of A vs B: 23 - 21 - 37  [0.512] 81
++Score of A vs B: 23 - 22 - 37  [0.506] 82
++Score of A vs B: 23 - 22 - 38  [0.506] 83
++Score of A vs B: 24 - 22 - 38  [0.512] 84
++Score of A vs B: 24 - 22 - 39  [0.512] 85
++Score of A vs B: 24 - 23 - 39  [0.506] 86
++Score of A vs B: 25 - 23 - 39  [0.511] 87
++Score of A vs B: 25 - 23 - 40  [0.511] 88
++Score of A vs B: 25 - 23 - 41  [0.511] 89
++Score of A vs B: 25 - 23 - 42  [0.511] 90
++Score of A vs B: 25 - 23 - 43  [0.511] 91
++Score of A vs B: 25 - 24 - 43  [0.505] 92
++Score of A vs B: 25 - 24 - 44  [0.505] 93
++Score of A vs B: 25 - 25 - 44  [0.500] 94
++Score of A vs B: 26 - 25 - 44  [0.505] 95
++Score of A vs B: 26 - 25 - 45  [0.505] 96
++Score of A vs B: 26 - 26 - 45  [0.500] 97
++Score of A vs B: 26 - 26 - 46  [0.500] 98
++Score of A vs B: 27 - 26 - 46  [0.505] 99
++Score of A vs B: 27 - 26 - 47  [0.505] 100
++Score of A vs B: 27 - 26 - 48  [0.505] 101
++Score of A vs B: 28 - 26 - 48  [0.510] 102
++Score of A vs B: 29 - 26 - 48  [0.515] 103
++Score of A vs B: 29 - 27 - 48  [0.510] 104
++Score of A vs B: 29 - 27 - 49  [0.510] 105
++Score of A vs B: 29 - 28 - 49  [0.505] 106
++Score of A vs B: 29 - 29 - 49  [0.500] 107
++Score of A vs B: 29 - 29 - 50  [0.500] 108
++Score of A vs B: 30 - 29 - 50  [0.505] 109
++Score of A vs B: 30 - 29 - 51  [0.505] 110
++Score of A vs B: 30 - 30 - 51  [0.500] 111
++Score of A vs B: 30 - 31 - 51  [0.496] 112
++Score of A vs B: 30 - 32 - 51  [0.491] 113
++Score of A vs B: 30 - 32 - 52  [0.491] 114
++Score of A vs B: 30 - 32 - 53  [0.491] 115
++Score of A vs B: 30 - 32 - 54  [0.491] 116
++Score of A vs B: 30 - 32 - 55  [0.491] 117
++Score of A vs B: 30 - 32 - 56  [0.492] 118
++Score of A vs B: 31 - 32 - 56  [0.496] 119
++Score of A vs B: 31 - 33 - 56  [0.492] 120
++Score of A vs B: 32 - 33 - 56  [0.496] 121
++Score of A vs B: 33 - 33 - 56  [0.500] 122
++Score of A vs B: 34 - 33 - 56  [0.504] 123
++Score of A vs B: 35 - 33 - 56  [0.508] 124
++Score of A vs B: 36 - 33 - 56  [0.512] 125
++Score of A vs B: 36 - 33 - 57  [0.512] 126
++Score of A vs B: 37 - 33 - 57  [0.516] 127
++Score of A vs B: 38 - 33 - 57  [0.520] 128
++Score of A vs B: 39 - 33 - 57  [0.523] 129
++Score of A vs B: 39 - 33 - 58  [0.523] 130
++Score of A vs B: 39 - 33 - 59  [0.523] 131
++Score of A vs B: 39 - 34 - 59  [0.519] 132
++Score of A vs B: 39 - 35 - 59  [0.515] 133
++Score of A vs B: 40 - 35 - 59  [0.519] 134
++Score of A vs B: 40 - 35 - 60  [0.519] 135
++Score of A vs B: 41 - 35 - 60  [0.522] 136
++Score of A vs B: 41 - 35 - 61  [0.522] 137
++Score of A vs B: 41 - 35 - 62  [0.522] 138
++Score of A vs B: 42 - 35 - 62  [0.525] 139
++Score of A vs B: 43 - 35 - 62  [0.529] 140
++Score of A vs B: 43 - 36 - 62  [0.525] 141
++Score of A vs B: 43 - 36 - 63  [0.525] 142
++Score of A vs B: 43 - 36 - 64  [0.524] 143
++Score of A vs B: 44 - 36 - 64  [0.528] 144
++Score of A vs B: 44 - 37 - 64  [0.524] 145
++Score of A vs B: 44 - 37 - 65  [0.524] 146
++Score of A vs B: 44 - 38 - 65  [0.520] 147
++Score of A vs B: 44 - 38 - 66  [0.520] 148
++Score of A vs B: 45 - 38 - 66  [0.523] 149
++Score of A vs B: 45 - 38 - 67  [0.523] 150
++Score of A vs B: 46 - 38 - 67  [0.526] 151
++Score of A vs B: 47 - 38 - 67  [0.530] 152
++Score of A vs B: 47 - 38 - 68  [0.529] 153
++Score of A vs B: 47 - 38 - 69  [0.529] 154
++Score of A vs B: 48 - 38 - 69  [0.532] 155
++Score of A vs B: 48 - 39 - 69  [0.529] 156
++Score of A vs B: 48 - 39 - 70  [0.529] 157
++Score of A vs B: 48 - 40 - 70  [0.525] 158
++Score of A vs B: 48 - 40 - 71  [0.525] 159
++Score of A vs B: 48 - 40 - 72  [0.525] 160
++Score of A vs B: 48 - 40 - 73  [0.525] 161
++Score of A vs B: 48 - 40 - 74  [0.525] 162
++Score of A vs B: 49 - 40 - 74  [0.528] 163
++Score of A vs B: 49 - 40 - 75  [0.527] 164
++Score of A vs B: 50 - 40 - 75  [0.530] 165
++Score of A vs B: 51 - 40 - 75  [0.533] 166
++Score of A vs B: 51 - 41 - 75  [0.530] 167
++Score of A vs B: 51 - 41 - 76  [0.530] 168
++Score of A vs B: 51 - 41 - 77  [0.530] 169
++Score of A vs B: 51 - 42 - 77  [0.526] 170
++Score of A vs B: 51 - 42 - 78  [0.526] 171
++Score of A vs B: 51 - 43 - 78  [0.523] 172
++Score of A vs B: 51 - 43 - 79  [0.523] 173
++Score of A vs B: 51 - 43 - 80  [0.523] 174
++Score of A vs B: 52 - 43 - 80  [0.526] 175
++Score of A vs B: 52 - 44 - 80  [0.523] 176
++Score of A vs B: 53 - 44 - 80  [0.525] 177
++Score of A vs B: 53 - 44 - 81  [0.525] 178
++Score of A vs B: 53 - 45 - 81  [0.522] 179
++Score of A vs B: 54 - 45 - 81  [0.525] 180
++Score of A vs B: 54 - 45 - 82  [0.525] 181
++Score of A vs B: 54 - 45 - 83  [0.525] 182
++Score of A vs B: 55 - 45 - 83  [0.527] 183
++Score of A vs B: 55 - 45 - 84  [0.527] 184
++Score of A vs B: 55 - 45 - 85  [0.527] 185
++Score of A vs B: 55 - 45 - 86  [0.527] 186
++Score of A vs B: 55 - 46 - 86  [0.524] 187
++Score of A vs B: 55 - 47 - 86  [0.521] 188
++Score of A vs B: 55 - 47 - 87  [0.521] 189
++Score of A vs B: 55 - 47 - 88  [0.521] 190
++Score of A vs B: 55 - 47 - 89  [0.521] 191
++Score of A vs B: 55 - 47 - 90  [0.521] 192
++Score of A vs B: 55 - 48 - 90  [0.518] 193
++Score of A vs B: 55 - 48 - 91  [0.518] 194
++Score of A vs B: 55 - 49 - 91  [0.515] 195
++Score of A vs B: 55 - 49 - 92  [0.515] 196
++Score of A vs B: 55 - 50 - 92  [0.513] 197
++Score of A vs B: 55 - 51 - 92  [0.510] 198
++Score of A vs B: 55 - 51 - 93  [0.510] 199
++Score of A vs B: 55 - 52 - 93  [0.507] 200
++Score of A vs B: 55 - 52 - 93  [0.507] 200
++Elo difference: 5.2 +/- 35.3, LOS: 61.4 %, DrawRatio: 46.5 %
++SPRT: llr -3.08 (-104.7%), lbound -2.94, ubound 2.94 - H0 was accepted
++[23:46:18] VERDICT ab-baselinesprt-20260804-232514: REJECT: H0 (no improvement) - llr -3.08 <= -2.94

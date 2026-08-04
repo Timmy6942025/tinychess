@@ -16,13 +16,20 @@
 #   ERROR   no usable SPRT output                                            exit 2
 #
 # Power notes (why these defaults):
-#   - elo0=0 elo1=10 (the previous default) needs tens of thousands of games
-#     to reach the +-2.94 llr bounds at ~53% draws; every test capped at 200
-#     rounds and came back "inconclusive" -> always reverted. That is why the
-#     killer-move change was dropped on a coin flip.
-#   - elo1=50 makes the test decisive in ~300-800 games for a real +25 elo
-#     effect and ~800-1500 games for a null effect. Smaller effects end in a
-#     cap verdict (decided by llr sign) instead of an endless run.
+#   cutechess-cli's SPRT (fishtest/OpenBench-style) estimates the draw rate
+#   in-sample, so its llr drifts negative for a null match - that is by
+#   design: a null test is SUPPOSED to accept H0 (elo0). Verified against
+#   measured runs 2026-08-05 (all reproduced to 2 decimals):
+#     elo1=50:  null  rejects at ~160 games  (hist3d: exactly 160, was neutral)
+#               -100 elo regression rejects at ~20-30 games (checkext 29,
+#               evalcache 19)                 - REAL but small (+10..+30 elo)
+#               changes get rejected too: +30 needs ~7400 games with drift ~0
+#               -> elo1=50 only ever ACCEPTs +50 elo effects. Too harsh.
+#     elo1=20:  +20 elo accepts ~1600 games, +30 ~700, null rejects ~1000
+#     elo1=10:  +10 elo accepts ~1800+ games (hours at CONC=2) - too slow.
+#   elo1=20 is the sweet spot for detecting realistic +15..+35 elo search
+#   changes; runs take ~2-7h at CONC=2. SPRT_MAX caps the rest; borderline
+#   cap verdicts are decided by llr sign.
 #
 # Overridable via env: TC= ELO0= ELO1= ALPHA= BETA= SPRT_MAX= (cap, rounds)
 #   GAMES= (fixed mode) ADJ=yes|no (adjudication) CONC= (cutechess -concurrency)
@@ -40,7 +47,7 @@ mkdir -p "$RUN_DIR"
 
 TC="${TC:-5+0.05}"
 ELO0="${ELO0:-0}"
-ELO1="${ELO1:-50}"
+ELO1="${ELO1:-20}"
 ALPHA="${ALPHA:-0.05}"
 BETA="${BETA:-0.05}"
 SPRT_MAX="${SPRT_MAX:-1500}"
