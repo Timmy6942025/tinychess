@@ -75,6 +75,13 @@ ensure_build() {
 stamp() { date +%Y%m%d-%H%M%S; }
 log()  { printf '[%s] %s\n' "$(date +%H:%M:%S)" "$*" >> "$RESULTS_LOG"; }
 
+fingerprint() {
+	# Log md5 of both engine binaries so a mid-match binary swap (e.g. a
+	# git checkout/stash of a tracked build artifact) is detectable later.
+	# Binaries must NOT change while a match is running.
+	log "FINGERPRINT A=$1 $(md5sum "$1" | cut -d' ' -f1)  B=$2 $(md5sum "$2" | cut -d' ' -f1)"
+}
+
 run_match() {
 	# $1=tag $2=protocfg ("sprt" = SPRT A-B between near-equal builds, else fixed games)
 	# $3=engineA $4=engineB
@@ -88,6 +95,7 @@ run_match() {
 	else
 		echo "== Fixed match: $tag  (tc=$TC, games=$GAMES) =="
 	fi
+	fingerprint "$a" "$b"
 	echo "   $a  vs  $b"
 	"$CUTECHESS" -engine name=A proto=uci cmd="$a" option.Threads=$THREADS option.Hash=$HASH \
 	             -engine name=B proto=uci cmd="$b" option.Threads=$THREADS option.Hash=$HASH \
