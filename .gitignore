@@ -6,4 +6,6 @@ app/src/CMakeFiles/
 app/src/CMakeCache.txt
 app/build
 app/build-nosimd
+app/build-qemu/
+app/build-qemu-nosimd/
 .dog-recall.txt

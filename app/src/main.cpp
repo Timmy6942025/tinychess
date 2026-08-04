@@ -147,7 +147,7 @@ void my_trace(const char *const fmt, ...)
 #endif
 }
 
-#if defined(ESP32_S3_XIAO)
+#if defined(ESP32_S3_XIAO) && defined(CONFIG_DOG_LED_WS2812)
 // https://github.com/espressif/esp-idf/blob/2044fba6e71422446986f9ae0909b1ab67e57815/examples/peripherals/rmt/led_strip/main/led_strip_example_main.c
 #define RMT_LED_STRIP_RESOLUTION_HZ 10000000 // 10MHz resolution, 1 tick = 0.1us (led strip needs a high resolution)
 #define RMT_LED_STRIP_GPIO_NUM      gpio_num_t(44)
@@ -1410,6 +1410,7 @@ static void init_uart()
 	ESP_ERROR_CHECK(uart_driver_install(uart_num, uart_buffer_size, uart_buffer_size, 10, &uart_queue, 0));
 
 	// USB/JTAG for UCI
+#if defined(CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG)
 	esp_vfs_dev_usb_serial_jtag_set_rx_line_endings(ESP_LINE_ENDINGS_CR  );
 	esp_vfs_dev_usb_serial_jtag_set_tx_line_endings(ESP_LINE_ENDINGS_CRLF);
 
@@ -1422,6 +1423,7 @@ static void init_uart()
 		printf("usb_serial_jtag_driver_install failed\n");
 
 	esp_vfs_usb_serial_jtag_use_driver();
+#endif
 }
 
 void init_flash_filesystem()
@@ -1484,7 +1486,7 @@ extern "C" void app_main()
 
 	allow_ponder = true;
 
-#if defined(ESP32_S3_XIAO)
+#if defined(ESP32_S3_XIAO) && defined(CONFIG_DOG_LED_WS2812)
 	init_ws2812();
 	set_led(127, 127, 127);
 #endif

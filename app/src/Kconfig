@@ -1,0 +1,10 @@
+menu "Dog engine options"
+
+    config DOG_LED_WS2812
+        bool "WS2812 status LED on GPIO44"
+        default y
+        help
+            The XIAO ESP32S3 Plus has a WS2812 LED on GPIO44.
+            Disable for boards without it (or for QEMU, which has no RMT).
+
+endmenu

@@ -4,9 +4,9 @@
 #
 # Usage:  tools/native_check.sh
 #
-# Note: the SIMD kernels are ESP32-only (see nnue.cpp); this verifies the
-# scalar engine. The raw SIMD kernel test runs on the board via
-# tools/board_check.sh.
+# Verifies the scalar engine (accumulation is scalar on every target now;
+# the ESP32 no longer ships PIE SIMD kernels). The full unit test suite
+# including NNUE perft runs here on the host.
 
 set -e
 

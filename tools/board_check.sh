@@ -4,7 +4,6 @@
 #
 # Usage:  tools/board_check.sh [PORT] [BUILD_DIR]
 # Example: tools/board_check.sh /dev/ttyACM0
-# Example: tools/board_check.sh /dev/ttyACM0 build-nosimd   (scalar A/B bench image)
 
 set -e
 
@@ -45,4 +44,4 @@ cd "$APP_DIR"
 idf.py -p "$PORT" -B "${2:-build}" flash
 
 echo "Flash done. Running validation session ..."
-exec python3 "$ENGINE_DIR/tools/board_session.py" --port "$PORT" ${2:+--no-simd}
+exec python3 "$ENGINE_DIR/tools/board_session.py" --port "$PORT"
