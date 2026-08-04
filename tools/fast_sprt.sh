@@ -61,7 +61,7 @@ if [ "$ADJ" = "yes" ]; then
 	# of zero for 1 move after move 40; resign at -800cp for 3 moves; hard
 	# cap at 200 full moves. Symmetric for both engines, so the A/B signal
 	# is unaffected - it just saves wall time on drawn-out endgames.
-	ADJOPT="-draw 40 1 100 -resign 3 800 0 -maxmoves 200"
+	ADJOPT="-draw movenumber=40 movecount=1 score=100 -resign movecount=3 score=800 -maxmoves 200"
 fi
 
 ensure_build() {

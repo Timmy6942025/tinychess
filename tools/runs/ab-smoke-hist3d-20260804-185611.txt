@@ -1,0 +1,71 @@
+Started game 1 of 16 (A vs B)
+Finished game 1 (A vs B): 1/2-1/2 {Draw by insufficient mating material}
+Score of A vs B: 0 - 0 - 1  [0.500] 1
+Started game 2 of 16 (B vs A)
+Finished game 2 (B vs A): 1/2-1/2 {Draw by 3-fold repetition}
+Score of A vs B: 0 - 0 - 2  [0.500] 2
+Started game 3 of 16 (A vs B)
+Finished game 3 (A vs B): 1/2-1/2 {Draw by 3-fold repetition}
+Score of A vs B: 0 - 0 - 3  [0.500] 3
+Started game 4 of 16 (B vs A)
+Finished game 4 (B vs A): 0-1 {Black mates}
+Score of A vs B: 1 - 0 - 3  [0.625] 4
+Started game 5 of 16 (A vs B)
+Finished game 5 (A vs B): 0-1 {Black mates}
+Score of A vs B: 1 - 1 - 3  [0.500] 5
+Started game 6 of 16 (B vs A)
+Finished game 6 (B vs A): 1/2-1/2 {Draw by insufficient mating material}
+Score of A vs B: 1 - 1 - 4  [0.500] 6
+Started game 7 of 16 (A vs B)
+Finished game 7 (A vs B): 1-0 {White mates}
+Score of A vs B: 2 - 1 - 4  [0.571] 7
+Started game 8 of 16 (B vs A)
+Finished game 8 (B vs A): 1/2-1/2 {Draw by insufficient mating material}
+Score of A vs B: 2 - 1 - 5  [0.563] 8
+Started game 9 of 16 (A vs B)
+Finished game 9 (A vs B): 0-1 {Black mates}
+Score of A vs B: 2 - 2 - 5  [0.500] 9
+Started game 10 of 16 (B vs A)
+Finished game 10 (B vs A): 0-1 {Black mates}
+Score of A vs B: 3 - 2 - 5  [0.550] 10
+Started game 11 of 16 (A vs B)
+Finished game 11 (A vs B): 0-1 {Black mates}
+Score of A vs B: 3 - 3 - 5  [0.500] 11
+Started game 12 of 16 (B vs A)
+Finished game 12 (B vs A): 1/2-1/2 {Draw by 3-fold repetition}
+Score of A vs B: 3 - 3 - 6  [0.500] 12
+Started game 13 of 16 (A vs B)
+Finished game 13 (A vs B): 0-1 {Black mates}
+Score of A vs B: 3 - 4 - 6  [0.462] 13
+Started game 14 of 16 (B vs A)
+Finished game 14 (B vs A): 1/2-1/2 {Draw by fifty moves rule}
+Score of A vs B: 3 - 4 - 7  [0.464] 14
+Started game 15 of 16 (A vs B)
+Finished game 15 (A vs B): 1/2-1/2 {Draw by fifty moves rule}
+Score of A vs B: 3 - 4 - 8  [0.467] 15
+Started game 16 of 16 (B vs A)
+Finished game 16 (B vs A): 1-0 {White mates}
+Score of A vs B: 3 - 5 - 8  [0.438] 16
+...      A playing White: 1 - 4 - 3  [0.313] 8
+...      A playing Black: 2 - 1 - 5  [0.563] 8
+...      White vs Black: 2 - 6 - 8  [0.375] 16
+Elo difference: -43.7 +/- 125.7, LOS: 24.0 %, DrawRatio: 50.0 %
+SPRT: llr -0.923 (-31.3%), lbound -2.94, ubound 2.94
+
+Player: A
+   "Draw by 3-fold repetition": 3
+   "Draw by fifty moves rule": 2
+   "Draw by insufficient mating material": 3
+   "Loss: Black mates": 4
+   "Loss: White mates": 1
+   "Win: Black mates": 2
+   "Win: White mates": 1
+Player: B
+   "Draw by 3-fold repetition": 3
+   "Draw by fifty moves rule": 2
+   "Draw by insufficient mating material": 3
+   "Loss: Black mates": 2
+   "Loss: White mates": 1
+   "Win: Black mates": 4
+   "Win: White mates": 1
+Finished match
