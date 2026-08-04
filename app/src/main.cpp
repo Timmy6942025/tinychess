@@ -851,8 +851,6 @@ void main_task()
 #endif
 			set_led(0, 255, 0);
 
-			int moves_to_go = 40 - sp.at(0)->pos.fullmoves();
-
 			auto depth     = go_parameters.depth();
 			auto nodes     = go_parameters.nodes();
 
@@ -870,6 +868,14 @@ void main_task()
 			int w_inc = a_w_inc.has_value() ? a_w_inc.value() : 0;
 			int b_inc = a_b_inc.has_value() ? a_b_inc.value() : 0;
 
+			// Number of moves the GUI expects us to complete in the current
+			// time period. Prefer the explicit `movestogo` token; fall back to
+			// a 40-move horizon estimate when it is absent.
+			auto a_moves_to_go = go_parameters.movestogo();
+			int moves_to_go = a_moves_to_go.has_value() && a_moves_to_go.value() > 0
+				? a_moves_to_go.value()
+				: std::max(1, 40 - sp.at(0)->pos.fullmoves());
+
 			int think_time_min = 0;
 			int think_time_max = 0;
 
@@ -884,11 +890,29 @@ void main_task()
 			else {
 				int time_inc     = is_white ? w_inc  : b_inc;
 				int time_inc_opp = is_white ? b_inc  : w_inc;
-				int ms           = is_white ? w_time : b_time;
+				// Deduct the serial/UCI overhead up front so the bestmove is
+				// never issued after our clock runs out on the physical board.
+				// Clamp to a floor of 1 ms so a tiny wtime/btime (or an
+				// overhead larger than the clock) still yields a bounded
+				// search instead of falling through to "infinite".
+				int raw_ms = is_white ? w_time : b_time;
+				int ms     = raw_ms > 0 ? std::max(1, raw_ms - MOVE_OVERHEAD_MS) : 0;
 				int ms_opponent  = is_white ? b_time : w_time;
 
-				think_time_max = ms / 10 + time_inc * 2 / 3;
-				think_time_min = ms / 30 + time_inc / 2;
+				if (ms > 0) {
+					if (a_moves_to_go.has_value() && a_moves_to_go.value() > 0) {
+						think_time_max = ms / moves_to_go + time_inc * 2 / 3;
+						think_time_min = ms / std::max(1, moves_to_go * 3) + time_inc / 2;
+					}
+					else {
+						think_time_max = ms / 10 + time_inc * 2 / 3;
+						think_time_min = ms / 30 + time_inc / 2;
+					}
+					// a floor of 1 ms keeps a bounded search (search_time_max
+					// of 0 would disable the timeout timer entirely)
+					think_time_max = std::max(1, think_time_max);
+					think_time_min = std::max(1, think_time_min);
+				}
 
 				my_trace("# My time: %d ms, inc: %d ms, opponent time: %d ms, inc: %d ms, full: %d, half: %d, moves_to_go: %d, tt: %d\n", ms, time_inc, ms_opponent, time_inc_opp, sp.at(0)->pos.fullmoves(), sp.at(0)->pos.halfmoves(), moves_to_go, tti.get_per_mille_filled());
 			}
