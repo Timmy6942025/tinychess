@@ -1,0 +1,3 @@
+Indexing opening suite...
+Warning: Start index larger than book size, wrapping after 0.
+Warning: Missing chess protocol

@@ -1,0 +1,4 @@
+Started game 1 of 2 (A vs B)
+Finished game 1 (A vs B): 1/2-1/2 {Draw by 3-fold repetition}
+Score of A vs B: 0 - 0 - 1  [0.500] 1
+Started game 2 of 2 (B vs A)

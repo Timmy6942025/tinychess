@@ -1,0 +1,227 @@
+Started game 1 of 200 (A vs B)
+Finished game 1 (A vs B): 0-1 {Black mates}
+Score of A vs B: 0 - 1 - 0  [0.000] 1
+Started game 2 of 200 (B vs A)
+Finished game 2 (B vs A): 1-0 {White mates}
+Score of A vs B: 0 - 2 - 0  [0.000] 2
+Started game 3 of 200 (A vs B)
+Finished game 3 (A vs B): 1-0 {White mates}
+Score of A vs B: 1 - 2 - 0  [0.333] 3
+Started game 4 of 200 (B vs A)
+Finished game 4 (B vs A): 1/2-1/2 {Draw by 3-fold repetition}
+Score of A vs B: 1 - 2 - 1  [0.375] 4
+Started game 5 of 200 (A vs B)
+Finished game 5 (A vs B): 1-0 {White mates}
+Score of A vs B: 2 - 2 - 1  [0.500] 5
+Started game 6 of 200 (B vs A)
+Finished game 6 (B vs A): 1/2-1/2 {Draw by 3-fold repetition}
+Score of A vs B: 2 - 2 - 2  [0.500] 6
+Started game 7 of 200 (A vs B)
+Finished game 7 (A vs B): 1-0 {White mates}
+Score of A vs B: 3 - 2 - 2  [0.571] 7
+Started game 8 of 200 (B vs A)
+Finished game 8 (B vs A): 0-1 {Black mates}
+Score of A vs B: 4 - 2 - 2  [0.625] 8
+Started game 9 of 200 (A vs B)
+Finished game 9 (A vs B): 1/2-1/2 {Draw by 3-fold repetition}
+Score of A vs B: 4 - 2 - 3  [0.611] 9
+Started game 10 of 200 (B vs A)
+Warning: Illegal PV move g8f8 from B (1)
+Warning: PV: Qe7+ Kg6 Qf6+ Kh7 Kh5 Kg8 Kg6 e5 Qd8# g8f8
+Finished game 10 (B vs A): 1-0 {White mates}
+Score of A vs B: 4 - 3 - 3  [0.550] 10
+Started game 11 of 200 (A vs B)
+Finished game 11 (A vs B): 1-0 {White mates}
+Score of A vs B: 5 - 3 - 3  [0.591] 11
+Started game 12 of 200 (B vs A)
+Finished game 12 (B vs A): 0-1 {Black mates}
+Score of A vs B: 6 - 3 - 3  [0.625] 12
+Started game 13 of 200 (A vs B)
+Finished game 13 (A vs B): 1-0 {White mates}
+Score of A vs B: 7 - 3 - 3  [0.654] 13
+Started game 14 of 200 (B vs A)
+Finished game 14 (B vs A): 1-0 {White mates}
+Score of A vs B: 7 - 4 - 3  [0.607] 14
+Started game 15 of 200 (A vs B)
+Finished game 15 (A vs B): 0-1 {Black mates}
+Score of A vs B: 7 - 5 - 3  [0.567] 15
+Started game 16 of 200 (B vs A)
+Finished game 16 (B vs A): 1/2-1/2 {Draw by 3-fold repetition}
+Score of A vs B: 7 - 5 - 4  [0.563] 16
+Started game 17 of 200 (A vs B)
+Finished game 17 (A vs B): 1-0 {White mates}
+Score of A vs B: 8 - 5 - 4  [0.588] 17
+Started game 18 of 200 (B vs A)
+Finished game 18 (B vs A): 1/2-1/2 {Draw by 3-fold repetition}
+Score of A vs B: 8 - 5 - 5  [0.583] 18
+Started game 19 of 200 (A vs B)
+Finished game 19 (A vs B): 1-0 {White mates}
+Score of A vs B: 9 - 5 - 5  [0.605] 19
+Started game 20 of 200 (B vs A)
+Finished game 20 (B vs A): 1/2-1/2 {Draw by insufficient mating material}
+Score of A vs B: 9 - 5 - 6  [0.600] 20
+Started game 21 of 200 (A vs B)
+Finished game 21 (A vs B): 1-0 {White mates}
+Score of A vs B: 10 - 5 - 6  [0.619] 21
+Started game 22 of 200 (B vs A)
+Finished game 22 (B vs A): 1-0 {White mates}
+Score of A vs B: 10 - 6 - 6  [0.591] 22
+Started game 23 of 200 (A vs B)
+Finished game 23 (A vs B): 1/2-1/2 {Draw by 3-fold repetition}
+Score of A vs B: 10 - 6 - 7  [0.587] 23
+Started game 24 of 200 (B vs A)
+Finished game 24 (B vs A): 1/2-1/2 {Draw by 3-fold repetition}
+Score of A vs B: 10 - 6 - 8  [0.583] 24
+Started game 25 of 200 (A vs B)
+Finished game 25 (A vs B): 1/2-1/2 {Draw by 3-fold repetition}
+Score of A vs B: 10 - 6 - 9  [0.580] 25
+Started game 26 of 200 (B vs A)
+Finished game 26 (B vs A): 1/2-1/2 {Draw by 3-fold repetition}
+Score of A vs B: 10 - 6 - 10  [0.577] 26
+Started game 27 of 200 (A vs B)
+Finished game 27 (A vs B): 0-1 {Black mates}
+Score of A vs B: 10 - 7 - 10  [0.556] 27
+Started game 28 of 200 (B vs A)
+Finished game 28 (B vs A): 1/2-1/2 {Draw by 3-fold repetition}
+Score of A vs B: 10 - 7 - 11  [0.554] 28
+Started game 29 of 200 (A vs B)
+Finished game 29 (A vs B): 1/2-1/2 {Draw by 3-fold repetition}
+Score of A vs B: 10 - 7 - 12  [0.552] 29
+Started game 30 of 200 (B vs A)
+Finished game 30 (B vs A): 1/2-1/2 {Draw by 3-fold repetition}
+Score of A vs B: 10 - 7 - 13  [0.550] 30
+Started game 31 of 200 (A vs B)
+Finished game 31 (A vs B): 1-0 {White mates}
+Score of A vs B: 11 - 7 - 13  [0.565] 31
+Started game 32 of 200 (B vs A)
+Finished game 32 (B vs A): 1-0 {White mates}
+Score of A vs B: 11 - 8 - 13  [0.547] 32
+Started game 33 of 200 (A vs B)
+Finished game 33 (A vs B): 0-1 {Black mates}
+Score of A vs B: 11 - 9 - 13  [0.530] 33
+Started game 34 of 200 (B vs A)
+Finished game 34 (B vs A): 1-0 {White mates}
+Score of A vs B: 11 - 10 - 13  [0.515] 34
+Started game 35 of 200 (A vs B)
+Finished game 35 (A vs B): 1/2-1/2 {Draw by 3-fold repetition}
+Score of A vs B: 11 - 10 - 14  [0.514] 35
+Started game 36 of 200 (B vs A)
+Finished game 36 (B vs A): 1-0 {White mates}
+Score of A vs B: 11 - 11 - 14  [0.500] 36
+Started game 37 of 200 (A vs B)
+Finished game 37 (A vs B): 1-0 {White mates}
+Score of A vs B: 12 - 11 - 14  [0.514] 37
+Started game 38 of 200 (B vs A)
+Finished game 38 (B vs A): 0-1 {Black mates}
+Score of A vs B: 13 - 11 - 14  [0.526] 38
+Started game 39 of 200 (A vs B)
+Finished game 39 (A vs B): 1-0 {White mates}
+Score of A vs B: 14 - 11 - 14  [0.538] 39
+Started game 40 of 200 (B vs A)
+Finished game 40 (B vs A): 1/2-1/2 {Draw by 3-fold repetition}
+Score of A vs B: 14 - 11 - 15  [0.537] 40
+Started game 41 of 200 (A vs B)
+Finished game 41 (A vs B): 1/2-1/2 {Draw by 3-fold repetition}
+Score of A vs B: 14 - 11 - 16  [0.537] 41
+Started game 42 of 200 (B vs A)
+Finished game 42 (B vs A): 0-1 {Black mates}
+Score of A vs B: 15 - 11 - 16  [0.548] 42
+Started game 43 of 200 (A vs B)
+Finished game 43 (A vs B): 1-0 {White mates}
+Score of A vs B: 16 - 11 - 16  [0.558] 43
+Started game 44 of 200 (B vs A)
+Finished game 44 (B vs A): 0-1 {Black mates}
+Score of A vs B: 17 - 11 - 16  [0.568] 44
+Started game 45 of 200 (A vs B)
+Finished game 45 (A vs B): 1-0 {White mates}
+Score of A vs B: 18 - 11 - 16  [0.578] 45
+Started game 46 of 200 (B vs A)
+Finished game 46 (B vs A): 1-0 {White mates}
+Score of A vs B: 18 - 12 - 16  [0.565] 46
+Started game 47 of 200 (A vs B)
+Finished game 47 (A vs B): 1/2-1/2 {Draw by insufficient mating material}
+Score of A vs B: 18 - 12 - 17  [0.564] 47
+Started game 48 of 200 (B vs A)
+Finished game 48 (B vs A): 0-1 {Black mates}
+Score of A vs B: 19 - 12 - 17  [0.573] 48
+Started game 49 of 200 (A vs B)
+Warning: Illegal PV move h6h5 from B (1)
+Warning: PV: Ke6 Kg6 Qg3+ Kh6 Kf7 Kh5 Kf6 Kh6 Qh3# h6h5
+Finished game 49 (A vs B): 0-1 {Black mates}
+Score of A vs B: 19 - 13 - 17  [0.561] 49
+Started game 50 of 200 (B vs A)
+Finished game 50 (B vs A): 1-0 {White mates}
+Score of A vs B: 19 - 14 - 17  [0.550] 50
+Started game 51 of 200 (A vs B)
+Finished game 51 (A vs B): 1/2-1/2 {Draw by 3-fold repetition}
+Score of A vs B: 19 - 14 - 18  [0.549] 51
+Started game 52 of 200 (B vs A)
+Finished game 52 (B vs A): 1/2-1/2 {Draw by insufficient mating material}
+Score of A vs B: 19 - 14 - 19  [0.548] 52
+Started game 53 of 200 (A vs B)
+Finished game 53 (A vs B): 1/2-1/2 {Draw by insufficient mating material}
+Score of A vs B: 19 - 14 - 20  [0.547] 53
+Started game 54 of 200 (B vs A)
+Finished game 54 (B vs A): 0-1 {Black mates}
+Score of A vs B: 20 - 14 - 20  [0.556] 54
+Started game 55 of 200 (A vs B)
+Finished game 55 (A vs B): 1/2-1/2 {Draw by 3-fold repetition}
+Score of A vs B: 20 - 14 - 21  [0.555] 55
+Started game 56 of 200 (B vs A)
+Finished game 56 (B vs A): 1/2-1/2 {Draw by 3-fold repetition}
+Score of A vs B: 20 - 14 - 22  [0.554] 56
+Started game 57 of 200 (A vs B)
+Finished game 57 (A vs B): 1-0 {White mates}
+Score of A vs B: 21 - 14 - 22  [0.561] 57
+Started game 58 of 200 (B vs A)
+Finished game 58 (B vs A): 1-0 {White mates}
+Score of A vs B: 21 - 15 - 22  [0.552] 58
+Started game 59 of 200 (A vs B)
+Finished game 59 (A vs B): 1-0 {White mates}
+Score of A vs B: 22 - 15 - 22  [0.559] 59
+Started game 60 of 200 (B vs A)
+Finished game 60 (B vs A): 1-0 {White mates}
+Score of A vs B: 22 - 16 - 22  [0.550] 60
+Started game 61 of 200 (A vs B)
+Finished game 61 (A vs B): 1-0 {White mates}
+Score of A vs B: 23 - 16 - 22  [0.557] 61
+Started game 62 of 200 (B vs A)
+Finished game 62 (B vs A): 1-0 {White mates}
+Score of A vs B: 23 - 17 - 22  [0.548] 62
+Started game 63 of 200 (A vs B)
+Finished game 63 (A vs B): 0-1 {Black mates}
+Score of A vs B: 23 - 18 - 22  [0.540] 63
+Started game 64 of 200 (B vs A)
+Finished game 64 (B vs A): 1/2-1/2 {Draw by 3-fold repetition}
+Score of A vs B: 23 - 18 - 23  [0.539] 64
+Started game 65 of 200 (A vs B)
+Finished game 65 (A vs B): 1-0 {White mates}
+Score of A vs B: 24 - 18 - 23  [0.546] 65
+Started game 66 of 200 (B vs A)
+Finished game 66 (B vs A): 1/2-1/2 {Draw by 3-fold repetition}
+Score of A vs B: 24 - 18 - 24  [0.545] 66
+Started game 67 of 200 (A vs B)
+Finished game 67 (A vs B): 0-1 {Black mates}
+Score of A vs B: 24 - 19 - 24  [0.537] 67
+Started game 68 of 200 (B vs A)
+Finished game 68 (B vs A): 0-1 {Black mates}
+Score of A vs B: 25 - 19 - 24  [0.544] 68
+Started game 69 of 200 (A vs B)
+Finished game 69 (A vs B): 1/2-1/2 {Draw by 3-fold repetition}
+Score of A vs B: 25 - 19 - 25  [0.543] 69
+Started game 70 of 200 (B vs A)
+Finished game 70 (B vs A): 1-0 {White mates}
+Score of A vs B: 25 - 20 - 25  [0.536] 70
+Started game 71 of 200 (A vs B)
+Finished game 71 (A vs B): 1-0 {White mates}
+Score of A vs B: 26 - 20 - 25  [0.542] 71
+Started game 72 of 200 (B vs A)
+Finished game 72 (B vs A): 1-0 {White mates}
+Score of A vs B: 26 - 21 - 25  [0.535] 72
+Started game 73 of 200 (A vs B)
+Finished game 73 (A vs B): 1-0 {White mates}
+Score of A vs B: 27 - 21 - 25  [0.541] 73
+Started game 74 of 200 (B vs A)
+Finished game 74 (B vs A): 0-1 {Black mates}
+Score of A vs B: 28 - 21 - 25  [0.547] 74
+Started game 75 of 200 (A vs B)

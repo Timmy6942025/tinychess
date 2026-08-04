@@ -1,0 +1,19 @@
+Started game 1 of 200 (A vs B)
+Finished game 1 (A vs B): 1-0 {White mates}
+Score of A vs B: 1 - 0 - 0  [1.000] 1
+Started game 2 of 200 (B vs A)
+Finished game 2 (B vs A): 0-1 {Black mates}
+Score of A vs B: 2 - 0 - 0  [1.000] 2
+Started game 3 of 200 (A vs B)
+Finished game 3 (A vs B): 1/2-1/2 {Draw by insufficient mating material}
+Score of A vs B: 2 - 0 - 1  [0.833] 3
+Started game 4 of 200 (B vs A)
+Finished game 4 (B vs A): 1/2-1/2 {Draw by insufficient mating material}
+Score of A vs B: 2 - 0 - 2  [0.750] 4
+Started game 5 of 200 (A vs B)
+Finished game 5 (A vs B): 1/2-1/2 {Draw by fifty moves rule}
+Score of A vs B: 2 - 0 - 3  [0.700] 5
+Started game 6 of 200 (B vs A)
+Finished game 6 (B vs A): 1-0 {White mates}
+Score of A vs B: 2 - 1 - 3  [0.583] 6
+Started game 7 of 200 (A vs B)
