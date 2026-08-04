@@ -64,6 +64,58 @@ void nnue_verify_perft(Eval *const nnue_eval, libchess::Position &pos, const std
 	}
 }
 
+// ---------------------------------------------------------------------------
+// Deterministic PRNG (xorshift64*) so the fuzz tests are reproducible.
+static uint64_t fuzz_rng_state = 0x9E3779B97F4A7C15ull;
+
+static uint64_t fuzz_rand()
+{
+	fuzz_rng_state ^= fuzz_rng_state >> 12;
+	fuzz_rng_state ^= fuzz_rng_state << 25;
+	fuzz_rng_state ^= fuzz_rng_state >> 27;
+	return fuzz_rng_state * 0x2545F4914F6CDD1Dull;
+}
+
+static uint64_t fuzz_rand_below(const uint64_t n)
+{
+	return n ? fuzz_rand() % n : 0;
+}
+
+// Generate an arbitrary (not necessarily legal) move that round-trips through
+// the tt move encoding: from/to on the board, a valid 3-bit Move::Type and an
+// optional promotion piece (KNIGHT..QUEEN) so the PROMOTION_TYPE bits and the
+// 18-bit tt M field are exercised.
+static libchess::Move fuzz_move()
+{
+	using namespace libchess;
+	const Square from = Square::from(File(fuzz_rand_below(8)), Rank(fuzz_rand_below(8))).value();
+	const Square to   = Square::from(File(fuzz_rand_below(8)), Rank(fuzz_rand_below(8))).value();
+	const Move::Type type = Move::Type(fuzz_rand_below(8));  // NONE..CAPTURE_PROMOTION
+
+	if (fuzz_rand() & 1) {
+		static const PieceType promos[] = { constants::KNIGHT, constants::BISHOP, constants::ROOK, constants::QUEEN };
+		return Move{ from, to, promos[fuzz_rand_below(4)], type };
+	}
+	return Move{ from, to, type };
+}
+
+// Plain perft (position-only, no NNUE book-keeping) for deep move-generation
+// verification on standard + combinatorial positions.
+static uint64_t count_perft(libchess::Position &pos, const int depth)
+{
+	auto move_list = pos.legal_move_list();
+	if (depth == 1)
+		return move_list.size();
+
+	uint64_t count = 0;
+	for(const auto & move: move_list) {
+		pos.make_move(move);
+		count += count_perft(pos, depth - 1);
+		pos.unmake_move();
+	}
+	return count;
+}
+
 void tests()
 {
 	using namespace libchess;
@@ -426,6 +478,234 @@ void tests()
 			libchess::Position pos(std::get<0>(test));
 			init_move(sp.at(0)->nnue_eval, pos);
 			my_assert(nnue_evaluate(sp.at(0)->nnue_eval, pos) == std::get<3>(test));
+		}
+
+		printf("OK\n");
+	}
+
+	// deeper plain perft (move generation only, no NNUE book-keeping) on the
+	// standard positions plus the classic combinatorial ones. Values are the
+	// well-known published perft numbers (also confirmed against libchess).
+	{
+		printf("deep perft (plain)\n");
+		const std::vector<std::tuple<std::string, int, uint64_t> > cases {
+			{ constants::STARTPOS_FEN, 6, 119060324ull },
+			{ "8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - -", 7, 178633661ull },
+			{ "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq -", 5, 193690690ull },
+			{ "8/8/8/8/8/8/6k1/4K2R b K - 0 1", 7, 954475ull },
+		};
+
+		for(auto & c: cases) {
+			Position pos(std::get<0>(c));
+			uint64_t got = count_perft(pos, std::get<1>(c));
+			if (got != std::get<2>(c)) {
+				printf("deep perft mismatch for %s depth %d: got %" PRIu64 ", expected %" PRIu64 "\n",
+					std::get<0>(c).c_str(), std::get<1>(c), got, std::get<2>(c));
+				my_assert(false);
+			}
+		}
+
+		printf("OK\n");
+	}
+
+	// NNUE incremental update fuzz: random make/unmake walks over positions that
+	// exercise castling, en-passant, promotions and captures; the incrementally
+	// updated accumulator must always agree with a fresh full re-evaluation.
+	{
+		printf("NNUE incremental fuzz\n");
+
+		const std::vector<std::string> fuzz_fens {
+			constants::STARTPOS_FEN,
+			"r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq -",
+			"rnbqkbnr/p1p1p1pp/1p1p1p2/8/4P3/3B3N/PPPP1PPP/RNBQK2R w KQkq - 0 4",
+			"8/5P1k/8/4B1K1/8/1B6/2N5/8 w - - 0 1",
+		};
+
+		for(auto & fen: fuzz_fens) {
+			sp.at(0)->pos = Position(fen);
+			Eval *e = sp.at(0)->nnue_eval;
+			init_move(e, sp.at(0)->pos);
+			int root_score = nnue_evaluate(e, sp.at(0)->pos);
+
+			for(int walk = 0; walk < 8; walk++) {
+				std::vector<std::pair<int, std::array<undo_t, 4> > > undo_stack;
+
+				for(int ply = 0; ply < 24; ply++) {
+					auto move_list = sp.at(0)->pos.legal_move_list();
+					if (move_list.size() == 0)
+						break;
+					auto it = move_list.begin();
+					std::advance(it, size_t(fuzz_rand_below(move_list.size())));
+					auto & move = *it;
+					undo_stack.push_back(make_move(e, sp.at(0)->pos, move));
+
+					int inc  = nnue_evaluate(e, sp.at(0)->pos);
+					Eval fresh(sp.at(0)->pos);
+					int full = nnue_evaluate(&fresh, sp.at(0)->pos);
+					if (inc != full) {
+						printf("NNUE fuzz mismatch walk %d ply %d fen %s move %s (%d != %d)\n",
+							walk, ply, sp.at(0)->pos.fen().c_str(), move.to_str().c_str(), inc, full);
+						my_assert(false);
+					}
+				}
+
+				// unwind the whole walk in reverse; each unmake must also agree
+				// with a fresh evaluation.
+				while(!undo_stack.empty()) {
+					unmake_move(e, sp.at(0)->pos, undo_stack.back());
+					undo_stack.pop_back();
+
+					int inc  = nnue_evaluate(e, sp.at(0)->pos);
+					Eval fresh(sp.at(0)->pos);
+					int full = nnue_evaluate(&fresh, sp.at(0)->pos);
+					if (inc != full) {
+						printf("NNUE fuzz unmake mismatch fen %s (%d != %d)\n",
+							sp.at(0)->pos.fen().c_str(), inc, full);
+						my_assert(false);
+					}
+				}
+
+				// back at the root: must equal the value recorded before the walk
+				if (nnue_evaluate(e, sp.at(0)->pos) != root_score) {
+					printf("NNUE fuzz root mismatch fen %s\n", sp.at(0)->pos.fen().c_str());
+					my_assert(false);
+				}
+			}
+		}
+
+		printf("OK\n");
+	}
+
+	// TT probe/insert/overwrite/age-generation round-trips, plus the
+	// move <-> uint conversion fuzz that underpins the tt move field.
+	{
+		printf("tt round-trip fuzz\n");
+		tti.reset();
+
+		// move <-> uint conversion: must round-trip exactly for every type and
+		// both promotion and plain moves (the "M" encoding the tt stores).
+		for(int i = 0; i < 5000; i++) {
+			libchess::Move m1 = fuzz_move();
+			uint32_t       v  = libchessmove_to_uint(m1);
+			libchess::Move m2 = uint_to_libchessmove(v);
+			if (!(m1.from_square() == m2.from_square() &&
+			      m1.to_square()   == m2.to_square() &&
+			      m1.type()        == m2.type() &&
+			      m1.promotion_piece_type() == m2.promotion_piece_type())) {
+				printf("move<->uint round-trip fail @%d: %s -> %s\n", i,
+					m1.to_str().c_str(), m2.to_str().c_str());
+				my_assert(false);
+			}
+		}
+
+		// insert + probe across many distinct hashes
+		for(int i = 0; i < 1000; i++) {
+			uint64_t      h = fuzz_rand();
+			tt_entry_flag f = tt_entry_flag(fuzz_rand_below(3) + 1);  // EXACT/LOWERBOUND/UPPERBOUND
+			int           d  = int(fuzz_rand_below(255));
+			int           sc = int(fuzz_rand_below(60001)) - 30000;
+			libchess::Move m = fuzz_move();
+
+			tti.store(h, f, d, sc, m);
+			auto rec = tti.lookup(h);
+			my_assert(rec.has_value());
+			tt_entry e = rec.value();
+			my_assert(e.depth == uint8_t(d));
+			my_assert(e.score == int16_t(sc));
+			my_assert(e.flags == f);
+			libchess::Move rm = uint_to_libchessmove(e.M);
+			my_assert(rm == m && rm.type() == m.type());
+		}
+
+		// same-hash overwrite, including the move-preserving store overload
+		{
+			tti.reset();
+			uint64_t      h = fuzz_rand();
+			libchess::Move m = fuzz_move();
+			tti.store(h, EXACT, 5, 100, m);
+			auto r1 = tti.lookup(h);
+			my_assert(r1.has_value() && uint_to_libchessmove(r1->M) == m);
+
+			tti.store(h, LOWERBOUND, 9, -22);  // no move supplied: must keep M
+			auto r2 = tti.lookup(h);
+			my_assert(r2.has_value());
+			my_assert(r2->depth == 9 && r2->score == -22 && r2->flags == LOWERBOUND);
+			my_assert(uint_to_libchessmove(r2->M) == m);
+		}
+
+		// age-generation / reset cycle: a stored record is gone after reset()
+		{
+			tti.reset();
+			uint64_t h = fuzz_rand();
+			tti.store(h, UPPERBOUND, 3, 7, fuzz_move());
+			my_assert(tti.lookup(h).has_value());
+			tti.reset();
+			my_assert(tti.lookup(h).has_value() == false);
+		}
+
+		printf("OK\n");
+	}
+
+	// mate-in-N depth sweeps: bounded searches must find known mates
+	{
+		printf("mate-in-N depth sweep\n");
+		// { fen, depth at which the mate must already be found }
+		const std::vector<std::pair<std::string, int> > mates {
+			{ "6k1/R7/6K1/8/8/8/8/8 w - - 0 1", 1 },  // a7a8 mate in 1
+			{ "6k1/8/6K1/5R2/8/8/8/8 w - - 0 1", 3 },  // K+R, mate in 2 by depth 3
+			{ "6k1/8/8/8/8/8/8/R3R1K1 w - - 0 1", 5 },  // two-rook ladder, mate in 3 by depth 5
+		};
+
+		for(auto & m: mates) {
+			sp.at(0)->pos = Position(m.first);
+			init_move(sp.at(0)->nnue_eval, sp.at(0)->pos);
+			clear_flag(sp.at(0)->stop);
+			memset(sp.at(0)->history, 0x00, history_malloc_size);
+			auto rc = search_it(0, 0, false, sp.at(0), m.second, 2000000, O_NONE, false);
+			int score = std::get<1>(rc);
+			if (abs(score) < max_non_mate) {
+				printf("mate-in-N: %s at depth %d scored %d (no mate), best %s\n",
+					m.first.c_str(), m.second, score, std::get<0>(rc).to_str().c_str());
+				my_assert(false);
+			}
+		}
+
+		printf("OK\n");
+	}
+
+	// aspiration-window / fail-low / fail-high sanity on quiet positions: a
+	// bounded search must return a legal move and an in-range score without
+	// crashing, and must complete at least one iteration.
+	{
+		printf("aspiration-window sanity\n");
+		const std::vector<std::string> quiet {
+			constants::STARTPOS_FEN,
+			"r1bq1rk1/pppp1ppp/5n2/2b1p3/2B1P3/5N2/PPPP1PPP/RNBQ1RK1 w - - 0 7",
+			"r3k2r/pp1n1ppp/2p2n2/8/2B1P3/2N2N2/PP3PPP/R1BQ1RK1 w kq - 0 9",
+			"r1b1k2r/pppp1ppp/2n5/8/4P3/2N2N2/PP1P1PPP/R1BQK2R w KQkq - 0 5",
+		};
+
+		for(auto & fen: quiet) {
+			sp.at(0)->pos = Position(fen);
+			init_move(sp.at(0)->nnue_eval, sp.at(0)->pos);
+			clear_flag(sp.at(0)->stop);
+			memset(sp.at(0)->history, 0x00, history_malloc_size);
+			auto   legal = sp.at(0)->pos.legal_move_list();
+			auto   rc    = search_it(0, 0, false, sp.at(0), 6, 120000, O_NONE, false);
+			Move   best  = std::get<0>(rc);
+			int    score = std::get<1>(rc);
+			int    md    = std::get<2>(rc);
+
+			bool legal_found = false;
+			for(auto & m: legal) {
+				if (m == best) {
+					legal_found = true;
+					break;
+				}
+			}
+			my_assert(legal_found);
+			my_assert(score >= -max_eval && score <= max_eval);
+			my_assert(md >= 1);
 		}
 
 		printf("OK\n");
