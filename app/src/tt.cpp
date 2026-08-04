@@ -96,6 +96,7 @@ void tt::set_size(const uint64_t s)
 {
 	n_entries = std::max(uint64_t(2), s / sizeof(tt_entry));
 	free(entries);
+	entries = nullptr;  // so allocate()'s no-PSRAM fallback is not defeated by a dangling (freed) pointer
 	allocate();
 	reset();
 	printf("# Newly allocated node count: %" PRIu64 "\n", n_entries);
