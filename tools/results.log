@@ -335,3 +335,13 @@ Score of A vs B: 51 - 42 - 106  [0.523] 199
 Score of A vs B: 51 - 43 - 106  [0.520] 200
 Elo difference: 13.9 +/- 33.1, LOS: 79.5 %, DrawRatio: 53.0 %
 SPRT: llr 0.312 (10.6%), lbound -2.94, ubound 2.94
+[18:52:39] MATCH ab-smoke-power-20260804-185221  A=tools/runs/bin/Dog-baseline  B=tools/runs/bin/Dog-baseline  tc=1+0.01 rounds=6 -sprt elo0=0 elo1=50 alpha=0.05 beta=0.05 adj=no
+Score of A vs B: 1 - 0 - 0  [1.000] 1
+Score of A vs B: 1 - 0 - 1  [0.750] 2
+Score of A vs B: 1 - 0 - 2  [0.667] 3
+Score of A vs B: 1 - 0 - 3  [0.625] 4
+Score of A vs B: 1 - 0 - 4  [0.600] 5
+Score of A vs B: 1 - 0 - 5  [0.583] 6
+Elo difference: 58.5 +/- 110.3, LOS: 84.1 %, DrawRatio: 83.3 %
+SPRT: llr 0.278 (9.4%), lbound -2.94, ubound 2.94
+[18:52:39] VERDICT ab-smoke-power-20260804-185221: KEEP (cap reached before bound, llr 0.278 > 0)

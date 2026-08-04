@@ -1,0 +1,31 @@
+Started game 1 of 6 (A vs B)
+Finished game 1 (A vs B): 1-0 {White mates}
+Score of A vs B: 1 - 0 - 0  [1.000] 1
+Started game 2 of 6 (B vs A)
+Finished game 2 (B vs A): 1/2-1/2 {Draw by 3-fold repetition}
+Score of A vs B: 1 - 0 - 1  [0.750] 2
+Started game 3 of 6 (A vs B)
+Finished game 3 (A vs B): 1/2-1/2 {Draw by 3-fold repetition}
+Score of A vs B: 1 - 0 - 2  [0.667] 3
+Started game 4 of 6 (B vs A)
+Finished game 4 (B vs A): 1/2-1/2 {Draw by 3-fold repetition}
+Score of A vs B: 1 - 0 - 3  [0.625] 4
+Started game 5 of 6 (A vs B)
+Finished game 5 (A vs B): 1/2-1/2 {Draw by 3-fold repetition}
+Score of A vs B: 1 - 0 - 4  [0.600] 5
+Started game 6 of 6 (B vs A)
+Finished game 6 (B vs A): 1/2-1/2 {Draw by 3-fold repetition}
+Score of A vs B: 1 - 0 - 5  [0.583] 6
+...      A playing White: 1 - 0 - 2  [0.667] 3
+...      A playing Black: 0 - 0 - 3  [0.500] 3
+...      White vs Black: 1 - 0 - 5  [0.583] 6
+Elo difference: 58.5 +/- 110.3, LOS: 84.1 %, DrawRatio: 83.3 %
+SPRT: llr 0.278 (9.4%), lbound -2.94, ubound 2.94
+
+Player: A
+   "Draw by 3-fold repetition": 5
+   "Win: White mates": 1
+Player: B
+   "Draw by 3-fold repetition": 5
+   "Loss: White mates": 1
+Finished match
