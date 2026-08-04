@@ -1,0 +1,47 @@
+diff --git a/app/src/main.h b/app/src/main.h
+index cbcb918..105c23c 100644
+--- a/app/src/main.h
++++ b/app/src/main.h
+@@ -50,7 +50,7 @@ extern std::vector<search_pars_t *> sp;
+ uint64_t esp_timer_get_time();
+ #endif
+ 
+-constexpr size_t history_size        = 2 * 6 * 64;
++constexpr size_t history_size        = 2 * 6 * 64 * 64;  // side * piece-type * from-square * to-square
+ constexpr size_t history_malloc_size = sizeof(int16_t) * history_size;
+ 
+ #include "book.h"
+diff --git a/app/src/search.cpp b/app/src/search.cpp
+index d11c96c..bd73881 100644
+--- a/app/src/search.cpp
++++ b/app/src/search.cpp
+@@ -40,9 +40,9 @@ std::optional<libchess::Move> str_to_move(const libchess::Position & p, const st
+ 	return { };
+ }
+ 
+-inline int history_index(const libchess::Color & side, const libchess::PieceType & from_type, const libchess::Square & sq)
++inline int history_index(const libchess::Color & side, const libchess::PieceType & from_type, const libchess::Square & from_sq, const libchess::Square & to_sq)
+ {
+-	return side * 6 * 64 + from_type * 64 + sq;
++	return ((side * 6 + from_type) * 64 + from_sq) * 64 + to_sq;
+ }
+ 
+ sort_movelist_compare::sort_movelist_compare(const search_pars_t & sp) : sp(sp)
+@@ -96,7 +96,7 @@ int sort_movelist_compare::move_evaluater(const libchess::Move move) const
+ 		}
+ 	}
+ 	else {
+-		int index = history_index(sp.pos.side_to_move(), from_type, move.to_square());
++		int index = history_index(sp.pos.side_to_move(), from_type, move.from_square(), move.to_square());
+ 		score += sp.history[index];
+ 	}
+ 
+@@ -589,7 +589,7 @@ int search(int depth, int alpha, const int beta, const int null_move_depth, cons
+ 			if (sp.pos.is_capture_move(move))
+ 				continue;
+ 			auto piece_type_from = sp.pos.piece_type_on(move.from_square());
+-			int  index           = history_index(sp.pos.side_to_move(), piece_type_from.value(), move.to_square());
++			int  index           = history_index(sp.pos.side_to_move(), piece_type_from.value(), move.from_square(), move.to_square());
+ 			if (move == beta_cutoff_move.value()) {
+ 				update_history(sp, index, bonus);
+ 				break;

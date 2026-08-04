@@ -1,0 +1,87 @@
+diff --git a/app/src/search.cpp b/app/src/search.cpp
+index d11c96c..378abf8 100644
+--- a/app/src/search.cpp
++++ b/app/src/search.cpp
+@@ -343,8 +343,10 @@ void update_history(const search_pars_t & sp, const int index, const int bonus)
+ 	sp.history[index] += final_value;
+ }
+ 
+-int search(int depth, int alpha, const int beta, const int null_move_depth, const int16_t max_depth, libchess::Move *const m, search_pars_t & sp, libchess::MoveList *const pv)
++int search(int depth, int alpha, const int beta, const int null_move_depth, const int16_t max_depth, const int extensions, libchess::Move *const m, search_pars_t & sp, libchess::MoveList *const pv)
+ {
++	constexpr const int max_extensions = 2;
++
+ 	if (sp.stop->flag)
+ 		return 0;
+ 
+@@ -464,13 +466,13 @@ int search(int depth, int alpha, const int beta, const int null_move_depth, cons
+ 		sp.pos.make_null_move();
+ 		libchess::MoveList ignore_pv;
+ 		libchess::Move     ignore_move { };
+-		int nmscore = -search(std::max(0, depth - nm_reduce_depth), -beta, -beta + 1, null_move_depth + 1, max_depth, &ignore_move, sp, &ignore_pv);
++		int nmscore = -search(std::max(0, depth - nm_reduce_depth), -beta, -beta + 1, null_move_depth + 1, max_depth, extensions, &ignore_move, sp, &ignore_pv);
+ 		sp.pos.unmake_move();
+ 
+                 if (nmscore >= beta) {
+ 			libchess::MoveList ignore_pv2;
+ 			libchess::Move     ignore2 { };
+-			int verification = search(std::max(0, depth - nm_reduce_depth), beta - 1, beta, null_move_depth, max_depth, &ignore2, sp, &ignore_pv2);
++			int verification = search(std::max(0, depth - nm_reduce_depth), beta - 1, beta, null_move_depth, max_depth, extensions, &ignore2, sp, &ignore_pv2);
+ 			if (verification >= beta) {
+ 				sp.cs.data.n_null_move_hit++;
+ 				pv->clear();
+@@ -502,7 +504,8 @@ int search(int depth, int alpha, const int beta, const int null_move_depth, cons
+ 	std::optional<libchess::Move> beta_cutoff_move;
+ 	libchess::Move new_move;
+ 
+-	int new_depth_basic = sp.pos.in_check() || n_moves == 1 ? depth : depth -1;
++	const bool basic_ext = (sp.pos.in_check() || n_moves == 1) && extensions < max_extensions;
++	int new_depth_basic = basic_ext ? depth : depth - 1;
+ 
+ 	libchess::MoveList child_pv;
+ 	size_t             m_idx    = 0;
+@@ -528,12 +531,16 @@ int search(int depth, int alpha, const int beta, const int null_move_depth, cons
+                 int  score  = -max_eval;
+ 
+ 		auto undo_actions = make_move(sp.nnue_eval, sp.pos, move);
++		const bool gives_check = sp.pos.in_check();
+ 		if (n_played == 0)
+-			score = -search(new_depth_basic, -beta, -alpha, null_move_depth, max_depth, &new_move, sp, &child_pv);
++			score = -search(new_depth_basic, -beta, -alpha, null_move_depth, max_depth, extensions + basic_ext, &new_move, sp, &child_pv);
+ 		else {
+ 			int new_depth = depth - 1;
+ 
+-			if (n_played >= lmr_start && !sp.pos.is_capture_move(move) && !sp.pos.is_promotion_move(move)) {
++			const bool ext_check = gives_check && extensions < max_extensions;
++			if (ext_check)
++				new_depth = depth;  // check extension
++			else if (n_played >= lmr_start && !sp.pos.is_capture_move(move) && !sp.pos.is_promotion_move(move)) {
+ 				is_lmr = true;
+ 				sp.cs.data.n_lmr++;
+ 
+@@ -548,13 +555,13 @@ int search(int depth, int alpha, const int beta, const int null_move_depth, cons
+ 				}
+ 			}
+ 
+-			score = -search(new_depth, -alpha - 1, -alpha, null_move_depth, max_depth, &new_move, sp, &child_pv);
++			score = -search(new_depth, -alpha - 1, -alpha, null_move_depth, max_depth, extensions + ext_check, &new_move, sp, &child_pv);
+ 
+ 			if (is_lmr && score > alpha)
+-				score = -search(depth -1, -alpha - 1, -alpha, null_move_depth, max_depth, &new_move, sp, &child_pv);
++				score = -search(depth -1, -alpha - 1, -alpha, null_move_depth, max_depth, extensions, &new_move, sp, &child_pv);
+ 
+ 			if (score > alpha && score < beta)
+-				score = -search(depth - 1, -beta, -alpha, null_move_depth, max_depth, &new_move, sp, &child_pv);
++				score = -search(ext_check ? depth : depth - 1, -beta, -alpha, null_move_depth, max_depth, extensions + ext_check, &new_move, sp, &child_pv);
+ 		}
+ 		unmake_move(sp.nnue_eval, sp.pos, undo_actions);
+ 
+@@ -772,7 +779,7 @@ std::tuple<libchess::Move, int, int> search_it(const int search_time_min, const
+ 			if (max_depth >= 4)
+ 				cur_move = sp->best_moves[max_depth - 3];
+ 			libchess::MoveList pv;
+-			int                score = search(max_depth, alpha, beta, 0, max_depth, &cur_move, *sp, &pv);
++			int                score = search(max_depth, alpha, beta, 0, max_depth, 0, &cur_move, *sp, &pv);
+ 			assert(score >= -max_eval && score <= max_eval);
+ 
+ 			auto counts = simple_search_statistics();
