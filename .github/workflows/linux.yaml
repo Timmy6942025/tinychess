@@ -1,0 +1,27 @@
+name: linux-native-tests
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      # Dog requires gcc/g++ >= 14. ubuntu-24.04 ships gcc-13, so pull gcc-14
+      # from the canonical toolchain PPA.
+      - name: Install gcc-14
+        run: |
+          sudo add-apt-repository -y ppa:ubuntu-toolchain-r/test
+          sudo apt-get update
+          sudo apt-get install -y gcc-14 g++-14
+          sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-14 100
+          sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-14 100
+
+      - name: Configure + build + run full unit test suite + bench
+        run: tools/native_check.sh
