@@ -1,3 +1,3 @@
 #pragma once
 
-constexpr int HIDDEN_SIZE = 128;
+constexpr int HIDDEN_SIZE = 256;

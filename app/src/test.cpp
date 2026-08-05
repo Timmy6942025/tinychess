@@ -451,11 +451,11 @@ void tests()
 
 	// san
 	const std::vector<std::tuple<const std::string, const std::string, const std::string, int> > san_parsing_tests {
-		{ "7r/3r1p1p/6p1/1p6/2B5/5PP1/1Q5P/1K1k4 b - - 0 38", "bxc4", "7r/3r1p1p/6p1/8/2p5/5PP1/1Q5P/1K1k4 w - - 0 39", -827 },
-		{ "2n1r1n1/1p1k1p2/6pp/R2pP3/3P4/8/5PPP/2R3K1 b - - 0 30", "Nge7", "2n1r3/1p1knp2/6pp/R2pP3/3P4/8/5PPP/2R3K1 w - - 1 31", 361 },
-		{ "8/5p2/1kn1r1n1/1p1pP3/6K1/8/4R3/5R2 b - - 9 60", "Ngxe5+", "8/5p2/1kn1r3/1p1pn3/6K1/8/4R3/5R2 w - - 0 61", 1352 },
-		{ "r3k2r/pp1bnpbp/1q3np1/3p4/3N1P2/1PP1Q2P/P1B3P1/RNB1K2R b KQkq - 5 15", "Ng8", "r3k1nr/pp1bnpbp/1q4p1/3p4/3N1P2/1PP1Q2P/P1B3P1/RNB1K2R w KQkq - 6 16", 325 },
-		{ libchess::constants::STARTPOS_FEN, "e4", "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1", 55 },
+		{ "7r/3r1p1p/6p1/1p6/2B5/5PP1/1Q5P/1K1k4 b - - 0 38", "bxc4", "7r/3r1p1p/6p1/8/2p5/5PP1/1Q5P/1K1k4 w - - 0 39", -985 },
+		{ "2n1r1n1/1p1k1p2/6pp/R2pP3/3P4/8/5PPP/2R3K1 b - - 0 30", "Nge7", "2n1r3/1p1knp2/6pp/R2pP3/3P4/8/5PPP/2R3K1 w - - 1 31", 436 },
+		{ "8/5p2/1kn1r1n1/1p1pP3/6K1/8/4R3/5R2 b - - 9 60", "Ngxe5+", "8/5p2/1kn1r3/1p1pn3/6K1/8/4R3/5R2 w - - 0 61", 1293 },
+		{ "r3k2r/pp1bnpbp/1q3np1/3p4/3N1P2/1PP1Q2P/P1B3P1/RNB1K2R b KQkq - 5 15", "Ng8", "r3k1nr/pp1bnpbp/1q4p1/3p4/3N1P2/1PP1Q2P/P1B3P1/RNB1K2R w KQkq - 6 16", 357 },
+		{ libchess::constants::STARTPOS_FEN, "e4", "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1", 80 },
 	};
 
 	{
@@ -470,7 +470,8 @@ void tests()
 		printf("OK\n");
 	}
 
-	// NNUE eval (using san parsing data)
+	// NNUE eval (using san parsing data); expected values are for the
+	// HIDDEN_SIZE=256 big net (weights.cpp #if 0 block)
 	{
 		printf("NNUE evaluation test\n");
 
@@ -652,8 +653,8 @@ void tests()
 		// { fen, depth at which the mate must already be found }
 		const std::vector<std::pair<std::string, int> > mates {
 			{ "6k1/R7/6K1/8/8/8/8/8 w - - 0 1", 1 },  // a7a8 mate in 1
-			{ "6k1/8/6K1/5R2/8/8/8/8 w - - 0 1", 3 },  // K+R, mate in 2 by depth 3
-			{ "6k1/8/8/8/8/8/8/R3R1K1 w - - 0 1", 5 },  // two-rook ladder, mate in 3 by depth 5
+			{ "6k1/8/6K1/5R2/8/8/8/8 w - - 0 1", 5 },  // K+R, mate in 2 (big net finds it by depth 5)
+			{ "6k1/8/8/8/8/8/8/R3R1K1 w - - 0 1", 19 },  // two-rook ladder, mate in 3 (big net needs depth 19; small net needed 5)
 		};
 
 		for(auto & m: mates) {

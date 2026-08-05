@@ -1,6 +1,6 @@
 // xxd -c 26 -i < quantised.bin > weights.cpp
 
-#if 1
+#if 0
 constexpr int weights_size = 197440;
 
 alignas(64) constexpr const uint8_t weights_data[] {
