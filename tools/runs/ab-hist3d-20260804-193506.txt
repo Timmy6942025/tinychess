@@ -1,0 +1,508 @@
+Started game 1 of 1500 (A vs B)
+Started game 2 of 1500 (B vs A)
+Finished game 1 (A vs B): 0-1 {Black wins by adjudication}
+Score of A vs B: 0 - 1 - 0  [0.000] 1
+Started game 3 of 1500 (A vs B)
+Finished game 2 (B vs A): 1-0 {White wins by adjudication}
+Score of A vs B: 0 - 2 - 0  [0.000] 2
+Started game 4 of 1500 (B vs A)
+Finished game 3 (A vs B): 1-0 {White wins by adjudication}
+Score of A vs B: 1 - 2 - 0  [0.333] 3
+Started game 5 of 1500 (A vs B)
+Finished game 4 (B vs A): 1/2-1/2 {Draw by 3-fold repetition}
+Score of A vs B: 1 - 2 - 1  [0.375] 4
+Started game 6 of 1500 (B vs A)
+Finished game 5 (A vs B): 1-0 {White wins by adjudication}
+Score of A vs B: 2 - 2 - 1  [0.500] 5
+Started game 7 of 1500 (A vs B)
+Finished game 6 (B vs A): 1-0 {White wins by adjudication}
+Score of A vs B: 2 - 3 - 1  [0.417] 6
+Started game 8 of 1500 (B vs A)
+Finished game 7 (A vs B): 1/2-1/2 {Draw by adjudication}
+Score of A vs B: 2 - 3 - 2  [0.429] 7
+Started game 9 of 1500 (A vs B)
+Finished game 8 (B vs A): 1-0 {White wins by adjudication}
+Score of A vs B: 2 - 4 - 2  [0.375] 8
+Started game 10 of 1500 (B vs A)
+Finished game 10 (B vs A): 1-0 {White wins by adjudication}
+Score of A vs B: 2 - 5 - 2  [0.333] 9
+Started game 11 of 1500 (A vs B)
+Finished game 9 (A vs B): 1-0 {White wins by adjudication}
+Score of A vs B: 3 - 5 - 2  [0.400] 10
+Started game 12 of 1500 (B vs A)
+Finished game 11 (A vs B): 1/2-1/2 {Draw by 3-fold repetition}
+Score of A vs B: 3 - 5 - 3  [0.409] 11
+Started game 13 of 1500 (A vs B)
+Finished game 12 (B vs A): 1/2-1/2 {Draw by adjudication}
+Score of A vs B: 3 - 5 - 4  [0.417] 12
+Started game 14 of 1500 (B vs A)
+Finished game 13 (A vs B): 1-0 {White wins by adjudication}
+Score of A vs B: 4 - 5 - 4  [0.462] 13
+Started game 15 of 1500 (A vs B)
+Finished game 14 (B vs A): 1/2-1/2 {Draw by adjudication}
+Score of A vs B: 4 - 5 - 5  [0.464] 14
+Started game 16 of 1500 (B vs A)
+Finished game 15 (A vs B): 0-1 {Black wins by adjudication}
+Score of A vs B: 4 - 6 - 5  [0.433] 15
+Started game 17 of 1500 (A vs B)
+Finished game 16 (B vs A): 1-0 {White wins by adjudication}
+Score of A vs B: 4 - 7 - 5  [0.406] 16
+Started game 18 of 1500 (B vs A)
+Finished game 17 (A vs B): 1/2-1/2 {Draw by 3-fold repetition}
+Score of A vs B: 4 - 7 - 6  [0.412] 17
+Started game 19 of 1500 (A vs B)
+Finished game 19 (A vs B): 1-0 {White wins by adjudication}
+Score of A vs B: 5 - 7 - 6  [0.444] 18
+Started game 20 of 1500 (B vs A)
+Finished game 18 (B vs A): 0-1 {Black wins by adjudication}
+Score of A vs B: 6 - 7 - 6  [0.474] 19
+Started game 21 of 1500 (A vs B)
+Finished game 20 (B vs A): 1-0 {White wins by adjudication}
+Score of A vs B: 6 - 8 - 6  [0.450] 20
+Started game 22 of 1500 (B vs A)
+Finished game 21 (A vs B): 1/2-1/2 {Draw by adjudication}
+Score of A vs B: 6 - 8 - 7  [0.452] 21
+Started game 23 of 1500 (A vs B)
+Finished game 22 (B vs A): 1-0 {White wins by adjudication}
+Score of A vs B: 6 - 9 - 7  [0.432] 22
+Started game 24 of 1500 (B vs A)
+Finished game 23 (A vs B): 1/2-1/2 {Draw by adjudication}
+Score of A vs B: 6 - 9 - 8  [0.435] 23
+Started game 25 of 1500 (A vs B)
+Finished game 24 (B vs A): 1-0 {White wins by adjudication}
+Score of A vs B: 6 - 10 - 8  [0.417] 24
+Started game 26 of 1500 (B vs A)
+Finished game 26 (B vs A): 1-0 {White wins by adjudication}
+Score of A vs B: 6 - 11 - 8  [0.400] 25
+Started game 27 of 1500 (A vs B)
+Finished game 25 (A vs B): 1/2-1/2 {Draw by adjudication}
+Score of A vs B: 6 - 11 - 9  [0.404] 26
+Started game 28 of 1500 (B vs A)
+Finished game 27 (A vs B): 1-0 {White wins by adjudication}
+Score of A vs B: 7 - 11 - 9  [0.426] 27
+Started game 29 of 1500 (A vs B)
+Finished game 28 (B vs A): 0-1 {Black wins by adjudication}
+Score of A vs B: 8 - 11 - 9  [0.446] 28
+Started game 30 of 1500 (B vs A)
+Finished game 29 (A vs B): 1-0 {White wins by adjudication}
+Score of A vs B: 9 - 11 - 9  [0.466] 29
+Started game 31 of 1500 (A vs B)
+Finished game 30 (B vs A): 1-0 {White wins by adjudication}
+Score of A vs B: 9 - 12 - 9  [0.450] 30
+Started game 32 of 1500 (B vs A)
+Finished game 31 (A vs B): 1/2-1/2 {Draw by 3-fold repetition}
+Score of A vs B: 9 - 12 - 10  [0.452] 31
+Started game 33 of 1500 (A vs B)
+Finished game 33 (A vs B): 1-0 {White wins by adjudication}
+Score of A vs B: 10 - 12 - 10  [0.469] 32
+Started game 34 of 1500 (B vs A)
+Finished game 32 (B vs A): 1/2-1/2 {Draw by adjudication}
+Score of A vs B: 10 - 12 - 11  [0.470] 33
+Started game 35 of 1500 (A vs B)
+Finished game 34 (B vs A): 1-0 {White wins by adjudication}
+Score of A vs B: 10 - 13 - 11  [0.456] 34
+Started game 36 of 1500 (B vs A)
+Finished game 35 (A vs B): 1/2-1/2 {Draw by adjudication}
+Score of A vs B: 10 - 13 - 12  [0.457] 35
+Started game 37 of 1500 (A vs B)
+Finished game 37 (A vs B): 1-0 {White wins by adjudication}
+Score of A vs B: 11 - 13 - 12  [0.472] 36
+Started game 38 of 1500 (B vs A)
+Finished game 36 (B vs A): 0-1 {Black wins by adjudication}
+Score of A vs B: 12 - 13 - 12  [0.486] 37
+Started game 39 of 1500 (A vs B)
+Finished game 38 (B vs A): 1-0 {White wins by adjudication}
+Score of A vs B: 12 - 14 - 12  [0.474] 38
+Started game 40 of 1500 (B vs A)
+Finished game 39 (A vs B): 1/2-1/2 {Draw by adjudication}
+Score of A vs B: 12 - 14 - 13  [0.474] 39
+Started game 41 of 1500 (A vs B)
+Finished game 40 (B vs A): 1-0 {White wins by adjudication}
+Score of A vs B: 12 - 15 - 13  [0.463] 40
+Started game 42 of 1500 (B vs A)
+Finished game 41 (A vs B): 1/2-1/2 {Draw by adjudication}
+Score of A vs B: 12 - 15 - 14  [0.463] 41
+Started game 43 of 1500 (A vs B)
+Finished game 42 (B vs A): 1-0 {White wins by adjudication}
+Score of A vs B: 12 - 16 - 14  [0.452] 42
+Started game 44 of 1500 (B vs A)
+Finished game 43 (A vs B): 1/2-1/2 {Draw by adjudication}
+Score of A vs B: 12 - 16 - 15  [0.453] 43
+Started game 45 of 1500 (A vs B)
+Finished game 44 (B vs A): 1-0 {White wins by adjudication}
+Score of A vs B: 12 - 17 - 15  [0.443] 44
+Started game 46 of 1500 (B vs A)
+Finished game 45 (A vs B): 1/2-1/2 {Draw by adjudication}
+Score of A vs B: 12 - 17 - 16  [0.444] 45
+Started game 47 of 1500 (A vs B)
+Finished game 46 (B vs A): 0-1 {Black wins by adjudication}
+Score of A vs B: 13 - 17 - 16  [0.457] 46
+Started game 48 of 1500 (B vs A)
+Finished game 47 (A vs B): 1/2-1/2 {Draw by adjudication}
+Score of A vs B: 13 - 17 - 17  [0.457] 47
+Started game 49 of 1500 (A vs B)
+Finished game 48 (B vs A): 1/2-1/2 {Draw by adjudication}
+Score of A vs B: 13 - 17 - 18  [0.458] 48
+Started game 50 of 1500 (B vs A)
+Finished game 49 (A vs B): 1/2-1/2 {Draw by adjudication}
+Score of A vs B: 13 - 17 - 19  [0.459] 49
+Started game 51 of 1500 (A vs B)
+Finished game 50 (B vs A): 1/2-1/2 {Draw by adjudication}
+Score of A vs B: 13 - 17 - 20  [0.460] 50
+Started game 52 of 1500 (B vs A)
+Finished game 51 (A vs B): 1/2-1/2 {Draw by adjudication}
+Score of A vs B: 13 - 17 - 21  [0.461] 51
+Started game 53 of 1500 (A vs B)
+Finished game 53 (A vs B): 1-0 {White wins by adjudication}
+Score of A vs B: 14 - 17 - 21  [0.471] 52
+Started game 54 of 1500 (B vs A)
+Finished game 52 (B vs A): 1-0 {White wins by adjudication}
+Score of A vs B: 14 - 18 - 21  [0.462] 53
+Started game 55 of 1500 (A vs B)
+Finished game 54 (B vs A): 1/2-1/2 {Draw by adjudication}
+Score of A vs B: 14 - 18 - 22  [0.463] 54
+Started game 56 of 1500 (B vs A)
+Finished game 55 (A vs B): 1-0 {White wins by adjudication}
+Score of A vs B: 15 - 18 - 22  [0.473] 55
+Started game 57 of 1500 (A vs B)
+Finished game 56 (B vs A): 0-1 {Black wins by adjudication}
+Score of A vs B: 16 - 18 - 22  [0.482] 56
+Started game 58 of 1500 (B vs A)
+Finished game 57 (A vs B): 1/2-1/2 {Draw by adjudication}
+Score of A vs B: 16 - 18 - 23  [0.482] 57
+Started game 59 of 1500 (A vs B)
+Finished game 58 (B vs A): 1-0 {White wins by adjudication}
+Score of A vs B: 16 - 19 - 23  [0.474] 58
+Started game 60 of 1500 (B vs A)
+Finished game 59 (A vs B): 1-0 {White wins by adjudication}
+Score of A vs B: 17 - 19 - 23  [0.483] 59
+Started game 61 of 1500 (A vs B)
+Finished game 60 (B vs A): 1/2-1/2 {Draw by adjudication}
+Score of A vs B: 17 - 19 - 24  [0.483] 60
+Started game 62 of 1500 (B vs A)
+Finished game 61 (A vs B): 1/2-1/2 {Draw by adjudication}
+Score of A vs B: 17 - 19 - 25  [0.484] 61
+Started game 63 of 1500 (A vs B)
+Finished game 62 (B vs A): 1/2-1/2 {Draw by adjudication}
+Score of A vs B: 17 - 19 - 26  [0.484] 62
+Started game 64 of 1500 (B vs A)
+Finished game 63 (A vs B): 1-0 {White wins by adjudication}
+Score of A vs B: 18 - 19 - 26  [0.492] 63
+Started game 65 of 1500 (A vs B)
+Finished game 64 (B vs A): 1/2-1/2 {Draw by adjudication}
+Score of A vs B: 18 - 19 - 27  [0.492] 64
+Started game 66 of 1500 (B vs A)
+Finished game 65 (A vs B): 1-0 {White wins by adjudication}
+Score of A vs B: 19 - 19 - 27  [0.500] 65
+Started game 67 of 1500 (A vs B)
+Finished game 66 (B vs A): 1/2-1/2 {Draw by adjudication}
+Score of A vs B: 19 - 19 - 28  [0.500] 66
+Started game 68 of 1500 (B vs A)
+Finished game 68 (B vs A): 1-0 {White wins by adjudication}
+Score of A vs B: 19 - 20 - 28  [0.493] 67
+Started game 69 of 1500 (A vs B)
+Finished game 67 (A vs B): 1/2-1/2 {Draw by adjudication}
+Score of A vs B: 19 - 20 - 29  [0.493] 68
+Started game 70 of 1500 (B vs A)
+Finished game 69 (A vs B): 1-0 {White wins by adjudication}
+Score of A vs B: 20 - 20 - 29  [0.500] 69
+Started game 71 of 1500 (A vs B)
+Finished game 70 (B vs A): 1-0 {White mates}
+Score of A vs B: 20 - 21 - 29  [0.493] 70
+Started game 72 of 1500 (B vs A)
+Finished game 71 (A vs B): 1-0 {White wins by adjudication}
+Score of A vs B: 21 - 21 - 29  [0.500] 71
+Started game 73 of 1500 (A vs B)
+Finished game 72 (B vs A): 1-0 {White wins by adjudication}
+Score of A vs B: 21 - 22 - 29  [0.493] 72
+Started game 74 of 1500 (B vs A)
+Finished game 73 (A vs B): 1-0 {White wins by adjudication}
+Score of A vs B: 22 - 22 - 29  [0.500] 73
+Started game 75 of 1500 (A vs B)
+Finished game 74 (B vs A): 1/2-1/2 {Draw by adjudication}
+Score of A vs B: 22 - 22 - 30  [0.500] 74
+Started game 76 of 1500 (B vs A)
+Finished game 75 (A vs B): 1/2-1/2 {Draw by adjudication}
+Score of A vs B: 22 - 22 - 31  [0.500] 75
+Started game 77 of 1500 (A vs B)
+Finished game 76 (B vs A): 1/2-1/2 {Draw by 3-fold repetition}
+Score of A vs B: 22 - 22 - 32  [0.500] 76
+Started game 78 of 1500 (B vs A)
+Finished game 77 (A vs B): 1-0 {White wins by adjudication}
+Score of A vs B: 23 - 22 - 32  [0.506] 77
+Started game 79 of 1500 (A vs B)
+Finished game 78 (B vs A): 1-0 {White wins by adjudication}
+Score of A vs B: 23 - 23 - 32  [0.500] 78
+Started game 80 of 1500 (B vs A)
+Finished game 79 (A vs B): 1-0 {White wins by adjudication}
+Score of A vs B: 24 - 23 - 32  [0.506] 79
+Started game 81 of 1500 (A vs B)
+Finished game 80 (B vs A): 1-0 {White wins by adjudication}
+Score of A vs B: 24 - 24 - 32  [0.500] 80
+Started game 82 of 1500 (B vs A)
+Finished game 81 (A vs B): 0-1 {Black wins by adjudication}
+Score of A vs B: 24 - 25 - 32  [0.494] 81
+Started game 83 of 1500 (A vs B)
+Finished game 82 (B vs A): 1-0 {White wins by adjudication}
+Score of A vs B: 24 - 26 - 32  [0.488] 82
+Started game 84 of 1500 (B vs A)
+Finished game 83 (A vs B): 1/2-1/2 {Draw by adjudication}
+Score of A vs B: 24 - 26 - 33  [0.488] 83
+Started game 85 of 1500 (A vs B)
+Finished game 84 (B vs A): 1/2-1/2 {Draw by adjudication}
+Score of A vs B: 24 - 26 - 34  [0.488] 84
+Started game 86 of 1500 (B vs A)
+Finished game 85 (A vs B): 1-0 {White wins by adjudication}
+Score of A vs B: 25 - 26 - 34  [0.494] 85
+Started game 87 of 1500 (A vs B)
+Finished game 86 (B vs A): 1/2-1/2 {Draw by adjudication}
+Score of A vs B: 25 - 26 - 35  [0.494] 86
+Started game 88 of 1500 (B vs A)
+Finished game 87 (A vs B): 1/2-1/2 {Draw by adjudication}
+Score of A vs B: 25 - 26 - 36  [0.494] 87
+Started game 89 of 1500 (A vs B)
+Finished game 88 (B vs A): 1/2-1/2 {Draw by adjudication}
+Score of A vs B: 25 - 26 - 37  [0.494] 88
+Started game 90 of 1500 (B vs A)
+Finished game 89 (A vs B): 1/2-1/2 {Draw by adjudication}
+Score of A vs B: 25 - 26 - 38  [0.494] 89
+Started game 91 of 1500 (A vs B)
+Finished game 90 (B vs A): 1/2-1/2 {Draw by adjudication}
+Score of A vs B: 25 - 26 - 39  [0.494] 90
+Started game 92 of 1500 (B vs A)
+Finished game 91 (A vs B): 1-0 {White wins by adjudication}
+Score of A vs B: 26 - 26 - 39  [0.500] 91
+Started game 93 of 1500 (A vs B)
+Finished game 92 (B vs A): 1-0 {White wins by adjudication}
+Score of A vs B: 26 - 27 - 39  [0.495] 92
+Started game 94 of 1500 (B vs A)
+Finished game 93 (A vs B): 0-1 {Black wins by adjudication}
+Score of A vs B: 26 - 28 - 39  [0.489] 93
+Started game 95 of 1500 (A vs B)
+Finished game 94 (B vs A): 1/2-1/2 {Draw by adjudication}
+Score of A vs B: 26 - 28 - 40  [0.489] 94
+Started game 96 of 1500 (B vs A)
+Finished game 95 (A vs B): 1-0 {White wins by adjudication}
+Score of A vs B: 27 - 28 - 40  [0.495] 95
+Started game 97 of 1500 (A vs B)
+Finished game 96 (B vs A): 1/2-1/2 {Draw by adjudication}
+Score of A vs B: 27 - 28 - 41  [0.495] 96
+Started game 98 of 1500 (B vs A)
+Finished game 98 (B vs A): 1-0 {White wins by adjudication}
+Score of A vs B: 27 - 29 - 41  [0.490] 97
+Started game 99 of 1500 (A vs B)
+Finished game 97 (A vs B): 1-0 {White wins by adjudication}
+Score of A vs B: 28 - 29 - 41  [0.495] 98
+Started game 100 of 1500 (B vs A)
+Finished game 100 (B vs A): 1-0 {White wins by adjudication}
+Score of A vs B: 28 - 30 - 41  [0.490] 99
+Started game 101 of 1500 (A vs B)
+Finished game 99 (A vs B): 1/2-1/2 {Draw by adjudication}
+Score of A vs B: 28 - 30 - 42  [0.490] 100
+Started game 102 of 1500 (B vs A)
+Finished game 101 (A vs B): 1-0 {White wins by adjudication}
+Score of A vs B: 29 - 30 - 42  [0.495] 101
+Started game 103 of 1500 (A vs B)
+Finished game 102 (B vs A): 1/2-1/2 {Draw by adjudication}
+Score of A vs B: 29 - 30 - 43  [0.495] 102
+Started game 104 of 1500 (B vs A)
+Finished game 104 (B vs A): 0-1 {Black wins by adjudication}
+Score of A vs B: 30 - 30 - 43  [0.500] 103
+Started game 105 of 1500 (A vs B)
+Finished game 103 (A vs B): 1/2-1/2 {Draw by adjudication}
+Score of A vs B: 30 - 30 - 44  [0.500] 104
+Started game 106 of 1500 (B vs A)
+Finished game 105 (A vs B): 1/2-1/2 {Draw by adjudication}
+Score of A vs B: 30 - 30 - 45  [0.500] 105
+Started game 107 of 1500 (A vs B)
+Finished game 106 (B vs A): 1/2-1/2 {Draw by 3-fold repetition}
+Score of A vs B: 30 - 30 - 46  [0.500] 106
+Started game 108 of 1500 (B vs A)
+Finished game 107 (A vs B): 1-0 {White wins by adjudication}
+Score of A vs B: 31 - 30 - 46  [0.505] 107
+Started game 109 of 1500 (A vs B)
+Finished game 108 (B vs A): 1/2-1/2 {Draw by adjudication}
+Score of A vs B: 31 - 30 - 47  [0.505] 108
+Started game 110 of 1500 (B vs A)
+Finished game 110 (B vs A): 1-0 {White wins by adjudication}
+Score of A vs B: 31 - 31 - 47  [0.500] 109
+Started game 111 of 1500 (A vs B)
+Finished game 109 (A vs B): 0-1 {Black wins by adjudication}
+Score of A vs B: 31 - 32 - 47  [0.495] 110
+Started game 112 of 1500 (B vs A)
+Finished game 111 (A vs B): 1/2-1/2 {Draw by 3-fold repetition}
+Score of A vs B: 31 - 32 - 48  [0.495] 111
+Started game 113 of 1500 (A vs B)
+Finished game 112 (B vs A): 1/2-1/2 {Draw by adjudication}
+Score of A vs B: 31 - 32 - 49  [0.496] 112
+Started game 114 of 1500 (B vs A)
+Finished game 113 (A vs B): 1/2-1/2 {Draw by adjudication}
+Score of A vs B: 31 - 32 - 50  [0.496] 113
+Started game 115 of 1500 (A vs B)
+Finished game 115 (A vs B): 1-0 {White wins by adjudication}
+Score of A vs B: 32 - 32 - 50  [0.500] 114
+Started game 116 of 1500 (B vs A)
+Finished game 114 (B vs A): 1/2-1/2 {Draw by adjudication}
+Score of A vs B: 32 - 32 - 51  [0.500] 115
+Started game 117 of 1500 (A vs B)
+Finished game 117 (A vs B): 1-0 {White wins by adjudication}
+Score of A vs B: 33 - 32 - 51  [0.504] 116
+Started game 118 of 1500 (B vs A)
+Finished game 116 (B vs A): 1/2-1/2 {Draw by adjudication}
+Score of A vs B: 33 - 32 - 52  [0.504] 117
+Started game 119 of 1500 (A vs B)
+Finished game 119 (A vs B): 1-0 {White wins by adjudication}
+Score of A vs B: 34 - 32 - 52  [0.508] 118
+Started game 120 of 1500 (B vs A)
+Finished game 118 (B vs A): 1/2-1/2 {Draw by adjudication}
+Score of A vs B: 34 - 32 - 53  [0.508] 119
+Started game 121 of 1500 (A vs B)
+Finished game 120 (B vs A): 1-0 {White wins by adjudication}
+Score of A vs B: 34 - 33 - 53  [0.504] 120
+Started game 122 of 1500 (B vs A)
+Finished game 121 (A vs B): 1/2-1/2 {Draw by 3-fold repetition}
+Score of A vs B: 34 - 33 - 54  [0.504] 121
+Started game 123 of 1500 (A vs B)
+Finished game 122 (B vs A): 1-0 {White wins by adjudication}
+Score of A vs B: 34 - 34 - 54  [0.500] 122
+Started game 124 of 1500 (B vs A)
+Finished game 123 (A vs B): 1/2-1/2 {Draw by 3-fold repetition}
+Score of A vs B: 34 - 34 - 55  [0.500] 123
+Started game 125 of 1500 (A vs B)
+Finished game 125 (A vs B): 1-0 {White wins by adjudication}
+Score of A vs B: 35 - 34 - 55  [0.504] 124
+Started game 126 of 1500 (B vs A)
+Finished game 124 (B vs A): 1-0 {White wins by adjudication}
+Score of A vs B: 35 - 35 - 55  [0.500] 125
+Started game 127 of 1500 (A vs B)
+Finished game 126 (B vs A): 1/2-1/2 {Draw by adjudication}
+Score of A vs B: 35 - 35 - 56  [0.500] 126
+Started game 128 of 1500 (B vs A)
+Finished game 127 (A vs B): 0-1 {Black wins by adjudication}
+Score of A vs B: 35 - 36 - 56  [0.496] 127
+Started game 129 of 1500 (A vs B)
+Finished game 128 (B vs A): 1/2-1/2 {Draw by 3-fold repetition}
+Score of A vs B: 35 - 36 - 57  [0.496] 128
+Started game 130 of 1500 (B vs A)
+Finished game 129 (A vs B): 1-0 {White wins by adjudication}
+Score of A vs B: 36 - 36 - 57  [0.500] 129
+Started game 131 of 1500 (A vs B)
+Finished game 130 (B vs A): 1/2-1/2 {Draw by adjudication}
+Score of A vs B: 36 - 36 - 58  [0.500] 130
+Started game 132 of 1500 (B vs A)
+Finished game 131 (A vs B): 1/2-1/2 {Draw by adjudication}
+Score of A vs B: 36 - 36 - 59  [0.500] 131
+Started game 133 of 1500 (A vs B)
+Finished game 133 (A vs B): 1/2-1/2 {Draw by adjudication}
+Score of A vs B: 36 - 36 - 60  [0.500] 132
+Started game 134 of 1500 (B vs A)
+Finished game 132 (B vs A): 1/2-1/2 {Draw by adjudication}
+Score of A vs B: 36 - 36 - 61  [0.500] 133
+Started game 135 of 1500 (A vs B)
+Finished game 134 (B vs A): 0-1 {Black wins by adjudication}
+Score of A vs B: 37 - 36 - 61  [0.504] 134
+Started game 136 of 1500 (B vs A)
+Finished game 135 (A vs B): 1-0 {White wins by adjudication}
+Score of A vs B: 38 - 36 - 61  [0.507] 135
+Started game 137 of 1500 (A vs B)
+Finished game 136 (B vs A): 0-1 {Black wins by adjudication}
+Score of A vs B: 39 - 36 - 61  [0.511] 136
+Started game 138 of 1500 (B vs A)
+Finished game 138 (B vs A): 1-0 {White wins by adjudication}
+Score of A vs B: 39 - 37 - 61  [0.507] 137
+Started game 139 of 1500 (A vs B)
+Finished game 137 (A vs B): 1/2-1/2 {Draw by adjudication}
+Score of A vs B: 39 - 37 - 62  [0.507] 138
+Started game 140 of 1500 (B vs A)
+Finished game 139 (A vs B): 1/2-1/2 {Draw by 3-fold repetition}
+Score of A vs B: 39 - 37 - 63  [0.507] 139
+Started game 141 of 1500 (A vs B)
+Finished game 140 (B vs A): 0-1 {Black wins by adjudication}
+Score of A vs B: 40 - 37 - 63  [0.511] 140
+Started game 142 of 1500 (B vs A)
+Finished game 141 (A vs B): 1-0 {White wins by adjudication}
+Score of A vs B: 41 - 37 - 63  [0.514] 141
+Started game 143 of 1500 (A vs B)
+Finished game 143 (A vs B): 1-0 {White wins by adjudication}
+Score of A vs B: 42 - 37 - 63  [0.518] 142
+Started game 144 of 1500 (B vs A)
+Finished game 142 (B vs A): 1/2-1/2 {Draw by adjudication}
+Score of A vs B: 42 - 37 - 64  [0.517] 143
+Started game 145 of 1500 (A vs B)
+Finished game 144 (B vs A): 1-0 {White wins by adjudication}
+Score of A vs B: 42 - 38 - 64  [0.514] 144
+Started game 146 of 1500 (B vs A)
+Finished game 145 (A vs B): 1/2-1/2 {Draw by adjudication}
+Score of A vs B: 42 - 38 - 65  [0.514] 145
+Started game 147 of 1500 (A vs B)
+Finished game 146 (B vs A): 1-0 {White wins by adjudication}
+Score of A vs B: 42 - 39 - 65  [0.510] 146
+Started game 148 of 1500 (B vs A)
+Finished game 147 (A vs B): 1-0 {White wins by adjudication}
+Score of A vs B: 43 - 39 - 65  [0.514] 147
+Started game 149 of 1500 (A vs B)
+Finished game 148 (B vs A): 1-0 {White wins by adjudication}
+Score of A vs B: 43 - 40 - 65  [0.510] 148
+Started game 150 of 1500 (B vs A)
+Finished game 149 (A vs B): 1/2-1/2 {Draw by adjudication}
+Score of A vs B: 43 - 40 - 66  [0.510] 149
+Started game 151 of 1500 (A vs B)
+Finished game 150 (B vs A): 1-0 {White wins by adjudication}
+Score of A vs B: 43 - 41 - 66  [0.507] 150
+Started game 152 of 1500 (B vs A)
+Finished game 151 (A vs B): 1-0 {White wins by adjudication}
+Score of A vs B: 44 - 41 - 66  [0.510] 151
+Started game 153 of 1500 (A vs B)
+Finished game 152 (B vs A): 1-0 {White wins by adjudication}
+Score of A vs B: 44 - 42 - 66  [0.507] 152
+Started game 154 of 1500 (B vs A)
+Finished game 153 (A vs B): 1/2-1/2 {Draw by adjudication}
+Score of A vs B: 44 - 42 - 67  [0.507] 153
+Started game 155 of 1500 (A vs B)
+Finished game 154 (B vs A): 1-0 {White wins by adjudication}
+Score of A vs B: 44 - 43 - 67  [0.503] 154
+Started game 156 of 1500 (B vs A)
+Finished game 155 (A vs B): 1/2-1/2 {Draw by adjudication}
+Score of A vs B: 44 - 43 - 68  [0.503] 155
+Started game 157 of 1500 (A vs B)
+Finished game 156 (B vs A): 1-0 {White wins by adjudication}
+Score of A vs B: 44 - 44 - 68  [0.500] 156
+Started game 158 of 1500 (B vs A)
+Finished game 157 (A vs B): 1-0 {White wins by adjudication}
+Score of A vs B: 45 - 44 - 68  [0.503] 157
+Started game 159 of 1500 (A vs B)
+Finished game 158 (B vs A): 1-0 {White wins by adjudication}
+Score of A vs B: 45 - 45 - 68  [0.500] 158
+Started game 160 of 1500 (B vs A)
+Finished game 159 (A vs B): 1/2-1/2 {Draw by 3-fold repetition}
+Score of A vs B: 45 - 45 - 69  [0.500] 159
+Started game 161 of 1500 (A vs B)
+Finished game 160 (B vs A): 1-0 {White wins by adjudication}
+Score of A vs B: 45 - 46 - 69  [0.497] 160
+Finished game 161 (A vs B): * {No result}
+Score of A vs B: 45 - 46 - 69  [0.497] 160
+...      A playing White: 36 - 6 - 38  [0.688] 80
+...      A playing Black: 9 - 40 - 31  [0.306] 80
+...      White vs Black: 76 - 15 - 69  [0.691] 160
+Elo difference: -2.2 +/- 40.7, LOS: 45.8 %, DrawRatio: 43.1 %
+SPRT: llr -3.18 (-108.0%), lbound -2.94, ubound 2.94 - H0 was accepted
+
+Player: A
+   "Draw by 3-fold repetition": 12
+   "Draw by adjudication": 57
+   "Loss: Black wins by adjudication": 6
+   "Loss: White mates": 1
+   "Loss: White wins by adjudication": 39
+   "No result": 1
+   "Win: Black wins by adjudication": 9
+   "Win: White wins by adjudication": 36
+Player: B
+   "Draw by 3-fold repetition": 12
+   "Draw by adjudication": 57
+   "Loss: Black wins by adjudication": 9
+   "Loss: White wins by adjudication": 36
+   "No result": 1
+   "Win: Black wins by adjudication": 6
+   "Win: White mates": 1
+   "Win: White wins by adjudication": 39
+Finished match

@@ -1,0 +1,143 @@
+Started game 2 of 40 (B vs A)
+Started game 1 of 40 (A vs B)
+Finished game 2 (B vs A): 0-1 {Black wins by adjudication}
+Score of A vs B: 1 - 0 - 0  [1.000] 1
+Started game 3 of 40 (A vs B)
+Finished game 1 (A vs B): 1/2-1/2 {Draw by adjudication}
+Score of A vs B: 1 - 0 - 1  [0.750] 2
+Started game 4 of 40 (B vs A)
+Finished game 3 (A vs B): 0-1 {Black wins by adjudication}
+Score of A vs B: 1 - 1 - 1  [0.500] 3
+Started game 5 of 40 (A vs B)
+Finished game 4 (B vs A): 1/2-1/2 {Draw by adjudication}
+Score of A vs B: 1 - 1 - 2  [0.500] 4
+Started game 6 of 40 (B vs A)
+Finished game 5 (A vs B): 0-1 {Black wins by adjudication}
+Score of A vs B: 1 - 2 - 2  [0.400] 5
+Started game 7 of 40 (A vs B)
+Finished game 6 (B vs A): 1/2-1/2 {Draw by adjudication}
+Score of A vs B: 1 - 2 - 3  [0.417] 6
+Started game 8 of 40 (B vs A)
+Finished game 8 (B vs A): 1/2-1/2 {Draw by 3-fold repetition}
+Score of A vs B: 1 - 2 - 4  [0.429] 7
+Started game 9 of 40 (A vs B)
+Finished game 7 (A vs B): 1-0 {White wins by adjudication}
+Score of A vs B: 2 - 2 - 4  [0.500] 8
+Started game 10 of 40 (B vs A)
+Finished game 9 (A vs B): 1-0 {White wins by adjudication}
+Score of A vs B: 3 - 2 - 4  [0.556] 9
+Started game 11 of 40 (A vs B)
+Finished game 10 (B vs A): 1/2-1/2 {Draw by adjudication}
+Score of A vs B: 3 - 2 - 5  [0.550] 10
+Started game 12 of 40 (B vs A)
+Finished game 11 (A vs B): 1/2-1/2 {Draw by adjudication}
+Score of A vs B: 3 - 2 - 6  [0.545] 11
+Started game 13 of 40 (A vs B)
+Finished game 12 (B vs A): 1-0 {White wins by adjudication}
+Score of A vs B: 3 - 3 - 6  [0.500] 12
+Started game 14 of 40 (B vs A)
+Finished game 13 (A vs B): 1-0 {White wins by adjudication}
+Score of A vs B: 4 - 3 - 6  [0.538] 13
+Started game 15 of 40 (A vs B)
+Finished game 14 (B vs A): 1/2-1/2 {Draw by adjudication}
+Score of A vs B: 4 - 3 - 7  [0.536] 14
+Started game 16 of 40 (B vs A)
+Finished game 15 (A vs B): 1/2-1/2 {Draw by adjudication}
+Score of A vs B: 4 - 3 - 8  [0.533] 15
+Started game 17 of 40 (A vs B)
+Finished game 16 (B vs A): 1/2-1/2 {Draw by adjudication}
+Score of A vs B: 4 - 3 - 9  [0.531] 16
+Started game 18 of 40 (B vs A)
+Finished game 17 (A vs B): 1-0 {White wins by adjudication}
+Score of A vs B: 5 - 3 - 9  [0.559] 17
+Started game 19 of 40 (A vs B)
+Finished game 18 (B vs A): 1/2-1/2 {Draw by adjudication}
+Score of A vs B: 5 - 3 - 10  [0.556] 18
+Started game 20 of 40 (B vs A)
+Finished game 20 (B vs A): 1-0 {White wins by adjudication}
+Score of A vs B: 5 - 4 - 10  [0.526] 19
+Started game 21 of 40 (A vs B)
+Finished game 19 (A vs B): 1-0 {White wins by adjudication}
+Score of A vs B: 6 - 4 - 10  [0.550] 20
+Started game 22 of 40 (B vs A)
+Finished game 21 (A vs B): 1/2-1/2 {Draw by 3-fold repetition}
+Score of A vs B: 6 - 4 - 11  [0.548] 21
+Started game 23 of 40 (A vs B)
+Finished game 22 (B vs A): 1/2-1/2 {Draw by adjudication}
+Score of A vs B: 6 - 4 - 12  [0.545] 22
+Started game 24 of 40 (B vs A)
+Finished game 23 (A vs B): 1-0 {White wins by adjudication}
+Score of A vs B: 7 - 4 - 12  [0.565] 23
+Started game 25 of 40 (A vs B)
+Finished game 24 (B vs A): 1-0 {White wins by adjudication}
+Score of A vs B: 7 - 5 - 12  [0.542] 24
+Started game 26 of 40 (B vs A)
+Finished game 25 (A vs B): 1/2-1/2 {Draw by 3-fold repetition}
+Score of A vs B: 7 - 5 - 13  [0.540] 25
+Started game 27 of 40 (A vs B)
+Finished game 26 (B vs A): 1-0 {White wins by adjudication}
+Score of A vs B: 7 - 6 - 13  [0.519] 26
+Started game 28 of 40 (B vs A)
+Finished game 27 (A vs B): 1/2-1/2 {Draw by adjudication}
+Score of A vs B: 7 - 6 - 14  [0.519] 27
+Started game 29 of 40 (A vs B)
+Finished game 28 (B vs A): 1/2-1/2 {Draw by adjudication}
+Score of A vs B: 7 - 6 - 15  [0.518] 28
+Started game 30 of 40 (B vs A)
+Finished game 29 (A vs B): 0-1 {Black wins by adjudication}
+Score of A vs B: 7 - 7 - 15  [0.500] 29
+Started game 31 of 40 (A vs B)
+Finished game 30 (B vs A): 1-0 {White wins by adjudication}
+Score of A vs B: 7 - 8 - 15  [0.483] 30
+Started game 32 of 40 (B vs A)
+Finished game 31 (A vs B): 1/2-1/2 {Draw by adjudication}
+Score of A vs B: 7 - 8 - 16  [0.484] 31
+Started game 33 of 40 (A vs B)
+Finished game 33 (A vs B): 1/2-1/2 {Draw by 3-fold repetition}
+Score of A vs B: 7 - 8 - 17  [0.484] 32
+Started game 34 of 40 (B vs A)
+Finished game 32 (B vs A): 1/2-1/2 {Draw by adjudication: maximal game length}
+Score of A vs B: 7 - 8 - 18  [0.485] 33
+Started game 35 of 40 (A vs B)
+Finished game 34 (B vs A): 1/2-1/2 {Draw by adjudication}
+Score of A vs B: 7 - 8 - 19  [0.485] 34
+Started game 36 of 40 (B vs A)
+Finished game 36 (B vs A): 1-0 {White wins by adjudication}
+Score of A vs B: 7 - 9 - 19  [0.471] 35
+Started game 37 of 40 (A vs B)
+Finished game 35 (A vs B): 0-1 {Black wins by adjudication}
+Score of A vs B: 7 - 10 - 19  [0.458] 36
+Started game 38 of 40 (B vs A)
+Finished game 37 (A vs B): 1-0 {White wins by adjudication}
+Score of A vs B: 8 - 10 - 19  [0.473] 37
+Started game 39 of 40 (A vs B)
+Finished game 38 (B vs A): 1/2-1/2 {Draw by adjudication}
+Score of A vs B: 8 - 10 - 20  [0.474] 38
+Started game 40 of 40 (B vs A)
+Finished game 39 (A vs B): 1/2-1/2 {Draw by adjudication}
+Score of A vs B: 8 - 10 - 21  [0.474] 39
+Finished game 40 (B vs A): 1-0 {White wins by adjudication}
+Score of A vs B: 8 - 11 - 21  [0.463] 40
+...      A playing White: 7 - 4 - 9  [0.575] 20
+...      A playing Black: 1 - 7 - 12  [0.350] 20
+...      White vs Black: 14 - 5 - 21  [0.613] 40
+Elo difference: -26.1 +/- 75.3, LOS: 24.6 %, DrawRatio: 52.5 %
+SPRT: llr 0 (0.0%), lbound -inf, ubound inf
+
+Player: A
+   "Draw by 3-fold repetition": 4
+   "Draw by adjudication": 16
+   "Draw by adjudication: maximal game length": 1
+   "Loss: Black wins by adjudication": 4
+   "Loss: White wins by adjudication": 7
+   "Win: Black wins by adjudication": 1
+   "Win: White wins by adjudication": 7
+Player: B
+   "Draw by 3-fold repetition": 4
+   "Draw by adjudication": 16
+   "Draw by adjudication: maximal game length": 1
+   "Loss: Black wins by adjudication": 1
+   "Loss: White wins by adjudication": 7
+   "Win: Black wins by adjudication": 4
+   "Win: White wins by adjudication": 7
+Finished match
