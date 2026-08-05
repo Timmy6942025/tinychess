@@ -1,63 +1,99 @@
-Dog was written by Folkert van Heusden.
-Licensed under the MIT license.
+# MaxDogOne
 
+A fork of [Dog](https://github.com/folkertvanheusden/Dog) (written by Folkert van
+Heusden, MIT licensed) for the XIAO ESP32-S3 Plus, with a SPRT-gated experiment
+pipeline for tuning the engine. Every search/eval/net change is measured before
+it is kept.
 
-Clone the git repo with the "--recursive" flag!
+## Highlights
 
-When you want to help training Dog, see [helping-me-out.md](helping-me-out.md).
+- **NNUE big net** (HIDDEN_SIZE=256, 395 KB blob) — SPRT-confirmed **+25 elo**
+  vs the shipped 128-wide net (`ab-bignet-20260805-000637` ACCEPT,
+  `ab-bignet2-20260805-012247` ACCEPT). Enabled in `app/src/weights.cpp`
+  (`#if 0` selects the 197440 B small blob, `#else` the active 394816 B big net).
+- **libchess vendored** — this is a monorepo; `app/include/libchess` is regular
+  source (with Dog-specific fixes: FEN en-passant validation, `go st` UCI
+  support). A canonical copy lives at `github.com/Timmy6942025/libchess`.
+- **SPRT harness** — `tools/fast_sprt.sh` (cutechess-cli, elo0/elo1 = 0/20,
+  bounds ±2.944, cap 1500 games, 5+0.05). Every verdict is appended to
+  `tools/results.log` with a run tag; experiments are reproducible via
+  `tools/patches/`. Current reference binary: `tools/runs/bin/Dog-v2-bignet`
+  (md5 `194ee46e69dd3a8f14478de206a78503`).
+- **Hardware targets** — XIAO ESP32-S3 Plus (WS2812 LED on GPIO44, PSRAM TT up
+  to 6 MB, configurable via `app/src/Kconfig`).
 
+## Repo layout
 
-To build the program and upload it to a wemos32 mini:
+```
+app/src/            engine source (search, eval, NNUE, TT, UCI)
+app/include/libchess  vendored libchess library (board model, movegen, FEN)
+app/main/           ESP32-IDF project (esp32s3 target)
+tools/              fast_sprt.sh, native_check.sh, board_session.py, patches/, runs/ (results)
+README.md           this file
+RESEARCH.md         experiment queue and net-training pipeline plan
+HARDWARE_READINESS.md
+```
 
-	cd app
-	idf.py build && idf.py flash
+## Build & test (Linux/native)
 
-The ESP32 version can be used with xboard as well.
-Adapt app/wrapper.sh to let it use the correct port in case the ESP32 is not connected to /dev/ttyUSB0.
-Then run: `xboard -fUCI -fcp app/wrapper.sh` (this requires 'socat' to be installed).
+Requires gcc/g++ 14+ (or clang 14+, gcc produces faster binaries):
 
-The program also has a integrated text-interface. For that just run it and enter "tui".
+```sh
+tools/native_check.sh     # builds + runs the 17/17 unit suite + bench, exit 0 = green
+```
 
-To build it for Linux (requires at least gcc/g++ 14 or clang/clang++ 14, gcc produces faster binaries):
+Or manually:
 
-	cd app/src/linux-windows
-	mkdir build
-	cd build
-	cmake ..
-	make
+```sh
+cd app/src/linux-windows
+mkdir build && cd build
+cmake ..
+make
+./Dog-native   # 'Dog-native' is fastest; fall back to Dog-avx512, Dog-avx2, Dog
+```
 
-'Dog-native' is probably the fastest on your computer. If it won't run, try Dog-avx512 then Dog-avx2 and if all fails, try Dog.
+Windows (mingw-w64): `cmake -DCMAKE_TOOLCHAIN_FILE=../mingw64.cmake ..` in
+`app/src/linux-windows`.
 
-Debian/Ubuntu users can then also run:
+## Build & flash (ESP32-S3)
 
-    cpack
+```sh
+cd app
+idf.py build && idf.py flash   # set IDF_PATH, e.g. source ~/esp/esp-idf/export.sh
+```
 
-to get an installable .deb package-file.
+- Board: XIAO ESP32-S3 Plus. LED feature is a Kconfig option
+  (`DOG_LED_WS2812`; disable for boards without it or for QEMU).
+- Serial tooling: `tools/board_session.py` + `tools/test_board_session.py`
+  (e2e harness running a QEMU image), `tools/board_check.sh`.
+- The ESP32 version also works with xboard: adapt `app/wrapper.sh` port and
+  run `xboard -fUCI -fcp app/wrapper.sh`.
 
-RedHat users can use the following instead (from the root of the project):
+## Experiment pipeline
 
-    rpmbuild -ba Dog.spec
+```sh
+tools/fast_sprt.sh ab <tag> <A-binary> <B-binary>   # SPRT: A vs B
+tools/fast_sprt.sh baseline                          # fixed-games anchor vs stockfish
+```
 
-To build it for windows (using mingw-w64):
+Verdicts: ACCEPT (keep, exit 0) / REJECT (revert, exit 1) / KEEP-REVERT (cap
+reached, decided by llr sign). All verdicts land in `tools/results.log`; match
+logs live in `tools/runs/`. Never run a match while building or running
+`native_check.sh` (the 7.6 GB dev box OOM-kills cutechess under a parallel
+build).
 
-	cd app/src/linux-windows
-	mkdir buildwindows
-	cd buildwindows
-	cmake -DCMAKE_TOOLCHAIN_FILE=../mingw64.cmake ..
-	make
+Submodules: `app/Dog-book` (opening book) and `app/src/fathom` (Syzygy
+tablebase probing) — clone with `--recursive`.
 
-The Linux/windows versions contain a Dog in ansi-art visible when you run it with '-h'.
+## Notes
 
-On windows this only works if you enable ansi-code processing in the registry (and restart cmd.exe):
+- Rejected experiments are documented in `tools/results.log` (hist3d, checkext,
+  TT eval cache, LMR retune) — all REJECT under the corrected SPRT gate
+  (elo1=20); see the "Power notes" in `tools/fast_sprt.sh`.
+- The big net is markedly slower at endgame mate detection (two-rook ladder
+  mate found at depth 19 vs 5); accounted for in `app/src/test.cpp`.
+- Native bench with the big net: ~200 kNPS on the dev box (vs ~360 kNPS for
+  the small net).
 
-    reg add HKEY_CURRENT_USER\Console /v VirtualTerminalLevel /t REG_DWORD /d 0x00000001 /f
-
-
-The device can have (optional) LEDs connected:
-* a green led on pin 27 - blinks while thinking
-* a blue led on pin 25  - blinks while pondering
-* a red led on pin 22   - blinks in an error situation
-
-You can also can connect a TTL to UART converter to pin 16 (RX) and pin 17 (TX).
-
-* internal led is blinking during startup
+Upstream: https://github.com/folkertvanheusden/Dog
+License: MIT
