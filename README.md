@@ -29,9 +29,8 @@ app/src/            engine source (search, eval, NNUE, TT, UCI)
 app/include/libchess  vendored libchess library (board model, movegen, FEN)
 app/main/           ESP32-IDF project (esp32s3 target)
 tools/              fast_sprt.sh, native_check.sh, board_session.py, patches/, runs/ (results)
+docs/               upstream Dog reference docs, training notes, experiment queue
 README.md           this file
-RESEARCH.md         experiment queue and net-training pipeline plan
-HARDWARE_READINESS.md
 ```
 
 ## Build & test (Linux/native)
@@ -66,8 +65,11 @@ idf.py build && idf.py flash   # set IDF_PATH, e.g. source ~/esp/esp-idf/export.
   (`DOG_LED_WS2812`; disable for boards without it or for QEMU).
 - Serial tooling: `tools/board_session.py` + `tools/test_board_session.py`
   (e2e harness running a QEMU image), `tools/board_check.sh`.
-- The ESP32 version also works with xboard: adapt `app/wrapper.sh` port and
-  run `xboard -fUCI -fcp app/wrapper.sh`.
+- Reference material from the original Dog project (build variants, LED
+  pins, training-data collection) is archived in `docs/` —
+  see `docs/upstream-dog-readme.md`, `docs/helping-me-out.md`,
+  `docs/HARDWARE_READINESS.md` (hardware), `docs/RESEARCH.md` (experiment
+  queue + net-training plan).
 
 ## Experiment pipeline
 
