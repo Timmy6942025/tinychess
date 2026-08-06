@@ -165,6 +165,83 @@ libchess::MoveList gen_qs_moves(libchess::Position & pos)
 	return ml;
 }
 
+// Static Exchange Evaluation: net material balance of the capture sequence
+// starting with `move`, from the perspective of the side to move, assuming
+// optimal play (each side may stand pat after its own capture). Greedy
+// least-valuable-attacker recursion with x-ray discovery; matches the
+// classic swap-list algorithm and Stockfish's see_ge() semantics.
+int see_rec(const libchess::Position & pos, const libchess::Bitboard occ, const libchess::Square to, const libchess::Color stm, const int captured, const int depth)
+{
+	using namespace libchess;
+	using namespace libchess::constants;
+
+	if (depth > 31)
+		return 0;
+
+	const Bitboard attackers = pos.attackers_to(to, occ) & occ;
+	const Bitboard mine      = attackers & pos.color_bb(stm);
+	if (!mine)
+		return 0;
+
+	// least valuable attacker of the side to move
+	int    pt   = KING.value();
+	Square from = Square{0};
+	for (int p = PAWN.value(); p <= KING.value(); p++) {
+		Bitboard cand = mine & pos.piece_type_bb(PieceType{p});
+		if (cand) {
+			pt   = p;
+			from = cand.forward_bitscan();
+			break;
+		}
+	}
+
+	if (pt == KING.value()) {
+		// a king capture is only legal if nothing attacks `to` afterwards
+		const Bitboard after = occ ^ Bitboard(from);
+		if (pos.attackers_to(to, after) & pos.color_bb(!stm) & after)
+			return 0;
+		return captured;
+	}
+
+	const int continuation = see_rec(pos, occ ^ Bitboard(from), to, !stm, piece_values[pt], depth + 1);
+	return std::max(0, captured - continuation);
+}
+
+int see(const libchess::Position & pos, const libchess::Move & move)
+{
+	using namespace libchess;
+	using namespace libchess::constants;
+
+	// quiet move: only promotions carry material value in qsearch
+	// (is_capture_move relies on move.type(), which Move::from() does not
+	// set, so also treat any piece on the target square as a capture)
+	if (pos.is_capture_move(move) == false && pos.piece_type_on(move.to_square()).has_value() == false) {
+		if (move.promotion_piece_type().has_value() == false)
+			return 0;
+		return piece_values[move.promotion_piece_type().value().value()] - piece_values[0];
+	}
+
+	int captured_value = 100;  // en-passant: the captured pawn is not on `to`
+	auto captured_pt   = pos.piece_type_on(move.to_square());
+	if (captured_pt.has_value())
+		captured_value = piece_values[captured_pt.value().value()];
+
+	int moving_value = piece_values[pos.piece_type_on(move.from_square()).value().value()];
+	if (move.promotion_piece_type().has_value())
+		moving_value = piece_values[move.promotion_piece_type().value().value()];
+
+	// the captured piece leaves the board; for en-passant the captured
+	// pawn sits on the rank behind the target square and must be removed
+	// too, or it would block x-ray attacks through its square
+	Bitboard occ = pos.occupancy_bb() ^ Bitboard(move.from_square());
+	if (move.type() == libchess::Move::Type::ENPASSANT) {
+		const int ep_sq = move.to_square().value() + (pos.side_to_move() == libchess::constants::WHITE ? -8 : 8);
+		occ ^= Bitboard(libchess::Square{ ep_sq });
+	}
+
+	return captured_value - see_rec(pos, occ, move.to_square(), !pos.side_to_move(), moving_value, 0);
+}
+
 int qs(int alpha, const int beta, const int qsdepth, search_pars_t & sp)
 {
 #if defined(ESP32)
@@ -244,15 +321,16 @@ int qs(int alpha, const int beta, const int qsdepth, search_pars_t & sp)
 	auto move_list = gen_qs_moves(sp.pos);
 	std::optional<libchess::Move> m;
 
-	sort_movelist_compare smc(sp);
-	if (tt_move.has_value())
-		smc.add_first_move(tt_move.value());
-
-	// generate list of scores
+	// generate list of scores: SEE order (winning captures first),
+	// with the TT move pinned to the front
 	size_t           n_moves = move_list.size();
 	std::vector<int> move_scores(n_moves);
-	for(size_t i=0; i<n_moves; i++)
-		move_scores[i] = smc.move_evaluater(*(move_list.begin() + i));
+	for(size_t i=0; i<n_moves; i++) {
+		auto & move = *(move_list.begin() + i);
+		move_scores[i] = see(sp.pos, move);
+		if (tt_move.has_value() && move == tt_move.value())
+			move_scores[i] += 100000;
+	}
 
 	size_t m_idx  = 0;
 	while(m_idx < n_moves) {
@@ -418,6 +496,22 @@ int search(int depth, int alpha, const int beta, const int null_move_depth, cons
 		depth--;
 	}
 	////////
+
+	// Mate distance pruning (Stockfish)
+	// Since the path to a checkmate is unique, a mate score can only be
+	// improved at the node below the one that finds it. So a mate score
+	// is a hard bound: we can never do better than mate in (ply+1) from
+	// here, and never worse than being mated at the current ply. With
+	// these bounds we can fail high/low early, which is especially
+	// useful for mate searching.
+	// https://github.com/official-stockfish/Stockfish/blob/master/src/search.cpp
+	if ((is_pv && te.has_value()) || (!is_pv && tt_move.has_value())) {
+		int mdp_alpha = std::max(-max_eval + csd, alpha);
+		int mdp_beta  = std::min(max_eval - csd - 1, beta);
+		if (mdp_alpha >= mdp_beta)
+			return mdp_alpha;
+	}
+
 #if defined(linux) || defined(_WIN32) || defined(__ANDROID__) || defined(__APPLE__)
 	if (with_syzygy && !is_root_position) {
 		// check piece count
@@ -444,9 +538,13 @@ int search(int depth, int alpha, const int beta, const int null_move_depth, cons
 	////////
 	bool in_check = sp.pos.in_check();
 
+	int  staticeval   = 0;
+	bool futility_ok  = false;
+
 	if (!is_root_position && !in_check && depth <= 7 && beta <= max_non_mate) {
 		sp.cs.data.n_static_eval++;
-		int staticeval = nnue_evaluate(sp.nnue_eval, sp.pos);
+		staticeval  = nnue_evaluate(sp.nnue_eval, sp.pos);
+		futility_ok = depth <= 2;
 
 		// static null pruning (reverse futility pruning)
 		if (staticeval - depth * 121 > beta) {
@@ -521,6 +619,18 @@ int search(int depth, int alpha, const int beta, const int null_move_depth, cons
 
 		if (sp.pos.is_legal_generated_move(move) == false)
 			continue;
+
+		// futility pruning: a quiet move cannot improve the score if the
+		// static eval plus a depth-scaled margin still falls below alpha
+		// (only at shallow depths, outside PV, and never for the TT move
+		// or the best-ranked first move of the node)
+		if (futility_ok && !is_pv && n_played > 0 && n_moves > 1
+			&& !sp.pos.is_capture_move(move) && !sp.pos.is_promotion_move(move)
+			&& !(tt_move.has_value() && move == tt_move.value())
+			&& staticeval + 180 + depth * 150 < alpha) {
+			sp.cs.data.n_futility_prune++;
+			continue;
+		}
 
 		sp.cur_move = move.value();
 
@@ -769,6 +879,7 @@ std::tuple<libchess::Move, int, int> search_it(const int search_time_min, const 
 
 		while(ultimate_max_depth == -1 || max_depth <= ultimate_max_depth) {
 			sp->md = 0;
+			tti.new_search();
 			if (max_depth >= 4)
 				cur_move = sp->best_moves[max_depth - 3];
 			libchess::MoveList pv;

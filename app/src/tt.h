@@ -17,13 +17,15 @@ typedef struct __PRAGMA_PACKED__
 	uint8_t  depth  : 8;
 	uint32_t M      : 18;
 	uint8_t  flags  : 2;
-	uint8_t  filler : 4;
+	uint8_t  age    : 2;
+	uint8_t  filler : 2;
 } tt_entry;
 
 class tt
 {
 private:
 	tt_entry *entries { nullptr };
+	uint8_t   generation { 0 };  // incremented per ID iteration; ages TT entries
 #if defined(ESP32)
 #define ESP32_TT_RAM_SIZE 98304
 #define ESP32_DEFAULT_TT_SIZE (4 * 1024l * 1024l)
@@ -42,6 +44,7 @@ public:
 	void     debug_helper();
 	void     reset();
 	void     set_size(const uint64_t s);
+	void     new_search();
 	int      get_size() const;  // in MB
 	uint64_t get_n   () const;
 	int      get_per_mille_filled() const;

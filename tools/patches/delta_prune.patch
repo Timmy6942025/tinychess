@@ -1,0 +1,70 @@
+diff --git a/app/src/search.cpp b/app/src/search.cpp
+index d11c96c..5836a18 100644
+--- a/app/src/search.cpp
++++ b/app/src/search.cpp
+@@ -165,6 +165,9 @@ libchess::MoveList gen_qs_moves(libchess::Position & pos)
+ 	return ml;
+ }
+ 
++constexpr const int piece_values[6] = { 100, 320, 330, 500, 900, 20000 };  // P N B R Q K
++constexpr const int delta_margin    = 200;
++
+ int qs(int alpha, const int beta, const int qsdepth, search_pars_t & sp)
+ {
+ #if defined(ESP32)
+@@ -240,6 +243,8 @@ int qs(int alpha, const int beta, const int qsdepth, search_pars_t & sp)
+ 		alpha = std::max(alpha, best_score);
+ 	}
+ 
++	const int stand_pat = best_score;
++
+ 	int  n_played  = 0;
+ 	auto move_list = gen_qs_moves(sp.pos);
+ 	std::optional<libchess::Move> m;
+@@ -271,6 +276,21 @@ int qs(int alpha, const int beta, const int qsdepth, search_pars_t & sp)
+ 		if (sp.pos.is_legal_generated_move(move) == false)
+ 			continue;
+ 
++		// delta pruning: if even the stand-pat score plus the full
++		// value of the captured piece (plus a safety margin) cannot
++		// raise alpha, this capture cannot improve the score
++		if (!in_check && move.promotion_piece_type().has_value() == false) {
++			int captured_value = 100;  // en-passant captures a pawn
++			auto captured_pt   = sp.pos.piece_type_on(move.to_square());
++			if (captured_pt.has_value())
++				captured_value = piece_values[captured_pt.value().value()];
++
++			if (stand_pat + captured_value + delta_margin < alpha) {
++				sp.cs.data.n_delta_prune++;
++				continue;
++			}
++		}
++
+ 		n_played++;
+ 
+ 		auto undo_actions = make_move(sp.nnue_eval, sp.pos, move);
+diff --git a/app/src/stats.cpp b/app/src/stats.cpp
+index 0dde8ad..706bea9 100644
+--- a/app/src/stats.cpp
++++ b/app/src/stats.cpp
+@@ -58,5 +58,7 @@ void chess_stats::add(const chess_stats & source)
+ 	this->data.n_qmoves_cutoff += source.data.n_qmoves_cutoff;
+ 	this->data.nmc_qnodes      += source.data.nmc_qnodes;
+ 
++	this->data.n_delta_prune   += source.data.n_delta_prune;
++
+ 	this->data.large_stack     += source.data.large_stack;
+ }
+diff --git a/app/src/stats.h b/app/src/stats.h
+index 4e1f12c..8a01a1c 100644
+--- a/app/src/stats.h
++++ b/app/src/stats.h
+@@ -43,6 +43,8 @@ public:
+ 		uint64_t  n_qmoves_cutoff;
+ 		uint64_t  nmc_qnodes;
+ 
++		uint64_t  n_delta_prune;
++
+ 		uint64_t  syzygy_queries;
+ 		uint64_t  syzygy_query_hits;
+ 

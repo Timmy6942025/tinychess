@@ -23,6 +23,10 @@ void sort_movelist(libchess::MoveList & move_list, const sort_movelist_compare &
 
 bool is_insufficient_material_draw(const libchess::Position & pos);
 
+constexpr const int piece_values[6] = { 100, 320, 330, 500, 900, 20000 };  // P N B R Q K
+
+int see(const libchess::Position & pos, const libchess::Move & move);
+
 typedef enum { O_NONE, O_MINIMAL, O_FULL } output_type_t;
 std::tuple<libchess::Move, int, int> search_it(const int search_time_min, const int search_time_max, const bool is_absolute_time, search_pars_t *const sp, const int ultimate_max_depth, std::optional<uint64_t> max_n_nodes, const output_type_t output, const bool is_tui);
 

@@ -37,11 +37,13 @@ public:
 
 		uint32_t  n_static_eval;
 		uint32_t  n_static_eval_hit;
+		uint32_t  n_futility_prune;
 
 		uint64_t  n_moves_cutoff;
 		uint64_t  nmc_nodes;
 		uint64_t  n_qmoves_cutoff;
 		uint64_t  nmc_qnodes;
+
 
 		uint64_t  syzygy_queries;
 		uint64_t  syzygy_query_hits;

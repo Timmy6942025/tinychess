@@ -1,4 +1,7 @@
+#include <algorithm>
 #include <cinttypes>
+#include <cstdlib>
+#include <random>
 #include <thread>
 
 #include <libchess/Position.h>
@@ -22,6 +25,240 @@ int get_nnue_score(libchess::Position &pos)
 {
 	Eval e(pos);
 	return nnue_evaluate(&e, pos);
+}
+
+// Full-minimax Static Exchange Evaluation (ground truth): tries every legal
+// attacker at each step; used to validate the greedy see() in search.cpp.
+static int see_bf_rec(const libchess::Position & pos, const libchess::Bitboard occ, const libchess::Square to, const libchess::Color stm, const int captured, const int depth)
+{
+	using namespace libchess;
+	using namespace libchess::constants;
+
+	if (depth > 31)
+		return 0;
+
+	const Bitboard attackers = pos.attackers_to(to, occ) & occ;
+	const Bitboard mine      = attackers & pos.color_bb(stm);
+	if (!mine)
+		return 0;
+
+	int best = 0;  // stand pat
+	for (int p = PAWN.value(); p <= KING.value(); p++) {
+		Bitboard cand = mine & pos.piece_type_bb(PieceType{p});
+		while (cand) {
+			Square from = cand.forward_bitscan();
+			cand.forward_popbit();
+
+			if (p == KING.value()) {
+				const Bitboard after = occ ^ Bitboard(from);
+				if (pos.attackers_to(to, after) & pos.color_bb(!stm) & after)
+					continue;  // illegal: the king would move into check
+				best = std::max(best, captured);
+				continue;
+			}
+
+			const int continuation = see_bf_rec(pos, occ ^ Bitboard(from), to, !stm, piece_values[p], depth + 1);
+			best = std::max(best, captured - continuation);
+		}
+	}
+	return best;
+}
+
+static int see_bruteforce(const libchess::Position & pos, const libchess::Move & move)
+{
+	using namespace libchess;
+
+	if (pos.is_capture_move(move) == false && pos.piece_type_on(move.to_square()).has_value() == false) {
+		if (move.promotion_piece_type().has_value() == false)
+			return 0;
+		return piece_values[move.promotion_piece_type().value().value()] - piece_values[0];
+	}
+
+	int captured_value = 100;  // en-passant
+	auto captured_pt   = pos.piece_type_on(move.to_square());
+	if (captured_pt.has_value())
+		captured_value = piece_values[captured_pt.value().value()];
+
+	int moving_value = piece_values[pos.piece_type_on(move.from_square()).value().value()];
+	if (move.promotion_piece_type().has_value())
+		moving_value = piece_values[move.promotion_piece_type().value().value()];
+
+	Bitboard occ = pos.occupancy_bb() ^ Bitboard(move.from_square());
+	if (move.type() == libchess::Move::Type::ENPASSANT) {
+		const int ep_sq = move.to_square().value() + (pos.side_to_move() == libchess::constants::WHITE ? -8 : 8);
+		occ ^= Bitboard(libchess::Square{ ep_sq });
+	}
+	return captured_value - see_bf_rec(pos, occ, move.to_square(), !pos.side_to_move(), moving_value, 0);
+}
+
+void see_verify()
+{
+	using namespace libchess;
+	using namespace libchess::constants;
+
+	printf("SEE\n");
+	printf("  hand-checked values\n");
+	{
+		// free PxQ: the pawn survives, the queen is won
+		Position pos1 { "3k4/8/8/3q4/2P5/8/8/3K4 w - -" };
+		auto m1 = *Move::from("c4d5");
+		my_assert(see(pos1, m1) == 900);
+
+		// PxQ, defended by a rook that recaptures the pawn: +900-100
+		Position pos2 { "3k4/3r4/8/3q4/2P5/8/8/3K4 w - -" };
+		my_assert(see(pos2, *Move::from("c4d5")) == 800);
+
+		// PxQ, defended by a rook, refuted by a knight recapture: black
+		// would stand pat instead, so the queen is still won
+		Position pos3 { "3k4/3r4/1N6/3q4/2P5/8/8/3K4 w - -" };
+		my_assert(see(pos3, *Move::from("c4d5")) == 900);
+
+		// QxQ, defended by a pawn, pawn is recaptured: equal trade + pawn
+		Position pos4 { "3k4/8/2p5/3q4/4P3/1Q6/8/3K4 w - -" };
+		my_assert(see(pos4, *Move::from("b3d5")) == 100);
+
+		// x-ray: Rexe4, the rook on e8 recaptures, the queen on e1 was
+		// blocked by the rook on e2 and is only revealed by the x-ray scan
+		Position pos5 { "3kr3/8/8/8/4b3/8/4R3/3KQ3 w - -" };
+		my_assert(see(pos5, *Move::from("e2e4")) == 330);
+
+		// en-passant: d4xe3 wins the pawn on e4 for free
+		Position pos6 { "4k3/8/8/8/3pP3/8/8/4K3 b - e3" };
+		Move ep { Move::from("d4e3")->from_square(), Move::from("d4e3")->to_square(), Move::Type::ENPASSANT };
+		my_assert(see(pos6, ep) == 100);
+
+		// quiet promotion: d7d8=Q is +900-100
+		Position pos7 { "4k3/3P4/8/8/8/8/8/3K4 w - -" };
+		my_assert(see(pos7, *Move::from("d7d8q")) == 800);
+
+		// capture-promotion: d7xd8=Q wins the rook, the pawn promotes
+		Position pos8 { "3r3k/3P4/8/8/8/8/8/3K4 w - -" };
+		my_assert(see(pos8, *Move::from("d7d8q")) == 500);
+
+		// king capture: Kxd2 wins the rook (nothing covers d2)
+		Position pos9 { "8/8/8/8/8/8/3R1K2/4k3 b - -" };
+		my_assert(see(pos9, *Move::from("e1d2")) == 500);
+
+		// king capture covered by a bishop on h6: the exchange is suicidal
+		// (the committed king move is refuted by the bishop on d2)
+		Position pos10 { "8/8/7B/8/8/8/3R1K2/4k3 b - -" };
+		my_assert(see(pos10, *Move::from("e1d2")) == -19500);
+
+		// en-passant with a rook x-ray through the vacated pawn square:
+		// d5xe6 wins the pawn, Rxe6 is answered by Rxe6 (the rook on e1
+		// sees e6 through the square the captured pawn just vacated)
+		Position pos11 { "4r1k1/8/8/3Pp3/8/8/8/4R1K1 w - e6 0 1" };
+		Move ep11 { Move::from("d5e6")->from_square(), Move::from("d5e6")->to_square(), Move::Type::ENPASSANT };
+		my_assert(see(pos11, ep11) == 100);
+	}
+	printf("  ok\n");
+
+	printf("  brute-force cross-check\n");
+	{
+		const std::vector<std::string> fens {
+			"3k4/8/8/3q4/2P5/8/8/3K4 w - -",
+			"3k4/3r4/8/3q4/2P5/8/8/3K4 w - -",
+			"3k4/3r4/1N6/3q4/2P5/8/8/3K4 w - -",
+			"3k4/8/2p5/3q4/4P3/1Q6/8/3K4 w - -",
+			"3kr3/8/8/8/4b3/8/4R3/3KQ3 w - -",
+			"4k3/8/8/8/3pP3/8/8/4K3 b - e3",
+			"3r3k/3P4/8/8/8/8/8/3K4 w - -",
+			"3k4/8/8/8/4q3/8/R7/3K4 w - -",
+			"3k4/8/8/8/4q3/8/R7/3K4 b - -",
+			"8/8/8/8/8/8/3R1K2/4k3 b - -",
+			"8/8/7B/8/8/8/3R1K2/4k3 b - -",
+			"4r1k1/8/8/3Pp3/8/8/8/4R1K1 w - e6 0 1",
+			"r3k2r/1pp1qppp/p1np1n2/2b1p1B1/2B1P1b1/P1NP1N2/1PP1QPPP/R4RK1 w - -",
+			"1k1r4/pp1b1R2/3q2pp/4p3/2B5/4Q3/PPP2B2/2K5 b - -",
+		};
+
+		int n_checked = 0;
+		for (auto & fen : fens) {
+			Position pos { fen };
+			for (auto & move : pos.legal_move_list()) {
+				if (pos.is_capture_move(move) == false && move.promotion_piece_type().has_value() == false)
+					continue;
+				int got  = see(pos, move);
+				int want = see_bruteforce(pos, move);
+				if (got != want)
+					printf("    MISMATCH %s %s: see=%d brute=%d\n", fen.c_str(), move.to_str().c_str(), got, want);
+				my_assert(got == want);
+				n_checked++;
+			}
+		}
+		printf("  ok (%d moves cross-checked)\n", n_checked);
+	}
+
+	printf("  random positions\n");
+	{
+		std::mt19937 rng(0x5ee);
+		const std::string piece_chars = "PPPPPPPPNNBBRRQQKppppppppnnbbrrqqk";
+		int n_checked = 0;
+		int n_trials  = 0;
+		for (int trial = 0; trial < 400; trial++) {
+			bool wk = false, bk = false;
+			int  wk_sq = 0, bk_sq = 0;
+			std::vector<int>    squares;
+			std::vector<char>   pieces;
+			for (int i = 0; i < 24; i++) {
+				int sq = int(rng() & 63);
+				if (std::find(squares.begin(), squares.end(), sq) != squares.end())
+					continue;
+				char pc = piece_chars[rng() % piece_chars.size()];
+				if ((pc == 'P' || pc == 'p') && (sq / 8 == 0 || sq / 8 == 7))
+					continue;  // no pawns on the back ranks
+				if (pc == 'K') {
+					if (wk) continue;
+					wk = true; wk_sq = sq;
+				} else if (pc == 'k') {
+					if (bk) continue;
+					bk = true; bk_sq = sq;
+				}
+				squares.push_back(sq);
+				pieces.push_back(pc);
+			}
+			if (!wk || !bk)
+				continue;
+			if (std::abs(wk_sq / 8 - bk_sq / 8) <= 1 && std::abs(wk_sq % 8 - bk_sq % 8) <= 1)
+				continue;  // kings may not be adjacent
+
+			char board[64];
+			memset(board, '.', sizeof(board));
+			for (size_t i = 0; i < squares.size(); i++)
+				board[squares[i]] = pieces[i];
+
+			std::string fen;
+			for (int r = 7; r >= 0; r--) {  // FEN ranks 8..1
+				int empty = 0;
+				for (int f = 0; f < 8; f++) {
+					char pc = board[r * 8 + f];
+					if (pc == '.') { empty++; continue; }
+					if (empty) { fen += std::to_string(empty); empty = 0; }
+					fen += pc;
+				}
+				if (empty) fen += std::to_string(empty);
+				if (r) fen += '/';
+			}
+			fen += " " + std::string(rng() & 1 ? "w" : "b") + " - - 0 1";
+
+			Position pos { fen };
+			n_trials++;
+			if (pos.in_check())
+				continue;
+			for (auto & move : pos.legal_move_list()) {
+				if (pos.is_capture_move(move) == false && move.promotion_piece_type().has_value() == false)
+					continue;
+				int got  = see(pos, move);
+				int want = see_bruteforce(pos, move);
+				if (got != want)
+					printf("    MISMATCH %s %s: see=%d brute=%d\n", fen.c_str(), move.to_str().c_str(), got, want);
+				my_assert(got == want);
+				n_checked++;
+			}
+		}
+		printf("  ok (%d moves cross-checked over %d random positions)\n", n_checked, n_trials);
+	}
+	printf("OK\n");
 }
 
 uint64_t do_nnue_verify_perft(Eval *const nnue_eval, libchess::Position &pos, int depth, const int max_depth)
@@ -137,6 +374,8 @@ void tests()
 		my_assert(m1.type() == m2.type());
 		printf("OK\n");
 	}
+
+	see_verify();
 
 	{
 		printf("NNUE perft\n");
@@ -326,10 +565,15 @@ void tests()
 		// just set a record
 		{
 			tti.store(2, EXACT, 3, 4, *Move::from("e2e4"));
-			my_assert(tti.lookup(0).has_value() == false);
+			my_assert(tti.lookup(0).has_value() == true);   // the second, still-empty slot aliases hash 0
 			my_assert(tti.lookup(1).has_value() == false);
 			my_assert(tti.lookup(2).has_value() == true);
 			my_assert(tti.lookup(3).has_value() == false);
+
+			// fill the second slot too: hash-0 aliasing disappears
+			tti.store(3, LOWERBOUND, 2, 10, *Move::from("e2e5"));
+			my_assert(tti.lookup(0).has_value() == false);
+			my_assert(tti.lookup(3).has_value() == true);
 			auto record1 = tti.lookup(2);
 			my_assert(record1.has_value());
 			auto data1 = record1.value();

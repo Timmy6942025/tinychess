@@ -135,11 +135,14 @@ inline uint64_t fastrange64(uint64_t word, uint64_t p)
 
 std::optional<tt_entry> IRAM_ATTR tt::lookup(const uint64_t hash)
 {
-	uint64_t   index = fastrange(hash, n_entries);
-	tt_entry & cur   = entries[index];
+	uint64_t   index = fastrange(hash, n_entries / 2);
+	tt_entry & e0    = entries[index * 2];
+	tt_entry & e1    = entries[index * 2 + 1];
 
-	if (cur.hash == uint16_t(hash))
-		return cur;
+	if (e0.hash == uint16_t(hash))
+		return e0;
+	if (e1.hash == uint16_t(hash))
+		return e1;
 
 	return { };
 }
@@ -169,37 +172,65 @@ libchess::Move uint_to_libchessmove(const uint32_t v)
 	return libchess::Move{ from, to, type };
 }
 
+// pick the slot to evict: a matching hash is always reused, otherwise the
+// slot whose (depth - 4 * age) is lowest - i.e. the shallowest entry from
+// the oldest search - loses, so deep entries of the previous iterations
+// survive the churn of the current one
+static inline tt_entry * replace_slot(tt_entry *const slots, const uint16_t hash16, const uint8_t generation)
+{
+	for (uint32_t i = 0; i < 2; i++) {
+		if (slots[i].hash == hash16)
+			return &slots[i];
+	}
+
+	int      best_val = 1 << 30;
+	uint32_t best     = 0;
+	for (uint32_t i = 0; i < 2; i++) {
+		int rel_age = (generation - slots[i].age) & 3;
+		int val     = int(slots[i].depth) - 4 * rel_age;
+		if (val < best_val) {
+			best_val = val;
+			best     = i;
+		}
+	}
+	return &slots[best];
+}
+
 void tt::store(const uint64_t hash, const tt_entry_flag f, const int d, const int score, const libchess::Move & m)
 {
-	tt_entry n { };
-	n.score = int16_t(score);
-	n.depth = uint8_t(d);
-	n.flags = f;
-	n.M     = libchessmove_to_uint(m);
-	n.hash  = uint16_t(hash);
+	uint64_t   index = fastrange(hash, n_entries / 2);
+	tt_entry * slots = &entries[index * 2];
 
-	uint64_t index = fastrange(hash, n_entries);
-	entries[index] = n;
+	tt_entry *cur = replace_slot(slots, uint16_t(hash), generation);
+
+	cur->score = int16_t(score);
+	cur->depth = uint8_t(d);
+	cur->flags = f;
+	cur->M     = libchessmove_to_uint(m);
+	cur->hash  = uint16_t(hash);
+	cur->age   = generation;
 }
 
 void tt::store(const uint64_t hash, const tt_entry_flag f, const int d, const int score)
 {
-	uint64_t        index = fastrange(hash, n_entries);
-	tt_entry *const e     = &entries[index];
+	uint64_t   index = fastrange(hash, n_entries / 2);
+	tt_entry * slots = &entries[index * 2];
 
-	tt_entry n { };
+	tt_entry *cur = replace_slot(slots, uint16_t(hash), generation);
 
-	if (e->hash == uint16_t(hash)) {
-		tt_entry & cur = entries[index];
-		n.M = cur.M;
-	}
+	if (cur->hash != uint16_t(hash))
+		cur->M = 0;  // keep the move of an existing entry, clear it otherwise
 
-	n.score = int16_t(score);
-	n.depth = uint8_t(d);
-	n.flags = f;
-	n.hash  = uint16_t(hash);
+	cur->score = int16_t(score);
+	cur->depth = uint8_t(d);
+	cur->flags = f;
+	cur->hash  = uint16_t(hash);
+	cur->age   = generation;
+}
 
-	entries[index] = n;
+void tt::new_search()
+{
+	generation = (generation + 1) & 3;
 }
 
 int tt::get_per_mille_filled() const
