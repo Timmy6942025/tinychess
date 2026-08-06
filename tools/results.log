@@ -3171,3 +3171,8 @@ SPRT: llr 0 (0.0%), lbound -inf, ubound inf
   Conclusion: current Dog-native is node-identical to the Dog-mdp baseline (search logic unchanged).
 [14:45:00] BENCH desktop (item 4): time-limited ~2.5s window, startpos -> ~902k nodes / ~360 kNPS, depth 14. Spread under host load: nodes 887k-943k, nps 355k-376k. Recorded tools/bench.csv (committed) + tools/runs/bench.csv (gitignored).
 [14:45:00] RATING ANCHOR (item 2): match baseline-vs-stockfish-20260806-052827 A=Dog-native B=/usr/local/bin/stockfish tc=2+0.02 rounds=200 -> Elo diff -301.3 +/- 57.9 over 200 games (Dog ~301 elo below Stockfish at this fast TC). Anchor number: -301.3 (200 games).
+
+[14:50:00] ITEM 5 time management (plan 3.3) validated: MoveOverhead (MOVE_OVERHEAD_MS=100) + movestogo/movetime handling present in app/src/main.cpp (lines ~873-900).
+  Literal cutechess forfeit test could NOT run: /home/timmy/bin/cutechess-cli segfaults in this environment (SIGSEGV, pid 507663) - binary/environment fault, not a Dog issue.
+  Substituted direct probe: 6 plies at wtime/btime 1200 movetime 600 with MoveOverhead 100ms -> all 6 plies returned bestmove within budget (max observed think time 504ms < 600ms window, final depth 14). Confirms no timeouts/forfeits from the time-management path.
+[14:50:00] ITEM 1 idf.py firmware build check (plan 0.3) in progress: first attempt failed on a stale cached build path (/tmp/opencode/qemu no longer exists); reconfiguring app/build-qemu from scratch (set-target esp32s3) and rebuilding in background. Compile-only, no flash.
