@@ -25,7 +25,7 @@ class tt
 {
 private:
 	tt_entry *entries { nullptr };
-	uint8_t   generation { 0 };  // incremented per ID iteration; ages TT entries
+	uint8_t   generation { 1 };  // incremented per ID iteration; ages TT entries
 #if defined(ESP32)
 #define ESP32_TT_RAM_SIZE 98304
 #define ESP32_DEFAULT_TT_SIZE (4 * 1024l * 1024l)

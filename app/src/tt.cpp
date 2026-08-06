@@ -231,6 +231,8 @@ void tt::store(const uint64_t hash, const tt_entry_flag f, const int d, const in
 void tt::new_search()
 {
 	generation = (generation + 1) & 3;
+	if (generation == 0)
+		generation = 1;
 }
 
 int tt::get_per_mille_filled() const
