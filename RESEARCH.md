@@ -1,0 +1,116 @@
+# MaxDogOne — Research Companion (desktop / ESP32-S3)
+
+Companion to `BUILD_PLAN.md` (section numbers below reference that doc).
+Written from scratch per the board-free improvement plan, item 3 (plan 0).
+Engine: Dog fork, NNUE `HIDDEN_SIZE=256` desktop net, native Linux build used for all
+validation. All measured figures are from the native build produced by
+`cmake --build app/src/linux-windows/build --target Dog-native`.
+
+---
+
+## 1. NNUE speed profiling (S3 target implications)
+
+### Current engine shape (native, as of this research)
+| Component | Detail |
+|---|---|
+| Feature set | plain 768 (6 piece x 2 colour x 64 square), no king buckets |
+| Hidden size | 256 (`HIDDEN_SIZE`), int16 accumulator (big-net baseline) |
+| Output | 2 output heads (stm / not-stm), `output_bias`, `SCALE=400` |
+| Quantisation | QA=255, QB=64 (see `app/src/nnue.h`) |
+| Net blob | `weights_size = 394816` B, embedded in `weights.cpp` |
+| Update | incremental `add_feature` / `remove_feature` (2 x 256-row ops per add/remove) |
+| Full eval | `Eval::set()` walks both bitboards and adds all 2x32 features |
+
+### Measured bench (host, 2026-08-06)
+Time-limited ~2.5 s window, startpos. Recorded in `tools/bench.csv`:
+~902k nodes, ~360 kNPS (host load spread 355k-376k).
+
+### Where NNUE time goes (code audit)
+- `search()` calls `nnue_evaluate()` at: qsearch leaves, static-null /
+  reverse-futility probe, and the single-move case in `search_it()`.
+- The incremental accumulator path (`add_feature`/`remove_feature`) is scalar:
+  256 int16 adds per feature, ~2-4 features per move -> 512-1024 int16 adds
+  per make_move.
+- The output pass (`Network::evaluate`) is 2 x 256 MACs of int16xint16 with two
+  clamps, recomputed at every qsearch leaf and every static-eval probe. This
+  dominates eval cost at leaf nodes.
+
+### Bottleneck ranking (by expected gain)
+1. Output pass recomputed at every leaf - a leaf-cached eval would cut a large
+   fraction of output passes (biggest single eval-side win). *Attempted as
+   `evalcache` experiment: SPRT REJECT (llr -3.02). Reverted.*
+2. Int16 accumulator rows are 256 entries = 512 B - ideal width for the S3
+   PIE SIMD (16 x 128-bit lanes), but the scalar loop is 256 sequential
+   add/sub. Correct PIE kernels were dropped (commit `84e9a0e`); re-port is a
+   Phase-1.2 item (ESP32 only, off-limits on desktop validation).
+3. No king-relative features (plain 768) - moving to halfKP needs retraining.
+4. Feature update not fused (`make_move` does remove+add separately).
+
+### ESP32-S3 implications
+- 394 KB net fits 16 MB flash easily; PSRAM (8 MB) holds TT + net copy.
+- NPS scaling: host ~360 k at ~3 GHz -> S3 at 240 MHz dual-core lands near the
+  "2300-2600 CCRL-class" band from BUILD_PLAN section 0.
+
+---
+
+## 2. Net candidates table (BUILD_PLAN section 2)
+
+Published nets considered (no training on this machine):
+
+| Net candidate | Size | Arch | Self-claim | Use case |
+|---|---|---|---|---|
+| Dog `quantised-ESP32.bin` | 197 KB | 768 -> 128 -> 1 (2-layer) | shipped, 2866 desktop | default (128-wide) |
+| Dog `quantised-big.bin` | 395 KB | 768 -> 256 -> 1 | ACCEPT +25 elo vs 128-wide | **current desktop net** |
+| RukChess `net-*.nnue` | 1.5 MB | 768 -> 512 -> 1 | CCRL 3342 (with engine) | max-Elo experiment, **needs arch match** |
+| Official SF `nn-37f18f62d772` | 3.5 MB | HalfKAv2 128 | - | not for esp (v2 features) |
+| minifish | <64 KB | 768-narrow | tournament fun | speed experiment |
+
+**Decision (validated):** the 256-wide Dog big net is the active net
+(commit `23a02e1`, SPRT `ab-bignet-20260805-000637` ACCEPT +25 elo,
+`ab-bignet2-20260805-012247` ACCEPT again). RukChess is NOT ported (see section 3).
+
+---
+
+## 3. Net pipeline plan - RukChess converter path (plan 2, M4)
+
+RukChess ships 768->512->1 floats with a 4 B magic + 8 B hash header. Dog's
+loader hard-codes `HIDDEN_SIZE`, plain-768 indexing, and int16 quantisation
+(QA=255, QB=64), and ignores the `.nnue` arch/hash checksum. Therefore a
+converter must:
+1. Read RukChess magic+hash+float arrays and emit Dog's exact `weights.cpp`
+   binary layout with matching QA/QB scaling.
+2. Make `HIDDEN_SIZE` a runtime value in `nnue.cpp` (the only hard part).
+3. Retrain or rank-project (cannot truncate 512->256 without destroying eval).
+
+**Recommendation (per RESEARCH review):** do NOT port RukChess. Value is a
+marginally stronger net we cannot evaluate without a physical board, at the
+cost of a loader rewrite and ~4x eval cost. The realistic Elo-per-effort winner
+is training a 256-wide net in the current architecture (reuse `gen-train-data.py`
++ a small PyTorch trainer mirroring `Network::evaluate`). **Status: deferred /
+blocked - see item 8 in the task log; documented here as the open long-pole.**
+
+---
+
+## 4. Memory map (BUILD_PLAN section 1.5)
+
+Final intended shape for the S3:
+
+| Region | Contents |
+|---|---|
+| SRAM | search stack, eval accumulators (thread-local), TT probe code, hash, counters |
+| PSRAM 8 MB | TT buffers (up to 6 MB), network weights copy, large move-score arrays |
+| Flash 16 MB | app (code + const), base net + alternate nets, opening book (small), log |
+
+On the desktop validation host the net is embedded in the binary
+(`weights.cpp`); PSRAM/SRAM split is S3-only and out of scope for desktop
+board-free work.
+
+---
+
+## Open questions / next actions
+1. Leaf eval caching (free Elo at fixed nodes) - attempted (`evalcache`),
+   REJECTED; needs a correct caching scheme before retry.
+2. Re-derive correct PIE SIMD accumulator kernels (bit-exact) - S3 only.
+3. Decide trainer vs RukChess port for the 512-wide experiment (item 8).
+4. LMR / static-null / razor / funnel calibration carried via SPRT
+   (items 6-7); see `tools/results.log` for verdicts.

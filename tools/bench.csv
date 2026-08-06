@@ -1,0 +1,2 @@
+date,git_rev,binary,bench_nodes,bench_time_ms,bench_nps,depth_reached,note
+2026-08-06,csvn_pt64-37-g7f03b04_main,Dog-native (HEAD = commit 513c133 code, node-identical to tools/runs/bin/Dog-mdp),902219,2503,360418,14,"Desktop bench (time-limited ~2.5s window). Node count varies 887k-943k run-to-run under host load; NPS spread 355k-376k. Deterministic search verified node-identical to Dog-mdp baseline (startpos + 2 FENs, depth 10/12)."
