@@ -114,6 +114,9 @@ uint64_t tt::get_n() const
 
 void tt::reset()
 {
+	if (entries == nullptr)
+		return;
+
 	memset(entries, 0x00, sizeof(tt_entry) * n_entries);
 }
 
@@ -135,6 +138,9 @@ inline uint64_t fastrange64(uint64_t word, uint64_t p)
 
 std::optional<tt_entry> IRAM_ATTR tt::lookup(const uint64_t hash)
 {
+	if (entries == nullptr)
+		return { };
+
 	uint64_t   index = fastrange(hash, n_entries / 2);
 	tt_entry & e0    = entries[index * 2];
 	tt_entry & e1    = entries[index * 2 + 1];
@@ -198,6 +204,9 @@ static inline tt_entry * replace_slot(tt_entry *const slots, const uint16_t hash
 
 void tt::store(const uint64_t hash, const tt_entry_flag f, const int d, const int score, const libchess::Move & m)
 {
+	if (entries == nullptr)
+		return;
+
 	uint64_t   index = fastrange(hash, n_entries / 2);
 	tt_entry * slots = &entries[index * 2];
 
@@ -213,6 +222,9 @@ void tt::store(const uint64_t hash, const tt_entry_flag f, const int d, const in
 
 void tt::store(const uint64_t hash, const tt_entry_flag f, const int d, const int score)
 {
+	if (entries == nullptr)
+		return;
+
 	uint64_t   index = fastrange(hash, n_entries / 2);
 	tt_entry * slots = &entries[index * 2];
 
@@ -238,7 +250,8 @@ void tt::new_search()
 int tt::get_per_mille_filled() const
 {
 	int count = 0;
-	for(int i=0; i<1000; i++)
+	const int n = std::min(1000, int(n_entries));
+	for(int i=0; i<n; i++)
 		count += entries[i].hash != 0;
 	return count;
 }
