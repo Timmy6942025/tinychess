@@ -23,7 +23,7 @@ commit that changes it.
    CONC=2 TC=5+0.05 SPRT_MAX=1500 setsid nohup bash tools/fast_sprt.sh ab <tag> \
        tools/runs/bin/<A-binary> tools/runs/bin/<B-binary> > /tmp/opencode/<tag>.out 2>&1 &
 5. Gate before any SPRT: tools/native_check.sh must pass all unit tests
-   (currently 12 test groups, 0 failures). Build must show 0 errors:
+   (17 test groups, 0 failures). Build must show 0 errors:
    `cmake --build app/src/linux-windows/build --target Dog-native -j4 2>&1 | grep -cE " error"`.
    Optional extra: `python3 tools/epd_test.py --engine <bin> --suite tools/suites/wacnew.epd --time 1000`
    (reference 260/299).

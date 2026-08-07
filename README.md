@@ -17,8 +17,12 @@ it is kept.
 - **SPRT harness** — `tools/fast_sprt.sh` (cutechess-cli, elo0/elo1 = 0/20,
   bounds ±2.944, cap 1500 games, 5+0.05). Every verdict is appended to
   `tools/results.log` with a run tag; experiments are reproducible via
-  `tools/patches/`. Current reference binary: `tools/runs/bin/Dog-v2-bignet`
-  (md5 `194ee46e69dd3a8f14478de206a78503`).
+  `tools/patches/`. The 8-item board-free plan is closed: item 6 LMR table
+  recalibration ACCEPT (+34.6, `ab-lmr065`), item 7 calibration variants and
+  item 8 RukChess port REJECTed (verdicts in `tools/results.log`). Current
+  reference binary: `tools/runs/bin/Dog-lmr065`
+  (md5 `93b244eecd33079ba000545ed0ed57f4`); final rating anchor vs Stockfish 17
+  @ 2+0.02 (200 games): **-56.1 +/- 43.4**.
 - **Hardware targets** — XIAO ESP32-S3 Plus (WS2812 LED on GPIO44, PSRAM TT up
   to 6 MB, configurable via `app/src/Kconfig`).
 

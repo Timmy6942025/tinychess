@@ -21,22 +21,12 @@ the board is "hardware-ready".
 | CPU | 2× LX7 @ 240 MHz | — | `CONFIG_IDF_TARGET_ESP32S3=y` |
 | SIMD | 128-bit PIE (16×int8) | hand-written kernels | not used (scalar NNUE since `84e9a0e`) |
 
-### The flash-size mismatch (must fix before shipping)
+### The flash-size mismatch (RESOLVED 2026-08-06, item 1 of the board-free plan)
 
-`sdkconfig` declares **8 MB** flash but the XIAO ESP32-S3 **Plus** ships
-**16 MB**. Consequences today:
-
-- `partitions.csv` reserves only `0x300000` (3 MB) for `app0` and leaves a
-  5 MB `spiffs` region that nothing needs — we are wasting ~8 MB.
-- The 197 440 B net + book + future alternate nets fit either way, so nothing
-  is *broken*, but we are not using the board's real budget.
-
-**Fix (Phase 1.1, trivial):**
-```
-CONFIG_ESPTOOLPY_FLASHSIZE=16MB
-CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
-```
-and optionally shrink `spiffs` (5 MB → 1 MB) and give `app0` the rest.
+`app/sdkconfig` now declares `CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y` and
+`app/partitions.csv` was reworked (app0 enlarged, spiffs shrunk) so the full
+16 MB of the XIAO ESP32-S3 **Plus** is used; the idf esp32s3 firmware build
+passes (`idf.py build` RC=0, commit 0ba9828).
 
 ---
 
@@ -44,7 +34,7 @@ and optionally shrink `spiffs` (5 MB → 1 MB) and give `app0` the rest.
 
 | Region | Contents | Size | Location |
 |---|---|---|---|
-| Flash (const) | `weights.cpp` net blob (197 440 B), opening book `dog-book.bin`, code | ~? | flash (read via cache) |
+| Flash (const) | `weights.cpp` net blob (394 816 B big net active via `#else`; 197 440 B small net dead behind `#if 0`), opening book `dog-book.bin`, code | ~? | flash (read via cache) |
 | SRAM | per-thread `search_pars_t` (history 1536 B + killers 1024 B + Move arrays + nnue eval accumulators), TT probe code, input buffers | small (KBs) | internal |
 | PSRAM | TT entries (up to **6 MB** when present) | `tt::allocate()` | `heap_caps_malloc(MALLOC_CAP_SPIRAM)` |
 | SRAM fallback | TT entries when PSRAM missing/broken | `ESP32_TT_RAM_SIZE = 98304` (96 KB) | `tt.h:28` |

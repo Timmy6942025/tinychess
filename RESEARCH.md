@@ -131,5 +131,9 @@ board-free work.
    futility 220+180d failed the unit-test gate. Margins unchanged.
    Final-binary anchor vs Stockfish 17 @ 2+0.02, 200 fixed games: -56.1 +/- 43.4
    (63-95-42). Every verdict + match fingerprint in `tools/results.log`.
+   Post-plan: LMR deeper x1.15 and LMP both FAILED the unit-test gate
+   (mate-in-N two-rook sweep ~3150 vs 32000 needed @ d19) and were reverted -
+   the accepted LMR table sits at the aggressive limit; tt.cpp got defensive
+   null-ptr/per-mille guards (331e438).
 5. Plan phases 0.4/1.x (serial smoke, PSRAM TT, SIMD NNUE, flash net swap,
    threading) are hardware-only - not part of the board-free scope.
