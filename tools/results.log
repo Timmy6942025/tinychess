@@ -3463,3 +3463,24 @@ SPRT: llr 2.2 (100.1%), lbound -2.2, ubound 2.2 - H1 was accepted
 [01:41:48] VERDICT ab-lmr065-20260807-011931: ACCEPT: H1 (A stronger than B) - llr 2.2 >= 2.2
 
 [01:44:30] ITEM 1 idf.py firmware build check (plan 0.3) DONE: app/build full build RC=0 for esp32s3 with current source; configs fixed: CXX_EXCEPTIONS=y (UCIService throw), FREERTOS_USE_TRACE_FACILITY=y (uxTaskGetSystemState), FLASHSIZE_16MB + custom partition table w/ spiffs (main/CMakeLists spiffs_create_partition_image). Compile-only, no flash.
+
+[01:48:20] ITEM 5 time management (plan 3.3) VALIDATED with real cutechess forfeit test: MOVE_OVERHEAD_MS deduction + wtime/btime/winc/binc/movestogo/movetime mapping in app/src/main.cpp go_handler. 8 games Dog-vs-Dog tc=0.5+0.05 (50ms inc, tightest practical) via cutechess-cli (proto=uci set; earlier 'Missing chess protocol' was a harness flag omission): 1-1-6, ZERO timeouts/forfeits, all bestmoves within clock.
+[02:53:02] FINGERPRINT A=tools/runs/bin/Dog-ruk f8dfc2b8f904438abf95c73cd7aa5441  B=tools/runs/bin/Dog-baseline-new 93b244eecd33079ba000545ed0ed57f4
+Score of A vs B: 47 - 60 - 108  [0.470] 215
+Elo difference: -21.0 +/- 32.8, LOS: 10.4 %, DrawRatio: 50.2 %
+SPRT: llr -2.23 (-101.4%), lbound -2.2, ubound 2.2 - H0 was accepted
+VERDICT [ab-sn100-20260807-015749]: REJECT: H0 (no improvement) - llr -2.23 <= -2.2
+Score of A vs B: 14 - 29 - 48  [0.418] 91
+Elo difference: -57.8 +/- 49.3, LOS: 1.1 %, DrawRatio: 52.7 %
+SPRT: llr -2.23 (-101.3%), lbound -2.2, ubound 2.2 - H0 was accepted
+VERDICT [ab-fut110-20260807-022422]: REJECT: H0 (no improvement) - llr -2.23 <= -2.2
+Score of A vs B: 0 - 31 - 0  [0.000] 31
+Elo difference: -inf +/- nan, LOS: 0.0 %, DrawRatio: 0.0 %
+SPRT: llr -2.22 (-101.0%), lbound -2.2, ubound 2.2 - H0 was accepted
+VERDICT [ab-ruk512-20260807-024334]: REJECT: H0 (no improvement) - llr -2.22 <= -2.2
+
+[02:54:43] ITEM 7 static-null/razor/futility calibration (plan 3.4) COMPLETE: 3 variants tried, 0 ACCEPT -> current margins stay.
+  v1 static-null (reverse-futility) margin 121->100: ab-sn100-20260807-015749 REJECT llr -2.23 (47-60-108, 215g, elo -21.0+/-32.8) -> reverted.
+  v2 futility margin 180+150d -> 150+110d: ab-fut110-20260807-022422 REJECT llr -2.23 (14-29-48, 91g, elo -57.8+/-49.3) -> reverted.
+  v3 futility margin 220+180d (conservative): FAILED unit-test gate (mate-in-N depth-19 R+R vs K not mated; assert test.cpp:917) -> no SPRT, reverted. (No razor exists in Dog's search; funnel == futility, covered.)
+  Only the calibrated LMR table (item 6) contributed this pass (ACCEPT, +34.6 elo).
