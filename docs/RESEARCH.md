@@ -1,3 +1,6 @@
+> **SUPERSEDED (2026-08-07):** This file predates the 256-net rework.
+> The current research companion lives at the repo root: `RESEARCH.md`.
+
 # MaxDogOne — NNUE / Eval Research
 
 Companion to `BUILD_PLAN.md`. This document records what was investigated and
