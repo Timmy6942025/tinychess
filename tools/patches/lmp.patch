@@ -1,0 +1,65 @@
+diff --git a/app/src/search.cpp b/app/src/search.cpp
+index ce4ed3f..827c3c5 100644
+--- a/app/src/search.cpp
++++ b/app/src/search.cpp
+@@ -589,6 +589,7 @@ int search(int depth, int alpha, const int beta, const int null_move_depth, cons
+ 		smc.add_first_move(*m);
+ 
+ 	int     n_played   = 0;
++	int     quiet_played = 0;
+ 	int     lmr_start  = !in_check && depth >= 2 ? 4 : 999;
+ 
+ 	// generate list of scores
+@@ -632,6 +633,18 @@ int search(int depth, int alpha, const int beta, const int null_move_depth, cons
+ 			continue;
+ 		}
+ 
++		const bool is_quiet = !sp.pos.is_capture_move(move) && !sp.pos.is_promotion_move(move);
++
++		// late move pruning (LMP): at shallow depth, late quiet moves cannot
++		// realistically improve alpha (never in check/PV, never the TT move;
++		// the best-ranked first move is exempt since quiet_played starts at 0)
++		if (is_quiet && depth <= 3 && !is_pv && !in_check
++			&& quiet_played > 2 + depth * depth
++			&& !(tt_move.has_value() && move == tt_move.value())) {
++			sp.cs.data.n_lmp++;
++			continue;
++		}
++
+ 		sp.cur_move = move.value();
+ 
+                 bool is_lmr = false;
+@@ -668,6 +681,9 @@ int search(int depth, int alpha, const int beta, const int null_move_depth, cons
+ 		}
+ 		unmake_move(sp.nnue_eval, sp.pos, undo_actions);
+ 
++		if (is_quiet)
++			quiet_played++;
++
+ 		n_played++;
+ 
+ 		if (score > best_score) {
+diff --git a/app/src/stats.cpp b/app/src/stats.cpp
+index cf29c27..54d28bf 100644
+--- a/app/src/stats.cpp
++++ b/app/src/stats.cpp
+@@ -53,6 +53,7 @@ void chess_stats::add(const chess_stats & source)
+ 	this->data.n_static_eval     += source.data.n_static_eval;
+ 	this->data.n_static_eval_hit += source.data.n_static_eval_hit;
+ 	this->data.n_futility_prune  += source.data.n_futility_prune;
++	this->data.n_lmp             += source.data.n_lmp;
+ 
+ 	this->data.n_moves_cutoff  += source.data.n_moves_cutoff;
+ 	this->data.nmc_nodes       += source.data.nmc_nodes;
+diff --git a/app/src/stats.h b/app/src/stats.h
+index 0e7175d..d235f0d 100644
+--- a/app/src/stats.h
++++ b/app/src/stats.h
+@@ -38,6 +38,7 @@ public:
+ 		uint32_t  n_static_eval;
+ 		uint32_t  n_static_eval_hit;
+ 		uint32_t  n_futility_prune;
++		uint32_t  n_lmp;
+ 
+ 		uint64_t  n_moves_cutoff;
+ 		uint64_t  nmc_nodes;

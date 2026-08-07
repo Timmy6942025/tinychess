@@ -3,6 +3,9 @@
 Auto-worker handoff. A cron job (every 10 min) spawns a headless `opencode run`
 when no SPRT match is running. Follow this file exactly. Repo:
 /home/timmy/chess2/engine (run every command from the repo root).
+Authoritative state: `tools/results.log` (verdicts + binary fingerprints) and
+`git log`. This file's "Current state" section must be refreshed after every
+commit that changes it.
 
 ## Hard rules
 1. One SPRT at a time. In fast_sprt.sh the convention is A=CHANGE build, B=base
@@ -19,80 +22,104 @@ when no SPRT match is running. Follow this file exactly. Repo:
    otherwise):
    CONC=2 TC=5+0.05 SPRT_MAX=1500 setsid nohup bash tools/fast_sprt.sh ab <tag> \
        tools/runs/bin/<A-binary> tools/runs/bin/<B-binary> > /tmp/opencode/<tag>.out 2>&1 &
-5. Gate before any SPRT: tools/native_check.sh must pass 12/12 unit tests.
+5. Gate before any SPRT: tools/native_check.sh must pass all unit tests
+   (currently 12 test groups, 0 failures). Build must show 0 errors:
+   `cmake --build app/src/linux-windows/build --target Dog-native -j4 2>&1 | grep -cE " error"`.
+   Optional extra: `python3 tools/epd_test.py --engine <bin> --suite tools/suites/wacnew.epd --time 1000`
+   (reference 260/299).
 6. Bench NPS is meaningless while any match runs (CPU contention).
 7. If the git state or artifacts deviate from what this file documents, STOP:
    write a short report to /tmp/opencode/pipeline.state and append a
    "PIPELINE STOP <tag> <reason>" line to tools/results.log. Do not guess.
    (Headless: you cannot ask the user questions.)
 8. Only commit search/eval changes on main after SPRT ACCEPT. Work-in-progress
-   changes live as patches in tools/patches/ until accepted.
+   changes live as patches in tools/patches/ until accepted. The unit-test
+   gate is mandatory: variants that fail the mate-in-N sweep (two-rook ladder
+   `6k1/8/8/8/8/8/8/R3R1K1` at depth 19 must score >= max_non_mate) are
+   rejected BEFORE any SPRT - the accepted LMR table sits at the aggressive
+   limit, and LMR x1.15, futility 220+180d, and LMP have all died on exactly
+   that test.
 
-## Current state (2026-08-04 ~20:00)
-- RUNNING match: ab-hist3d-20260804-193506
-  A=tools/runs/bin/Dog-diff      md5 ca8a94ba3c70975d66270962a1494a87  (3D from-square history)
-  B=tools/runs/bin/Dog-baseline  md5 1090d5e073c52dd034e7c3313582b524
-  Live log: /tmp/opencode/hist3d-sprt.out, tools/runs/ab-hist3d-20260804-193506.txt
-- Patches (apply to a clean tree, verified to apply in either order):
-  tools/patches/hist3d.patch   - 3D from-square history: main.h history_size
-                                 = 2*6*64*64; search.cpp history_index takes
-                                 (side, from_type, from_sq, to_sq)
-  tools/patches/checkext.patch - check extensions with a per-line extension
-                                 budget (max 2): new `extensions` param on
-                                 search(); gives_check re-search at depth,
-                                 LMR skipped for checking moves
-- Working tree: clean (tools/results.log showing modified is NORMAL - it is
-  the live log; untracked files under tools/runs/ are NORMAL).
+## Current state (2026-08-07, HEAD 331e438 - in sync with origin/main)
+- 8-item board-free plan: ALL CLOSED. Verdicts:
+  item1 idf esp32s3 build RC=0 | item2 rating anchor -56.1 +/- 43.4 @2+0.02 (200g,
+  63-95-42 vs Stockfish 17) | item3 RESEARCH.md | item4 tools/bench.csv |
+  item5 time-management (MOVE_OVERHEAD_MS 100, forfeit-free, cutechess-validated) |
+  item6 LMR table recalibrated mul 0.65 ACCEPT (+34.6, ab-lmr065) |
+  item7 static-null/razor/futility calibration ALL REJECT |
+  item8 RukChess 768->512->1 converter + gated Dog-ruk target REJECT (ab-ruk512,
+  llr -2.22) - keep gated, do not retry without a real RukChess net
+- Current best binary: tools/runs/bin/Dog-lmr065 = Dog-baseline-new
+  md5 93b244eecd33079ba000545ed0ed57f4 (node-identical to Dog-native
+  md5 b78c20ca66e79b8b8fcdf6f270101ac5 on 3 positions @ depth 10)
+- Working tree: clean; committed + pushed to origin/main (46 ahead of upstream)
+- No match running.
+- Patches on disk (rejected WIP, recoverable):
+  tools/patches/lmp.patch - LMP (quiet_played > 2+depth*depth @ depth<=3, non-PV,
+  non-check, non-TT): FAILED unit-test gate (mate-in-N 3143 vs 32000 @ d19).
+  No SPRT attempted. Same failure mode as LMR x1.15 and futility-220.
 
 ## Decision tree (evaluate top-down each run)
 A. cutechess-cli process running? -> nothing to do. Exit.
-B. The newest tools/runs/ab-*.txt has a VERDICT line in tools/results.log?
+B. A NEW experiment tag exists in tools/patches/ or a WIP diff in the working
+   tree? -> Gate it first (rule 5). If it fails the unit-test gate, log
+   "GATE FAIL <tag>: <reason>" in tools/results.log, move its patch to
+   tools/patches/<tag>.patch, restore the tree to HEAD, and exit. Do NOT
+   SPRT a gate-failing variant.
+C. Gate passed -> build the change binary, copy to tools/runs/bin/Dog-<tag>,
+   build the base (currently tools/runs/bin/Dog-lmr065), then launch:
+   CONC=2 TC=5+0.05 SPRT_MAX=1500 setsid nohup bash tools/fast_sprt.sh ab <tag> \
+       tools/runs/bin/Dog-<tag> tools/runs/bin/Dog-lmr065 \
+       > /tmp/opencode/<tag>-sprt.out 2>&1 &
+   Verify: ps aux | grep cutechess-cli ; tail /tmp/opencode/<tag>-sprt.out
+D. The newest tools/runs/ab-*.txt has a VERDICT line in tools/results.log?
    -> go to "Verdict flow" for that tag.
-C. Otherwise (match died): first kill any orphaned Dog-* engine processes
+E. Otherwise (match died): first kill any orphaned Dog-* engine processes
    (they spin at ~60% CPU after cutechess dies). Reconstruct the pairing from
    the run txt header ("$a vs $b") and the FINGERPRINT line in results.log,
    then relaunch the same pair under a fresh tag: ab-<feature>-<timestamp>.
    If the same feature has died three times, STOP and report instead.
 
-## Verdict flow for ab-hist3d-* (feature "hist3d", A=Dog-diff)
+## Verdict flow
 1. Read the verdict from tools/results.log:
-   ACCEPT / KEEP (llr>0) -> KEEP 3D history
-   REJECT / REVERT      -> DROP 3D history
-2. KEEP path:
-   git apply tools/patches/hist3d.patch
-   git add app/src/main.h app/src/search.cpp
-   git commit -m "search: 3D from-square history heuristic (SPRT ACCEPT ab-hist3d-...)"
-3. DROP path: nothing to apply.
-4. Apply the checkext experiment and gate it:
-   git apply tools/patches/checkext.patch
-   tools/native_check.sh        # must pass 12/12
-   cp app/src/linux-windows/build/Dog-native tools/runs/bin/Dog-checkext
-5. Build the base for the checkext SPRT:
-   - hist3d KEPT: base must be baseline+hist3d:
-       git checkout -- app/src/search.cpp        # drop checkext only
-       tools/native_check.sh                     # rebuild
-       cp app/src/linux-windows/build/Dog-native tools/runs/bin/Dog-hist3d-base
-       git apply tools/patches/checkext.patch    # restore checkext in the tree
-   - hist3d DROPPED: base is tools/runs/bin/Dog-baseline (already correct).
-6. Launch (A=change, B=base):
-   CONC=2 TC=5+0.05 SPRT_MAX=1500 setsid nohup bash tools/fast_sprt.sh ab checkext \
-       tools/runs/bin/Dog-checkext tools/runs/bin/Dog-hist3d-base \
-       > /tmp/opencode/checkext-sprt.out 2>&1 &
-   (use tools/runs/bin/Dog-baseline instead of Dog-hist3d-base if hist3d dropped)
-   Verify: ps aux | grep cutechess ; tail /tmp/opencode/checkext-sprt.out
-7. Update this file: new state paragraph (running match, tag, md5s of both
-   binaries), and append a line to History.
+   ACCEPT / KEEP (llr>0) -> KEEP the change
+   REJECT / REVERT      -> DROP the change
+2. KEEP path: the change must already be committed (or commit it now with a
+   message "search: <feature> (SPRT ACCEPT ab-<tag>-...)").
+3. DROP path: ensure the working tree matches HEAD (git restore any stray
+   files), no patch file needed unless the experiment may be revisited - in
+   that case save the WIP diff to tools/patches/<feature>.patch FIRST.
+4. Update this file: new state paragraph (HEAD, running match + tag + md5s,
+   or idle), and append one line to History.
+5. Commit + push docs/log updates to origin/main.
 
-## When the checkext match also concludes
-Same flow. KEEP -> commit the tree as it stands (it contains hist3d+checkext
-if hist3d was kept, else checkext alone):
-   git add app/src/search.cpp app/src/main.h
-   git commit -m "search: check extensions with per-line budget (SPRT ACCEPT ab-checkext-...)"
-Then pick the next experiment from RESEARCH.md (next candidates: NNUE leaf eval
-caching; LMR table retune). For each: implement it, save the WIP diff to
-tools/patches/<feature>.patch BEFORE any stashing, gate with native_check.sh,
-build tools/runs/bin/Dog-<feature>, SPRT it vs the current baseline build, and
-never touch the running match's binaries.
+## Next experiment candidates (from RESEARCH.md "Open questions")
+1. Leaf eval caching - evalcache REJECTED twice; needs a correct caching
+   scheme before retry. High effort.
+2. RukChess 512-net port - done (item 8), REJECTED on desktop; blocked on a
+   real RukChess net. Do not retry as-is.
+3. LMR/futility/LMP calibration - exhausted; all aggressive-limit variants
+   fail the mate-in-N gate. Do not retry without a different mechanism.
+4. Hardware-only work (PSRAM TT, SIMD NNUE, flash net swap, threading,
+   serial smoke) - S3 board required, out of board-free scope (plan phases
+   0.4/1.x).
 
 ## History
 (append one line per completed experiment: tag | verdict | commit)
+- killer-moves | REJECT (llr -3.08) | - (baseline only)
+- bignet | ACCEPT (llr 3.04) | commit 9aea532-era tree (256-hidden net)
+- bignet2 | ACCEPT (llr 3.05) | - (eval net finalised)
+- evalcache | REJECT (llr -2.26) | 513c133 (reverted)
+- agingfix | REJECT (llr -2.26) | 513c133 (generation cycle reverted)
+- delta-prune | REJECT (llr -3.01) | -
+- futility (150+110d) | REJECT (llr -2.23) | ee21454
+- futility (220+180d) | GATE FAIL (mate-in-N) | never SPRTed
+- ttaging | ACCEPT (llr 2.95) | 56d30e5
+- mdp | ACCEPT (llr 2.22) | 56d30e5
+- SEE+QS ordering | ACCEPT (no standalone SPRT; part of 56d30e5) | 56d30e5
+- lmr065 (table mul 0.65) | ACCEPT (llr 2.2, +34.6) | e2dda8e
+- static-null 121->100 | REJECT (llr -2.23) | ee21454
+- ruk512 (RukChess 768->512->1) | REJECT (llr -2.22) | 42d99a3
+- LMR x1.15 | GATE FAIL (mate-in-N) | never SPRTed
+- LMP | GATE FAIL (mate-in-N) | never SPRTed; patch tools/patches/lmp.patch
+- bug-hunt tt guards | defensive only (no SPRT) | 331e438
