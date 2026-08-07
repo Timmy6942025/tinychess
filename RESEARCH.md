@@ -115,10 +115,21 @@ board-free work.
 
 ---
 
-## Open questions / next actions
+## Open questions / next steps
+
 1. Leaf eval caching (free Elo at fixed nodes) - attempted (`evalcache`),
    REJECTED; needs a correct caching scheme before retry.
-2. Re-derive correct PIE SIMD accumulator kernels (bit-exact) - S3 only.
-3. Decide trainer vs RukChess port for the 512-wide experiment (item 8).
-4. LMR / static-null / razor / funnel calibration carried via SPRT
-   (items 6-7); see `tools/results.log` for verdicts.
+2. Re-derive correct PIE SIMD accumulator kernels (bit-exact) - S3 only,
+   needs hardware.
+3. RukChess 512-net port (item 8) - DONE as a gated `Dog-ruk` target
+   (`tools/net_convert.py` + `app/src/nnue-ruk.cpp`); desktop SPRT
+   `ab-ruk512-20260807-024334` REJECT (llr -2.22, 0-31-0 @31g, elo -inf) so the
+   default stays Dog's own 256-net.
+4. Calibration verdicts, 8-item board-free pass (2026-08-06/07): LMR table
+   ACCEPT (+34.6 +/- 29.4 elo, llr 2.2, 262g); static-null 121->100 REJECT
+   (llr -2.23); futility 180+150d -> 150+110d REJECT (llr -2.23);
+   futility 220+180d failed the unit-test gate. Margins unchanged.
+   Final-binary anchor vs Stockfish 17 @ 2+0.02, 200 fixed games: -56.1 +/- 43.4
+   (63-95-42). Every verdict + match fingerprint in `tools/results.log`.
+5. Plan phases 0.4/1.x (serial smoke, PSRAM TT, SIMD NNUE, flash net swap,
+   threading) are hardware-only - not part of the board-free scope.
