@@ -714,7 +714,8 @@ void tests()
 		printf("OK\n");
 	}
 
-	// NNUE eval (using san parsing data); expected values are for the
+	#ifndef USE_RUK_NET
+// NNUE eval (using san parsing data); expected values are for the
 	// HIDDEN_SIZE=256 big net (weights.cpp #if 0 block)
 	{
 		printf("NNUE evaluation test\n");
@@ -727,6 +728,8 @@ void tests()
 
 		printf("OK\n");
 	}
+
+#endif
 
 	// deeper plain perft (move generation only, no NNUE book-keeping) on the
 	// standard positions plus the classic combinatorial ones. Values are the

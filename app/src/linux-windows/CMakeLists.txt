@@ -119,7 +119,6 @@ set(APP_SOURCES
   ../main.cpp
   ../max.cpp
   ../max-ascii.cpp
-  ../nnue.cpp
   ../san.cpp
   ../search.cpp
   ../state_exporter.cpp
@@ -132,6 +131,8 @@ set(APP_SOURCES
   ../win32.cpp
   ../fathom/src/tbprobe.c
 )
+set(APP_SOURCES_DOG ${APP_SOURCES} ../nnue.cpp)
+set(APP_SOURCES_RUK ${APP_SOURCES} ../nnue-ruk.cpp)
 
 add_executable(
   Dog
@@ -155,9 +156,15 @@ endif ()
 
 add_executable(
   Dog-native
-  ${APP_SOURCES}
+  ${APP_SOURCES_DOG}
 )
 target_compile_options(Dog-native PRIVATE -march=native -mtune=native -O3 -DBUILD_TARGET=\"native\")
+
+add_executable(
+  Dog-ruk
+  ${APP_SOURCES_RUK}
+)
+target_compile_options(Dog-ruk PRIVATE -march=native -mtune=native -O3 -DUSE_RUK_NET -DBUILD_TARGET=\"ruk\")
 
 add_executable(
     Dog-stats-prober
@@ -182,6 +189,7 @@ elseif (MSAN EQUAL 1)
 else()
 	target_link_libraries(Dog PRIVATE Threads::Threads)
 	target_link_libraries(Dog-native PRIVATE Threads::Threads)
+	target_link_libraries(Dog-ruk PRIVATE Threads::Threads)
 endif()
 
 if (GPROF EQUAL 1)
@@ -191,6 +199,7 @@ endif()
 
 target_include_directories(Dog PUBLIC ../../include ../fathom/src)
 target_include_directories(Dog-native PUBLIC ../../include ../fathom/src)
+target_include_directories(Dog-ruk PUBLIC ../../include ../fathom/src)
 target_include_directories(Dog-stats-prober PUBLIC ../../include ../fathom/src)
 
 set_target_properties(Dog PROPERTIES OUTPUT_NAME Dog)

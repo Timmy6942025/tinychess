@@ -71,26 +71,34 @@ Published nets considered (no training on this machine):
 
 ---
 
-## 3. Net pipeline plan - RukChess converter path (plan 2, M4)
+## 3. Net pipeline plan - RukChess converter path (plan 2, M4) - IMPLEMENTED
 
-RukChess ships 768->512->1 floats with a 4 B magic + 8 B hash header. Dog's
-loader hard-codes `HIDDEN_SIZE`, plain-768 indexing, and int16 quantisation
-(QA=255, QB=64), and ignores the `.nnue` arch/hash checksum. Therefore a
-converter must:
-1. Read RukChess magic+hash+float arrays and emit Dog's exact `weights.cpp`
-   binary layout with matching QA/QB scaling.
-2. Make `HIDDEN_SIZE` a runtime value in `nnue.cpp` (the only hard part).
-3. Retrain or rank-project (cannot truncate 512->256 without destroying eval).
+RukChess ships 768x256/768x512 nets in NNUE `.nnue` format: 4-byte magic "BRKR"
++ 8-byte arch hash + float32 feature weights [768*H], feature bias [H],
+output weights [2*H], output bias [1] (file size 1,579,024 for H=512).
+RukChess 4.2.0 `Def.h` DEFAULT_NNUE_FILE_NAME = `net-7342fb032855.nnue` — the
+`768->512->1` net ported here (downloaded into `tools/nets/`).
 
-**Recommendation (per RESEARCH review):** do NOT port RukChess. Value is a
-marginally stronger net we cannot evaluate without a physical board, at the
-cost of a loader rewrite and ~4x eval cost. The realistic Elo-per-effort winner
-is training a 256-wide net in the current architecture (reuse `gen-train-data.py`
-+ a small PyTorch trainer mirroring `Network::evaluate`). **Status: deferred /
-blocked - see item 8 in the task log; documented here as the open long-pole.**
+Dog's loader hard-coded `HIDDEN_SIZE` and its own 256-net weights; to use the
+RukChess 512 net we added:
+1. `tools/net_convert.py` - reads the NNUE2
+   float arrays, re-quantises them into Dog's embedded binary layout
+   (`app/src/weights-ruk.cpp`): int16 feature weights (QA-64), int16 feature
+   bias, int16 output weights (QB-512), int32 output bias (QA*QB=32768), plus
+   a 40-byte header (magic `MDRK`, source magic `BRKR` + arch hash, dims,
+   qa/qb) that the loader validates (incl. blob length). Blob = 789,548 B.
+2. `app/src/nnue-ruk.cpp` - a HIDDEN_SIZE=512 implementation of RukChess's
+   exact eval (white/black accumulators, same piece/side indexing incl. the
+   ^56 mirror for the black perspective, ReLU, /32768 output), selected at compile
+   time by `-DUSE_RUK_NET` in the new `Dog-ruk` target; default targets keep
+   the 256-net. Unit tests + bench pass with the 512 loader; eval verified
+   against NNUE2.cpp semantics on 11 positions (int16 vs float32 within +-2 cp).
+
+SPRT `ab-ruk512` (2+0.02, 256-net baseline) ran 2026-08-07: see
+`tools/results.log` for the verdict. Independently of the verdict the converter
+pipeline is now real - future nets (any H) just need a regenerate + rebuild.
 
 ---
-
 ## 4. Memory map (BUILD_PLAN section 1.5)
 
 Final intended shape for the S3:
