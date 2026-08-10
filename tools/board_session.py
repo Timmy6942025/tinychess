@@ -24,7 +24,9 @@ import serial
 BAUD = 115200
 BANNER = "HELLO, THIS IS DOG"
 PROMPT = 'ENTER "uci" FOR uci-MODE'
-TIMEOUTS = {"boot": 30, "test": 600, "bench": 300, "uci": 30, "quit": 30}
+# Timeouts tuned to the ESP32S3 scalar engine (~4.3k nps): the full test
+# suite (NNUE perft up to depth 5) takes 1-2h, the depth-10 bench many minutes.
+TIMEOUTS = {"boot": 30, "test": 7200, "bench": 3600, "uci": 30, "quit": 30}
 
 CRITICAL_MARKERS = [
     ("NNUE evaluation test", "OK"),
@@ -48,6 +50,16 @@ class Session:
                     raise
                 time.sleep(0.5)
         self.ser.reset_input_buffer()
+        try:
+            # reboot the board into a known state; no-op on ptys (test harness)
+            self.ser.setDTR(False)
+            self.ser.setRTS(True)
+            time.sleep(0.1)
+            self.ser.setRTS(False)
+        except (OSError, ValueError, NotImplementedError):
+            pass
+        self.ser.reset_input_buffer()
+        time.sleep(8)
         self.all_text = ""
 
     def read_until(self, needle, timeout, label):

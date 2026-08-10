@@ -37,11 +37,16 @@ if [ ! -f "$IDF_PATH/export.sh" ]; then
 fi
 
 echo "Using port: $PORT"
-echo "Flashing firmware + book partition ..."
+echo "Building (must run from the app dir - building from build/ yields stale binaries) ..."
 
 . "$IDF_PATH/export.sh" >/dev/null 2>&1
 cd "$APP_DIR"
-idf.py -p "$PORT" -B "${2:-build}" flash
+idf.py build || exit 1
+
+echo "Flashing firmware + book partition via esptool (idf.py flash hangs on this setup) ..."
+cd "$APP_DIR/build"
+python -m esptool --chip esp32s3 -p "$PORT" -b 460800 \
+	--before default_reset --after hard_reset write_flash "@flash_args" || exit 1
 
 echo "Flash done. Running validation session ..."
 exec python3 "$ENGINE_DIR/tools/board_session.py" --port "$PORT"

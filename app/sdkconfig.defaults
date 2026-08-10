@@ -1,0 +1,46 @@
+# XIAO ESP32S3 Plus hardware config (Phase 0 bring-up, 2026-08-08)
+# Fixes: PSRAM disabled, CPU at 160MHz, pthread stack overflow on std::thread search tasks
+
+# --- CPU: run both LX7 cores at 240 MHz ---
+CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_240=y
+
+# --- PSRAM: enable, octal mode @80MHz, auto-detect (8 MB on the Plus) ---
+CONFIG_SPIRAM=y
+CONFIG_SPIRAM_SPEED_80M=y
+CONFIG_SPIRAM_MODE_OCT=y
+CONFIG_SPIRAM_TYPE_AUTO=y
+CONFIG_SPIRAM_USE_MALLOC=y
+CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL=16384
+
+# --- Threads: std::thread searchers + TUI need real stacks (crash fix) ---
+# 5 threads at runtime (2 searchers + TUI + UCI-go handler); internal RAM is
+# ~310KB total, so 32KB each fits. Tune with 'status' high-water marks.
+CONFIG_PTHREAD_TASK_STACK_SIZE_DEFAULT=32768
+
+# --- Main task: runs main_task() (the UCI loop) inside app_main ---
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=16384
+
+# --- Partition table: custom csv with spiffs partition (required by app) ---
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
+
+# --- Flash: 16 MB on the Plus, DIO @80 MHz ---
+CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
+CONFIG_ESPTOOLPY_FLASHMODE_DIO=y
+CONFIG_ESPTOOLPY_FLASHFREQ_80M=y
+
+# --- Console: USB-Serial/JTAG is the primary console on the XIAO ---
+# (UART-primary would bridge stdin/stdout to the unused header pins)
+CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y
+CONFIG_ESP_CONSOLE_UART_DEFAULT=n
+
+# --- C++ exceptions/RTTI: libchess and main.cpp use try/catch ---
+CONFIG_COMPILER_CXX_EXCEPTIONS=y
+CONFIG_COMPILER_CXX_RTTI=y
+
+# --- FreeRTOS: task stats used by vTaskGetRunTimeStats in main.cpp ---
+CONFIG_FREERTOS_USE_TRACE_FACILITY=y
+
+# --- Optimization: -O2 (perf). -Og (default sdkconfig) costs ~2.5-6x on the
+# PSRAM-latency-bound NNUE search; perf is bit-exact identical (asserts stay on).
+CONFIG_COMPILER_OPTIMIZATION_PERF=y

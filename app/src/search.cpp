@@ -8,6 +8,18 @@
 #include <libchess/Position.h>
 #include <libchess/UCIService.h>
 
+#if defined(ESP32)
+#include <esp_task_wdt.h>
+static volatile uint32_t        es32_yield_gate = 0;
+static volatile uint64_t        es32_last_yield = 0;
+static volatile TaskHandle_t    es32_yield_peer = NULL;
+
+void es32_set_yield_peer(TaskHandle_t th)
+{
+	es32_yield_peer = th;
+}
+#endif
+
 #include "eval.h"
 #include "inbuf.h"
 #include "lmr-red.h"
@@ -425,6 +437,33 @@ int search(int depth, int alpha, const int beta, const int null_move_depth, cons
 {
 	if (sp.stop->flag)
 		return 0;
+
+#if defined(ESP32)
+	// Keep the idle tasks alive so they can feed the task watchdog. The
+	// engine runs an unbounded auto-ponder search after each bestmove and
+	// both searcher threads are same-priority, so one of them is always
+	// ready and IDLE never gets a slot: vTaskDelay(1) merely passes the
+	// CPU to the peer searcher. Instead, the two searchers block in
+	// vTaskDelay(1) at the same time via a shared gate, letting IDLE run.
+	// Triggered by time (not the node counter: that can be folded away by
+	// the compiler, making the gate unreachable).
+	if (esp_timer_get_time() - es32_last_yield >= 250000) {
+		es32_last_yield = esp_timer_get_time();
+		if (__atomic_add_fetch(&es32_yield_gate, 1, __ATOMIC_SEQ_CST) == 1) {
+			// First searcher to arrive: block until the peer arrives (or a
+			// 100 ms timeout), then both delay at the same time.
+			ulTaskNotifyTake(pdTRUE, 10);
+			vTaskDelay(1);
+		}
+		else {
+			__atomic_store_n(&es32_yield_gate, 0, __ATOMIC_SEQ_CST);
+			TaskHandle_t peer = es32_yield_peer;
+			if (peer != NULL)
+				xTaskNotifyGive(peer);
+			vTaskDelay(1);
+		}
+	}
+#endif
 
 	if (depth == 0) {
 		int score = qs(alpha, beta, max_depth, sp);

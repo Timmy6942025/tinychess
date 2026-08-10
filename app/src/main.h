@@ -22,6 +22,7 @@ typedef struct {
 #if defined(ESP32)
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
+void es32_set_yield_peer(TaskHandle_t th);
 #endif
 
 typedef struct

@@ -293,6 +293,7 @@ void searcher(const int i)
 
 #if defined(ESP32)
 	sp.at(i)->th = xTaskGetCurrentTaskHandle();
+	es32_set_yield_peer(sp.at((i + 1) % sp.size())->th);
 #endif
 
 #if !defined(NDEBUG)
@@ -1018,7 +1019,7 @@ void main_task()
 	libchess::UCIStringOption syzygy_path_option("SyzygyPath", "", syzygy_option_handler);
 	uci_service->register_option(syzygy_path_option);
 #else
-	libchess::UCISpinOption hash_size_option("Hash", 4, 1, 8, hash_size_handler);
+	libchess::UCISpinOption hash_size_option("Hash", 6, 1, 8, hash_size_handler);
 	uci_service->register_option(hash_size_option);
 #endif
 	libchess::UCICheckOption allow_ponder_option("Ponder", allow_ponder, allow_ponder_handler);

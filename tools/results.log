@@ -3693,3 +3693,55 @@ SPRT: llr 0 (0.0%), lbound -inf, ubound inf
 [06:07:24] calibrate-followup LMR deeper x1.15 (all reductions scaled from the ACCEPTED table): FAILED the unit-test gate deterministically - mate-in-N sweep R+R vs K '6k1/8/8/8/8/8/8/R3R1K1 w' at depth 19 scored 3188 (no mate) vs 32000 needed; same failure mode as the futility-220 variant. Reverted to the accepted table - the accepted LMR sits at the aggressive limit; no further LMR variants. Also repaired tools/gen_lmr_table.py (line-14 unterminated string literal corruption; now compiles, emits comma-style reference tables).
 
 [07:57] BUG HUNT (session): reviewed full diff upstream/main...HEAD (search, tt, main, lmr, nnue-ruk, cmake, tools). LMP variant found uncommitted in working tree (search.cpp+stats: quiet_played>2+depth*depth prune at depth<=3, non-PV, non-check, non-TT): FAILED unit-test gate deterministically - mate-in-N sweep R+R vs K 6k1/8/8/8/8/8/8/R3R1K1
+[12:01:14] FINGERPRINT A=Dog-evalfix   B=Dog-lmr065 
+[12:01:14] MATCH ab-evalfix-20260809-120114  A=Dog-evalfix  B=Dog-lmr065  tc=5+0.05 rounds=1500 -sprt elo0=0 elo1=20 alpha=0.05 beta=0.05 adj=yes
+Elo difference: nan +/- nan, LOS: nan %, DrawRatio: nan %
+SPRT: llr -0.00373 (-0.1%), lbound -2.94, ubound 2.94
+[12:01:14] VERDICT ab-evalfix-20260809-120114: REVERT (cap reached before bound, llr -0.00373 <= 0)
+[12:01:58] FINGERPRINT A=tools/runs/bin/Dog-evalfix 812ab891a464c1566f74bf64e672516a  B=tools/runs/bin/Dog-lmr065 93b244eecd33079ba000545ed0ed57f4
+[12:09:15] MATCH ab-evalfix-20260809-120158  A=tools/runs/bin/Dog-evalfix  B=tools/runs/bin/Dog-lmr065  tc=5+0.05 rounds=1500 -sprt elo0=0 elo1=20 alpha=0.05 beta=0.05 adj=yes
+Score of A vs B: 0 - 1 - 0  [0.000] 1
+Score of A vs B: 0 - 2 - 0  [0.000] 2
+Score of A vs B: 0 - 3 - 0  [0.000] 3
+Score of A vs B: 0 - 4 - 0  [0.000] 4
+Score of A vs B: 0 - 5 - 0  [0.000] 5
+Score of A vs B: 0 - 6 - 0  [0.000] 6
+Score of A vs B: 0 - 7 - 0  [0.000] 7
+Score of A vs B: 0 - 8 - 0  [0.000] 8
+Score of A vs B: 0 - 9 - 0  [0.000] 9
+Score of A vs B: 0 - 10 - 0  [0.000] 10
+Score of A vs B: 0 - 11 - 0  [0.000] 11
+Score of A vs B: 0 - 12 - 0  [0.000] 12
+Score of A vs B: 0 - 13 - 0  [0.000] 13
+Score of A vs B: 0 - 14 - 0  [0.000] 14
+Score of A vs B: 0 - 15 - 0  [0.000] 15
+Score of A vs B: 0 - 16 - 0  [0.000] 16
+Score of A vs B: 0 - 17 - 0  [0.000] 17
+Score of A vs B: 0 - 18 - 0  [0.000] 18
+Score of A vs B: 0 - 19 - 0  [0.000] 19
+Score of A vs B: 0 - 20 - 0  [0.000] 20
+Score of A vs B: 0 - 21 - 0  [0.000] 21
+Score of A vs B: 0 - 22 - 0  [0.000] 22
+Score of A vs B: 0 - 23 - 0  [0.000] 23
+Score of A vs B: 0 - 24 - 0  [0.000] 24
+Score of A vs B: 0 - 25 - 0  [0.000] 25
+Score of A vs B: 0 - 26 - 0  [0.000] 26
+Score of A vs B: 0 - 27 - 0  [0.000] 27
+Score of A vs B: 0 - 28 - 0  [0.000] 28
+Score of A vs B: 0 - 29 - 0  [0.000] 29
+Score of A vs B: 0 - 30 - 0  [0.000] 30
+Score of A vs B: 0 - 31 - 0  [0.000] 31
+Score of A vs B: 0 - 32 - 0  [0.000] 32
+Score of A vs B: 0 - 33 - 0  [0.000] 33
+Score of A vs B: 0 - 34 - 0  [0.000] 34
+Score of A vs B: 0 - 35 - 0  [0.000] 35
+Score of A vs B: 0 - 36 - 0  [0.000] 36
+Score of A vs B: 0 - 37 - 0  [0.000] 37
+Score of A vs B: 0 - 38 - 0  [0.000] 38
+Score of A vs B: 0 - 39 - 0  [0.000] 39
+Score of A vs B: 0 - 40 - 0  [0.000] 40
+Score of A vs B: 0 - 41 - 0  [0.000] 41
+Score of A vs B: 0 - 42 - 0  [0.000] 42
+Elo difference: -inf +/- nan, LOS: 0.0 %, DrawRatio: 0.0 %
+SPRT: llr -3 (-102.0%), lbound -2.94, ubound 2.94 - H0 was accepted
+[12:09:15] VERDICT ab-evalfix-20260809-120158: REJECT: H0 (no improvement) - llr -3 <= -2.94

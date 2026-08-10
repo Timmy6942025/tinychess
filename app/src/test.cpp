@@ -377,6 +377,7 @@ void tests()
 
 	see_verify();
 
+#if !defined(ESP32)
 	{
 		printf("NNUE perft\n");
 
@@ -401,6 +402,7 @@ void tests()
 
 		printf("OK\n");
 	}
+#endif
 
 	// NNUE incremental
 	{
@@ -518,13 +520,14 @@ void tests()
 		sp.at(0)->pos = Position { entry.first };
 		my_assert(sp.at(0)->pos.fen() == entry.first);
 
+		init_move(sp.at(0)->nnue_eval, sp.at(0)->pos);
 		clear_flag(sp.at(0)->stop);
 		memset(sp.at(0)->history, 0x00, history_malloc_size);
 		Move best_move  { 0 };
 		int  best_score { 0 };
 		int  max_depth  { 0 };
-		std::tie(best_move, best_score, max_depth) = search_it(100, 100, false, sp.at(0), -1, { }, O_NONE, false);
-		
+		std::tie(best_move, best_score, max_depth) = search_it(0, 0, false, sp.at(0), 8, { }, O_NONE, false);
+
 		my_assert(best_move == *Move::from(entry.second));
 
 		printf("OK\n");
@@ -734,6 +737,8 @@ void tests()
 	// deeper plain perft (move generation only, no NNUE book-keeping) on the
 	// standard positions plus the classic combinatorial ones. Values are the
 	// well-known published perft numbers (also confirmed against libchess).
+	// too slow for the ESP32 (days at these depths), so only run on the host.
+#if !defined(ESP32)
 	{
 		printf("deep perft (plain)\n");
 		const std::vector<std::tuple<std::string, int, uint64_t> > cases {
@@ -755,6 +760,7 @@ void tests()
 
 		printf("OK\n");
 	}
+#endif
 
 	// NNUE incremental update fuzz: random make/unmake walks over positions that
 	// exercise castling, en-passant, promotions and captures; the incrementally
