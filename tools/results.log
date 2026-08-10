@@ -3745,3 +3745,4 @@ Score of A vs B: 0 - 42 - 0  [0.000] 42
 Elo difference: -inf +/- nan, LOS: 0.0 %, DrawRatio: 0.0 %
 SPRT: llr -3 (-102.0%), lbound -2.94, ubound 2.94 - H0 was accepted
 [12:09:15] VERDICT ab-evalfix-20260809-120158: REJECT: H0 (no improvement) - llr -3 <= -2.94
+[13:10:00] A/B SIMD EVAL KERNEL (nnue.cpp accx_dot16 PIE kernel): re-enabled after finding it was compiled out (#if 0) by commit 29ad70f claiming "PSRAM-bound, scalar -O2 wins" — a claim with NO recorded measurement in this log. Board bench (startpos, 2.5s fixed): scalar nps 7170 (17976 nodes) vs PIE nps 9413 (23657 nodes) = +31.3% nps, identical search results (score cp 81, pv e2e4, ebf 3.140681 — bit-exact per kernel design). Claim refuted; kernel kept enabled. Remaining gap to clock-scaled desktop (~57k nps est) is ~6x: suspect 64-bit bitboards on 32-bit Xtensa + flash XIP code fetch (only tt::lookup and eval are IRAM_ATTR), not the eval kernel.

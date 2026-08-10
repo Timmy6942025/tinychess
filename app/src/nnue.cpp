@@ -65,7 +65,7 @@ struct Network {
 
 		int output = 0;
 
-#if 0 && defined(ESP32)
+#if defined(ESP32)
 		// side to move
 		output += accx_dot16(us.vals.data(), this->output_weights[0].vals.data());
 
