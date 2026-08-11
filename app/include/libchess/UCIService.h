@@ -3,6 +3,10 @@
 
 #include "UCIOption.h"
 
+#if defined(ESP32)
+#include <esp_task_wdt.h>
+#endif
+
 #include <any>
 #include <atomic>
 #include <cassert>
@@ -410,6 +414,9 @@ class UCIService {
                 keep_running_ = false;
                 break;
             }
+#if defined(ESP32)
+            esp_task_wdt_reset();
+#endif
             std::istringstream line_stream{line};
             line_stream >> word;
             if (command_handlers_.find(word) != command_handlers_.end()) {

@@ -54,7 +54,6 @@
 #include <esp_err.h>
 #include <esp_spiffs.h>
 #include <esp_random.h>
-#include <esp_task_wdt.h>
 #include <esp_timer.h>
 #include <nvs_flash.h>
 

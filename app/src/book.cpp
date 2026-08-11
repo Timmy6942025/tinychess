@@ -174,8 +174,6 @@ std::optional<libchess::Move> polyglot_book::query(const libchess::Position & p,
 
 	const uint64_t hash = p.hash();
 
-	std::uniform_int_distribution<std::mt19937::result_type> dist(0, 1 << 30);
-
 	long low  = 0;
 	long high = n;
 
@@ -206,26 +204,31 @@ std::optional<libchess::Move> polyglot_book::query(const libchess::Position & p,
 			scan(p, index, -1, -1, moves);  // backward search
 			scan(p, index,  1,  n, moves);  // forward serach
 
-			// weighted random, see https://stackoverflow.com/a/56006340/216582
-			std::vector<std::pair<double, libchess::Move> > work;
-			for(auto & m: moves)
-				work.push_back({ -log(dist(rng) + 1) / (m.second + 1), m.first });
-
-			if (work.empty() == false)
-				std::sort(work.begin(), work.end(), [](const auto & lhs, const auto & rhs) { return lhs.first < rhs.first; });
+			// pick the highest-weight move (deterministic)
+			std::vector<std::pair<libchess::Move, int> > work;
+			int max_weight = -1;
+			for(auto & m : moves) {
+				if (m.second > max_weight) {
+					max_weight = m.second;
+					work.clear();
+					work.push_back(m);
+				} else if (m.second == max_weight) {
+					work.push_back(m);
+				}
+			}
 
 			if (verbose) {
 				my_printf("Selecting from %zu move(s) (", work.size());
 				for(size_t i=0; i<work.size(); i++) {
 					if (i)
 						my_printf(", ");
-					my_printf("%s", work.at(i).second.to_str().c_str());
+					my_printf("%s", work.at(i).first.to_str().c_str());
 				}
 				my_printf(")...\n");
 			}
 
 			if (work.empty() == false)
-				return work.at(0).second;
+				return work.at(0).first;
 		}
 	}
 
