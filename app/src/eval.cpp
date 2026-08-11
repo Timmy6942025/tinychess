@@ -1,6 +1,7 @@
 #include <cassert>
 #include <libchess/Position.h>
 #include "eval.h"
+#include "main.h"
 #include "nnue.h"
 
 #if defined(ESP32)
