@@ -3,7 +3,7 @@
 
 namespace libchess {
 
-inline void Position::generate_quiet_promotions(MoveList& move_list, Color stm) const {
+LIBCHESS_IRAM_ATTR inline void Position::generate_quiet_promotions(MoveList& move_list, Color stm) const {
     Bitboard promotion_candidates =
         lookups::pawn_shift(piece_type_bb(constants::PAWN, stm) &
                                 lookups::relative_rank_mask(constants::RANK_7, stm),
@@ -23,7 +23,7 @@ inline void Position::generate_quiet_promotions(MoveList& move_list, Color stm) 
     }
 }
 
-inline void Position::generate_capture_promotions(MoveList& move_list, Color stm) const {
+LIBCHESS_IRAM_ATTR inline void Position::generate_capture_promotions(MoveList& move_list, Color stm) const {
     Bitboard pawn_bb = piece_type_bb(constants::PAWN);
     pawn_bb &= color_bb(stm) & lookups::relative_rank_mask(constants::RANK_7, stm);
     Bitboard opp_occupancy = color_bb(!stm);
@@ -42,12 +42,12 @@ inline void Position::generate_capture_promotions(MoveList& move_list, Color stm
     }
 }
 
-inline void Position::generate_promotions(MoveList& move_list, Color stm) const {
+LIBCHESS_IRAM_ATTR inline void Position::generate_promotions(MoveList& move_list, Color stm) const {
     generate_capture_promotions(move_list, stm);
     generate_quiet_promotions(move_list, stm);
 }
 
-inline void Position::generate_pawn_quiets(MoveList& move_list, Color stm) const {
+LIBCHESS_IRAM_ATTR inline void Position::generate_pawn_quiets(MoveList& move_list, Color stm) const {
     generate_quiet_promotions(move_list, stm);
     Bitboard occupancy = occupancy_bb();
     Bitboard single_push_pawn_bb =
@@ -71,7 +71,7 @@ inline void Position::generate_pawn_quiets(MoveList& move_list, Color stm) const
     }
 }
 
-inline void Position::generate_pawn_captures(MoveList& move_list, Color stm) const {
+LIBCHESS_IRAM_ATTR inline void Position::generate_pawn_captures(MoveList& move_list, Color stm) const {
     generate_capture_promotions(move_list, stm);
     Bitboard pawn_bb = piece_type_bb(constants::PAWN);
     auto ep_sq = enpassant_square();
@@ -96,7 +96,7 @@ inline void Position::generate_pawn_captures(MoveList& move_list, Color stm) con
     }
 }
 
-inline void Position::generate_pawn_moves(MoveList& move_list, Color stm) const {
+LIBCHESS_IRAM_ATTR inline void Position::generate_pawn_moves(MoveList& move_list, Color stm) const {
     generate_pawn_captures(move_list, stm);
     generate_pawn_quiets(move_list, stm);
 }
@@ -134,32 +134,32 @@ inline void Position::generate_non_pawn_captures(PieceType pt,
     }
 }
 
-inline void Position::generate_knight_moves(MoveList& move_list, Color stm) const {
+LIBCHESS_IRAM_ATTR inline void Position::generate_knight_moves(MoveList& move_list, Color stm) const {
     generate_non_pawn_quiets(constants::KNIGHT, move_list, stm);
     generate_non_pawn_captures(constants::KNIGHT, move_list, stm);
 }
 
-inline void Position::generate_bishop_moves(MoveList& move_list, Color stm) const {
+LIBCHESS_IRAM_ATTR inline void Position::generate_bishop_moves(MoveList& move_list, Color stm) const {
     generate_non_pawn_quiets(constants::BISHOP, move_list, stm);
     generate_non_pawn_captures(constants::BISHOP, move_list, stm);
 }
 
-inline void Position::generate_rook_moves(MoveList& move_list, Color stm) const {
+LIBCHESS_IRAM_ATTR inline void Position::generate_rook_moves(MoveList& move_list, Color stm) const {
     generate_non_pawn_quiets(constants::ROOK, move_list, stm);
     generate_non_pawn_captures(constants::ROOK, move_list, stm);
 }
 
-inline void Position::generate_queen_moves(MoveList& move_list, Color stm) const {
+LIBCHESS_IRAM_ATTR inline void Position::generate_queen_moves(MoveList& move_list, Color stm) const {
     generate_non_pawn_quiets(constants::QUEEN, move_list, stm);
     generate_non_pawn_captures(constants::QUEEN, move_list, stm);
 }
 
-inline void Position::generate_king_moves(MoveList& move_list, Color stm) const {
+LIBCHESS_IRAM_ATTR inline void Position::generate_king_moves(MoveList& move_list, Color stm) const {
     generate_non_pawn_quiets(constants::KING, move_list, stm);
     generate_non_pawn_captures(constants::KING, move_list, stm);
 }
 
-inline void Position::generate_castling(MoveList& move_list, Color c) const {
+LIBCHESS_IRAM_ATTR inline void Position::generate_castling(MoveList& move_list, Color c) const {
     const int castling_possibilities[2][2] = {
         {constants::WHITE_KINGSIDE.value(), constants::WHITE_QUEENSIDE.value()},
         {constants::BLACK_KINGSIDE.value(), constants::BLACK_QUEENSIDE.value()},
@@ -193,7 +193,7 @@ inline void Position::generate_castling(MoveList& move_list, Color c) const {
     }
 }
 
-inline void Position::generate_checker_block_moves(MoveList& move_list, Color c) const {
+LIBCHESS_IRAM_ATTR inline void Position::generate_checker_block_moves(MoveList& move_list, Color c) const {
     Bitboard checkers = checkers_to(c);
     if (checkers.popcount() > 1) {
         return;
@@ -245,7 +245,7 @@ inline void Position::generate_checker_block_moves(MoveList& move_list, Color c)
     }
 }
 
-inline void Position::generate_checker_capture_moves(MoveList& move_list, Color c) const {
+LIBCHESS_IRAM_ATTR inline void Position::generate_checker_capture_moves(MoveList& move_list, Color c) const {
     Bitboard checkers = checkers_to(c);
     if (checkers.popcount() > 1) {
         return;
@@ -282,7 +282,7 @@ inline void Position::generate_checker_capture_moves(MoveList& move_list, Color 
     }
 }
 
-inline MoveList Position::check_evasion_move_list(Color c) const {
+LIBCHESS_IRAM_ATTR inline MoveList Position::check_evasion_move_list(Color c) const {
     MoveList move_list;
     Square king_sq = king_square(c);
     Bitboard checkers = checkers_to(c);
@@ -311,11 +311,11 @@ inline MoveList Position::check_evasion_move_list(Color c) const {
     return move_list;
 }
 
-inline MoveList Position::check_evasion_move_list() const {
+LIBCHESS_IRAM_ATTR inline MoveList Position::check_evasion_move_list() const {
     return check_evasion_move_list(side_to_move());
 }
 
-inline void Position::generate_quiet_moves(MoveList& move_list, Color stm) const {
+LIBCHESS_IRAM_ATTR inline void Position::generate_quiet_moves(MoveList& move_list, Color stm) const {
     generate_pawn_quiets(move_list, stm);
     generate_non_pawn_quiets(constants::KNIGHT, move_list, stm);
     generate_non_pawn_quiets(constants::BISHOP, move_list, stm);
@@ -325,7 +325,7 @@ inline void Position::generate_quiet_moves(MoveList& move_list, Color stm) const
     generate_castling(move_list, stm);
 }
 
-inline void Position::generate_capture_moves(MoveList& move_list, Color stm) const {
+LIBCHESS_IRAM_ATTR inline void Position::generate_capture_moves(MoveList& move_list, Color stm) const {
     generate_pawn_captures(move_list, stm);
     generate_non_pawn_captures(constants::KNIGHT, move_list, stm);
     generate_non_pawn_captures(constants::BISHOP, move_list, stm);
@@ -334,21 +334,21 @@ inline void Position::generate_capture_moves(MoveList& move_list, Color stm) con
     generate_non_pawn_captures(constants::KING, move_list, stm);
 }
 
-inline MoveList Position::pseudo_legal_move_list(Color stm) const {
+LIBCHESS_IRAM_ATTR inline MoveList Position::pseudo_legal_move_list(Color stm) const {
     MoveList move_list;
     generate_capture_moves(move_list, stm);
     generate_quiet_moves(move_list, stm);
     return move_list;
 }
 
-inline MoveList Position::pseudo_legal_move_list() const {
+LIBCHESS_IRAM_ATTR inline MoveList Position::pseudo_legal_move_list() const {
     if (in_check()) {
         return check_evasion_move_list(side_to_move());
     }
     return pseudo_legal_move_list(side_to_move());
 }
 
-inline MoveList Position::legal_move_list(Color stm) const {
+LIBCHESS_IRAM_ATTR inline MoveList Position::legal_move_list(Color stm) const {
     MoveList move_list = checkers_to(stm) ? check_evasion_move_list() : pseudo_legal_move_list();
     Bitboard pinned = pinned_pieces_of(stm);
     for (auto move = move_list.begin(); move != move_list.end();) {
@@ -364,7 +364,7 @@ inline MoveList Position::legal_move_list(Color stm) const {
     return move_list;
 }
 
-inline MoveList Position::legal_move_list() const {
+LIBCHESS_IRAM_ATTR inline MoveList Position::legal_move_list() const {
     if (halfmoves() >= 150 || is_repeat(4)) {
         return MoveList{};
     }

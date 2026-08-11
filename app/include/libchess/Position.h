@@ -153,7 +153,7 @@ class Position {
     }
 
 
-    hash_type calculate_hash() {
+    LIBCHESS_IRAM_ATTR hash_type calculate_hash() {
         hash_type hash_value = 0;
         for (Color c : constants::COLORS) {
             for (PieceType pt : constants::PIECE_TYPES) {

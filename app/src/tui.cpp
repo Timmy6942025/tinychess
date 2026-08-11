@@ -1547,7 +1547,7 @@ void tui()
 				}
 			}
 			else if (parts[0] == "bench")
-				run_bench(parts.size() == 2 && parts[1] == "long", false);
+				run_bench_single(parts.size() == 2 && parts[1] == "long", false);
 			else if (parts[0] == "perft")
 				perft(sp.at(0)->pos, parts.size() == 2 ? std::stoi(parts[1]) : 3);
 			else if (parts[0] == "new") {

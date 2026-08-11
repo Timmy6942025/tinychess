@@ -393,7 +393,7 @@ constexpr inline Bitboard bishop_attacks(Square square, Bitboard occupancy) {
     attacks ^= southeast(se_blockers.reverse_bitscan());
     return attacks;
 }
-inline Bitboard rook_attacks(Square square, Bitboard occupancy) {
+LIBCHESS_IRAM_ATTR inline Bitboard rook_attacks(Square square, Bitboard occupancy) {
     Bitboard attacks = rook_attacks(square);
     Bitboard n_blockers = (north(square) & occupancy) | Bitboard{constants::H8};
     Bitboard s_blockers = (south(square) & occupancy) | Bitboard{constants::A1};
@@ -406,7 +406,7 @@ inline Bitboard rook_attacks(Square square, Bitboard occupancy) {
     attacks ^= east(e_blockers.forward_bitscan());
     return attacks;
 }
-inline Bitboard queen_attacks(Square square, Bitboard occupancy) {
+LIBCHESS_IRAM_ATTR inline Bitboard queen_attacks(Square square, Bitboard occupancy) {
     Bitboard attacks = queen_attacks(square);
     Bitboard nw_blockers = (northwest(square) & occupancy) | Bitboard{constants::A8};
     Bitboard ne_blockers = (northeast(square) & occupancy) | Bitboard{constants::H8};
@@ -427,7 +427,7 @@ inline Bitboard queen_attacks(Square square, Bitboard occupancy) {
     attacks ^= east(e_blockers.forward_bitscan());
     return attacks;
 }
-inline Bitboard pawn_shift(Bitboard bb, Color c, int times = 1) {
+LIBCHESS_IRAM_ATTR inline Bitboard pawn_shift(Bitboard bb, Color c, int times = 1) {
     return c == constants::WHITE ? bb << (8 * times) : bb >> (8 * times);
 }
 inline Square pawn_shift(Square sq, Color c, int times = 1) {
@@ -438,10 +438,10 @@ inline Rank relative_rank(Rank rank, Color c) {
                ? rank
                : Rank{static_cast<Rank::value_type>(constants::RANK_8.value() - rank.value())};
 }
-inline Bitboard relative_rank_mask(Rank rank, Color c) {
+LIBCHESS_IRAM_ATTR inline Bitboard relative_rank_mask(Rank rank, Color c) {
     return rank_mask(relative_rank(rank, c));
 }
-inline Bitboard non_pawn_piece_type_attacks(PieceType piece_type,
+LIBCHESS_IRAM_ATTR inline Bitboard non_pawn_piece_type_attacks(PieceType piece_type,
                                             Square square,
                                             Bitboard occupancies = Bitboard{0}) {
     switch (piece_type) {

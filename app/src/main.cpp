@@ -483,6 +483,7 @@ void delete_threads()
 
 	// no locking required here: no threads running!
 	work.reconfigure_threads = false;
+	work.search_version     = -1;
 }
 
 void allocate_threads(const int n)
@@ -491,8 +492,8 @@ void allocate_threads(const int n)
 
 	for(int i=0; i<n; i++) {
 		sp.push_back(new search_pars_t({ reinterpret_cast<int16_t *>(calloc(1, history_malloc_size)), new end_t, i }));
-		sp.at(i)->thread_handle = new std::thread(searcher, i);
 		sp.at(i)->nnue_eval     = new Eval(sp.at(i)->pos);
+		sp.at(i)->thread_handle = new std::thread(searcher, i);
 #if defined(ESP32)
 		sp.at(i)->md_limit      = 65535;
 #endif
@@ -1078,9 +1079,9 @@ void main_task()
 		}
 #endif
 		else if (line == "bench")
-			run_bench(false, true);
+			run_bench_single(false, true);
 		else if (line == "bench long")
-			run_bench(true, true);
+			run_bench_single(true, true);
 		else if (line == "quit") {
 			break;
 		}
@@ -1097,6 +1098,26 @@ void main_task()
 	delete uci_service;
 
 	printf("TASK TERMINATED\n");
+}
+
+void run_bench_single(const bool long_bench, const bool via_usb)
+{
+#if defined(ESP32)
+	// The bench (fixed depth, waits for every thread to finish) races the
+	// two searcher threads on the shared lock-free PSRAM TT and inflates
+	// wall time (measured ~6.9s vs ~4.3s single-threaded). The desktop
+	// CLI bench uses allocate_threads(1) for the same reason. Games keep
+	// all cores; only the measurement runs single-threaded.
+	delete_threads();
+	allocate_threads(1);
+#endif
+	run_bench(long_bench, via_usb);
+#if defined(ESP32)
+	delete_threads();
+	esp_chip_info_t chip_info { };
+	esp_chip_info(&chip_info);
+	allocate_threads(chip_info.cores);
+#endif
 }
 
 void run_bench(const bool long_bench, const bool via_usb)
@@ -1211,8 +1232,9 @@ void run_bench(const bool long_bench, const bool via_usb)
 			{
 				std::unique_lock<std::mutex> lck(work.search_fen_lock);
 				sp.at(0)->pos = libchess::Position(fen);
-				init_move(sp.at(0)->nnue_eval, sp.at(0)->pos);
-				memset(sp.at(0)->history, 0x00, history_malloc_size);
+				prepare_threads_state();
+				for(size_t ti=0; ti<sp.size(); ti++)
+					memset(sp.at(ti)->history, 0x00, history_malloc_size);
 				work.search_think_time_min = 1 << 31;
 				work.search_think_time_max = 1 << 31;
 				work.search_is_abs_time    = true;
@@ -1508,7 +1530,6 @@ extern "C" void app_main()
 	esp_chip_info_t chip_info { };
 	esp_chip_info(&chip_info);
 	allocate_threads(chip_info.cores);
-
 	allow_ponder = true;
 
 #if defined(ESP32_S3_XIAO) && defined(CONFIG_DOG_LED_WS2812)

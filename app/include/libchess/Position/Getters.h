@@ -3,23 +3,23 @@
 
 namespace libchess {
 
-inline Bitboard Position::piece_type_bb(PieceType piece_type) const {
+LIBCHESS_IRAM_ATTR inline Bitboard Position::piece_type_bb(PieceType piece_type) const {
     return piece_type_bb_[piece_type.value()];
 }
 
-inline Bitboard Position::piece_type_bb(PieceType piece_type, Color color) const {
+LIBCHESS_IRAM_ATTR inline Bitboard Position::piece_type_bb(PieceType piece_type, Color color) const {
     return piece_type_bb_[piece_type.value()] & color_bb(color);
 }
 
-inline Bitboard Position::color_bb(Color color) const {
+LIBCHESS_IRAM_ATTR inline Bitboard Position::color_bb(Color color) const {
     return color_bb_[color.value()];
 }
 
-inline Bitboard Position::occupancy_bb() const {
+LIBCHESS_IRAM_ATTR inline Bitboard Position::occupancy_bb() const {
     return color_bb(constants::WHITE) | color_bb(constants::BLACK);
 }
 
-inline Color Position::side_to_move() const {
+LIBCHESS_IRAM_ATTR inline Color Position::side_to_move() const {
     return side_to_move_;
 }
 
@@ -55,7 +55,7 @@ inline Square Position::king_square(Color color) const {
     return piece_type_bb(constants::KING, color).forward_bitscan();
 }
 
-inline std::optional<PieceType> Position::piece_type_on(Square square) const {
+LIBCHESS_IRAM_ATTR inline std::optional<PieceType> Position::piece_type_on(Square square) const {
     for (PieceType piece_type : constants::PIECE_TYPES) {
         if (piece_type_bb(piece_type) & Bitboard{square}) {
             return piece_type;
@@ -81,7 +81,7 @@ inline bool Position::in_check() const {
     return checkers_to(side_to_move()) != 0;
 }
 
-inline bool Position::is_repeat(int times) const {
+LIBCHESS_IRAM_ATTR inline bool Position::is_repeat(int times) const {
     hash_type curr_hash = hash();
     int num_keys = std::max(0, ply() - halfmoves());
     int count = 0;
@@ -128,7 +128,7 @@ inline Position::GameState Position::game_state() const {
     }
 }
 
-inline bool Position::is_legal_generated_move(Move move) const {
+LIBCHESS_IRAM_ATTR inline bool Position::is_legal_generated_move(Move move) const {
     Color c = side_to_move();
     Square from = move.from_square();
     Square king_sq = king_square(c);

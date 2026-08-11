@@ -3,11 +3,11 @@
 
 namespace libchess {
 
-inline Bitboard Position::checkers_to(Color c) const {
+LIBCHESS_IRAM_ATTR inline Bitboard Position::checkers_to(Color c) const {
     return attackers_to(king_square(c), !c);
 }
 
-inline Bitboard Position::attackers_to(Square square, Bitboard occupancy) const {
+LIBCHESS_IRAM_ATTR inline Bitboard Position::attackers_to(Square square, Bitboard occupancy) const {
     Bitboard attackers;
     attackers |= lookups::pawn_attacks(square, constants::WHITE) &
                  piece_type_bb(constants::PAWN, constants::BLACK);
@@ -20,19 +20,19 @@ inline Bitboard Position::attackers_to(Square square, Bitboard occupancy) const 
     return attackers;
 }
 
-inline Bitboard Position::attackers_to(Square square) const {
+LIBCHESS_IRAM_ATTR inline Bitboard Position::attackers_to(Square square) const {
     return attackers_to(square, occupancy_bb());
 }
 
-inline Bitboard Position::attackers_to(Square square, Color c) const {
+LIBCHESS_IRAM_ATTR inline Bitboard Position::attackers_to(Square square, Color c) const {
     return attackers_to(square, occupancy_bb()) & color_bb(c);
 }
 
-inline Bitboard Position::attackers_to(Square square, Bitboard occupancy, Color c) const {
+LIBCHESS_IRAM_ATTR inline Bitboard Position::attackers_to(Square square, Bitboard occupancy, Color c) const {
     return attackers_to(square, occupancy) & color_bb(c);
 }
 
-inline Bitboard Position::attacks_of_piece_on(libchess::Square square) const {
+LIBCHESS_IRAM_ATTR inline Bitboard Position::attacks_of_piece_on(libchess::Square square) const {
     auto piece = piece_on(square);
     if (!piece) {
         return Bitboard{0};
@@ -45,7 +45,7 @@ inline Bitboard Position::attacks_of_piece_on(libchess::Square square) const {
     }
 }
 
-inline Bitboard Position::pinned_pieces_of(Color c) const {
+LIBCHESS_IRAM_ATTR inline Bitboard Position::pinned_pieces_of(Color c) const {
     Bitboard pinned_bb;
     Square king_sq = king_square(c);
     Bitboard pinners_bb = ((piece_type_bb(constants::QUEEN) | piece_type_bb(constants::ROOK)) &

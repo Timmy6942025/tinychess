@@ -57,7 +57,7 @@ inline bool Position::is_promotion_move(Move move) const {
     }
 }
 
-inline void Position::unmake_move() {
+LIBCHESS_IRAM_ATTR inline void Position::unmake_move() {
     auto move = state().previous_move_;
     if (side_to_move() == constants::WHITE) {
         --fullmoves_;
@@ -126,7 +126,7 @@ inline void Position::unmake_move() {
     }
 }
 
-inline void Position::make_move(Move move) {
+LIBCHESS_IRAM_ATTR inline void Position::make_move(Move move) {
     Color stm = side_to_move();
     if (stm == constants::BLACK) {
         ++fullmoves_;
@@ -253,7 +253,7 @@ inline void Position::make_move(Move move) {
     }
 }
 
-inline void Position::make_null_move() {
+LIBCHESS_IRAM_ATTR inline void Position::make_null_move() {
     Color stm = side_to_move();
     if (stm == constants::BLACK) {
         ++fullmoves_;

@@ -7,6 +7,13 @@
 
 #include "Square.h"
 
+#if defined(ESP32)
+#include <esp_attr.h>
+#define LIBCHESS_IRAM_ATTR IRAM_ATTR
+#else
+#define LIBCHESS_IRAM_ATTR
+#endif
+
 namespace libchess {
 
 class Bitboard {
