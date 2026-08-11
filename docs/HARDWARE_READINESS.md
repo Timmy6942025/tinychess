@@ -126,14 +126,23 @@ minimum.
 
 ## 7. Action list (hardware)
 
-| # | Item | Effort | Blocks |
-|---|---|---|---|
-| 1 | Set flash to 16 MB; slim `spiffs`; regrow `app0` | minutes | shipping build |
-| 2 | Raise search-thread stack to ≥ 32 KB (ideally 60 KB via pinned task) | small | deep-search stability |
-| 3 | Register `Hash` UCI option (wires `tt::set_size`) | small | GUI TT control |
-| 4 | Re-add bit-exact PIE SIMD accumulator kernels | days | eval NPS ≥2× |
-| 5 | On-board `bench` + high-water trace to confirm real stack floor | minutes | calibrate #2 |
-| 6 | Verify `# PSRAM malloc failed, falling back` does **not** print on the Plus | boot log | confirm TT in PSRAM |
+| # | Item | Effort | Blocks | Status |
+|---|---|---|---|---|
+| 1 | Set flash to 16 MB; slim `spiffs`; regrow `app0` | minutes | shipping build | **DONE** (`0ba9828`; boot log + `CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y`) |
+| 2 | Raise search-thread stack to ≥ 32 KB (ideally 60 KB via pinned task) | small | deep-search stability | **DONE** (`CONFIG_PTHREAD_TASK_STACK_SIZE_DEFAULT=32768`) |
+| 3 | Register `Hash` UCI option (wires `tt::set_size`) | small | GUI TT control | **DONE** (`main.cpp:1021`, default 6 MB, min 1, max 8) |
+| 4 | Re-add bit-exact PIE SIMD accumulator kernels | days | eval NPS ≥2× | **DONE** (`3748495`, +31.3% nps, PIE 16×int8 `accx_dot16`) |
+| 5 | On-board `bench` + high-water trace to confirm real stack floor | minutes | calibrate #2 | **DONE** (`bench long` ≈ 5.9–6.0 s, 13958 nodes; `dts` trace at `main.cpp:609`) |
+| 6 | Verify `# PSRAM malloc failed, falling back` does **not** print on the Plus | boot log | confirm TT in PSRAM | **DONE** (boot log shows `Using 4194304 bytes of PSRAM`, no fallback print) |
+
+Post-verification addendum (Aug 2026): all six items are closed on the
+XIAO ESP32-S3 Plus. IRAM move + 32 KB I-cache (`f15cf90`) and the PIE
+SIMD kernel (`3748495`) together took `bench long` from 8837 ms to
+~5958 ms. `NDEBUG` builds are ~15% *slower* than asserts-on on this
+board (6734–6880 vs 5883–6014 ms) — keep asserts enabled. The UCI task
+is not subscribed to the task WDT, so feeding it from the UCI loop only
+logged `task not found`; the search yield gate (250 ms) keeps IDLE tasks
+alive for the WDT (`ee6d41c`).
 
 Every item keeps `tools/native_check.sh` green as the acceptance gate
 (no physical board available to iterate on).
