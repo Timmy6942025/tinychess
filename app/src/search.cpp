@@ -11,6 +11,8 @@
 #if defined(ESP32)
 #include <esp_attr.h>
 #include <esp_timer.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
 #endif
 
 #if defined(ESP32)
