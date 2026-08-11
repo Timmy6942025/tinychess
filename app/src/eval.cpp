@@ -3,15 +3,19 @@
 #include "eval.h"
 #include "nnue.h"
 
+#if defined(ESP32)
+#include <esp_attr.h>
+#endif
+
 
 using namespace libchess;
 
-int nnue_evaluate(const Eval *const e, const Position & pos)
+int IRAM_ATTR nnue_evaluate(const Eval *const e, const Position & pos)
 {
         return e->evaluate(pos.side_to_move() == constants::WHITE);
 }
 
-int nnue_evaluate(const Eval *const e, const Color & c)
+int IRAM_ATTR nnue_evaluate(const Eval *const e, const Color & c)
 {
         return e->evaluate(c == constants::WHITE);
 }
@@ -21,25 +25,25 @@ void init_move(Eval *const e, const libchess::Position & pos)
 	e->set(pos);
 }
 
-void remove_piece(Eval *const e, const Square & loc, const PieceType & pt, const bool is_white, std::array<undo_t, 4> *const undos, int *const n_undos)
+void IRAM_ATTR remove_piece(Eval *const e, const Square & loc, const PieceType & pt, const bool is_white, std::array<undo_t, 4> *const undos, int *const n_undos)
 {
 	e->remove_piece(pt, loc, is_white);
 	undos->at((*n_undos)++) = { loc, pt, is_white, true };
 }
 
-void add_piece(Eval *const e, const Square & loc, const PieceType & pt, const bool is_white, std::array<undo_t, 4> *const undos, int *const n_undos)
+void IRAM_ATTR add_piece(Eval *const e, const Square & loc, const PieceType & pt, const bool is_white, std::array<undo_t, 4> *const undos, int *const n_undos)
 {
 	e->add_piece(pt, loc, is_white);
 	undos->at((*n_undos)++) = { loc, pt, is_white, false };
 }
 
-void move_piece(Eval *const e, const Square & from, const Square & to, const PieceType & pt, const bool is_white, std::array<undo_t, 4> *const undos, int *const n_undos)
+void IRAM_ATTR move_piece(Eval *const e, const Square & from, const Square & to, const PieceType & pt, const bool is_white, std::array<undo_t, 4> *const undos, int *const n_undos)
 {
 	remove_piece(e, from, pt, is_white, undos, n_undos);
 	add_piece   (e, to,   pt, is_white, undos, n_undos);
 }
 
-std::pair<int, std::array<undo_t, 4> > make_move(Eval *const e, Position & pos, const Move & move)
+std::pair<int, std::array<undo_t, 4> > IRAM_ATTR make_move(Eval *const e, Position & pos, const Move & move)
 {
 	int                   n_actions = 0;
 	std::array<undo_t, 4> actions { {
@@ -157,7 +161,7 @@ std::pair<int, std::array<undo_t, 4> > make_move(Eval *const e, Position & pos, 
 	return { n_actions, actions };
 }
 
-void unmake_move(Eval *const e, Position & pos, const std::pair<int, std::array<undo_t, 4> > & actions)
+void IRAM_ATTR unmake_move(Eval *const e, Position & pos, const std::pair<int, std::array<undo_t, 4> > & actions)
 {
 	for(int i=0; i<actions.first; i++) {
 		auto & action = actions.second[i];

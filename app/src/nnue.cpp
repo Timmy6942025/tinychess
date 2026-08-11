@@ -60,7 +60,7 @@ struct Network {
 	Accumulator output_weights[2];
 	std::int16_t output_bias;
 
-	int evaluate(const Accumulator& us, const Accumulator& them) const {
+	int IRAM_ATTR evaluate(const Accumulator& us, const Accumulator& them) const {
 		static_assert(sizeof(Network) == weights_size);
 
 		int output = 0;
@@ -95,13 +95,13 @@ struct Network {
 		return std::clamp(output, -max_non_mate, max_non_mate);
 	}
 
-	void add_feature(Accumulator& acc, const int feature_idx) const {
+	void IRAM_ATTR add_feature(Accumulator& acc, const int feature_idx) const {
 		for (int i = 0; i < HIDDEN_SIZE; i++) {
 			acc.vals[i] += this->feature_weights[feature_idx].vals[i];
 		}
 	}
 
-	void remove_feature(Accumulator& acc, const int feature_idx) const {
+	void IRAM_ATTR remove_feature(Accumulator& acc, const int feature_idx) const {
 		for (int i = 0; i < HIDDEN_SIZE; i++) {
 			acc.vals[i] -= this->feature_weights[feature_idx].vals[i];
 		}

@@ -44,3 +44,13 @@ CONFIG_FREERTOS_USE_TRACE_FACILITY=y
 # --- Optimization: -O2 (perf). -Og (default sdkconfig) costs ~2.5-6x on the
 # PSRAM-latency-bound NNUE search; perf is bit-exact identical (asserts stay on).
 CONFIG_COMPILER_OPTIMIZATION_PERF=y
+
+# --- Instruction cache: 32KB instead of 16KB. The search hot path (search/qs/
+# movegen/eval, tens of KB of flash XIP code shared between both cores through a
+# single cache) thrashed the 16KB default; 32KB measurably cuts flash refetch
+# stalls. Max on ESP32-S3 is 32KB (data cache stays 32KB).
+CONFIG_ESP32S3_INSTRUCTION_CACHE_32KB=y
+
+# --- Task WDT: main task can legitimately block >5s (serial read while idle,
+# long UCI searches); feed it in the loops and give a generous timeout ---
+CONFIG_ESP_TASK_WDT_TIMEOUT_S=60

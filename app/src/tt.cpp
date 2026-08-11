@@ -202,7 +202,7 @@ static inline tt_entry * replace_slot(tt_entry *const slots, const uint16_t hash
 	return &slots[best];
 }
 
-void tt::store(const uint64_t hash, const tt_entry_flag f, const int d, const int score, const libchess::Move & m)
+void IRAM_ATTR tt::store(const uint64_t hash, const tt_entry_flag f, const int d, const int score, const libchess::Move & m)
 {
 	if (entries == nullptr)
 		return;
@@ -220,7 +220,7 @@ void tt::store(const uint64_t hash, const tt_entry_flag f, const int d, const in
 	cur->age   = generation;
 }
 
-void tt::store(const uint64_t hash, const tt_entry_flag f, const int d, const int score)
+void IRAM_ATTR tt::store(const uint64_t hash, const tt_entry_flag f, const int d, const int score)
 {
 	if (entries == nullptr)
 		return;

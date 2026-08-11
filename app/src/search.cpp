@@ -9,7 +9,11 @@
 #include <libchess/UCIService.h>
 
 #if defined(ESP32)
-#include <esp_task_wdt.h>
+#include <esp_attr.h>
+#include <esp_timer.h>
+#endif
+
+#if defined(ESP32)
 static volatile uint32_t        es32_yield_gate = 0;
 static volatile uint64_t        es32_last_yield = 0;
 static volatile TaskHandle_t    es32_yield_peer = NULL;
@@ -68,7 +72,7 @@ void sort_movelist_compare::add_first_move(const libchess::Move move)
 }
 
 // MVV-LVA
-int sort_movelist_compare::move_evaluater(const libchess::Move move) const
+int IRAM_ATTR sort_movelist_compare::move_evaluater(const libchess::Move move) const
 {
 	for(int i=0; i<n_first_moves; i++) {
 		if (move == first_moves[i])
@@ -163,7 +167,7 @@ bool is_insufficient_material_draw(const libchess::Position & pos)
         return true;
 }
 
-libchess::MoveList gen_qs_moves(libchess::Position & pos)
+libchess::MoveList IRAM_ATTR gen_qs_moves(libchess::Position & pos)
 {
 	libchess::Color side = pos.side_to_move();
 
@@ -182,7 +186,7 @@ libchess::MoveList gen_qs_moves(libchess::Position & pos)
 // optimal play (each side may stand pat after its own capture). Greedy
 // least-valuable-attacker recursion with x-ray discovery; matches the
 // classic swap-list algorithm and Stockfish's see_ge() semantics.
-int see_rec(const libchess::Position & pos, const libchess::Bitboard occ, const libchess::Square to, const libchess::Color stm, const int captured, const int depth)
+int IRAM_ATTR see_rec(const libchess::Position & pos, const libchess::Bitboard occ, const libchess::Square to, const libchess::Color stm, const int captured, const int depth)
 {
 	using namespace libchess;
 	using namespace libchess::constants;
@@ -219,7 +223,7 @@ int see_rec(const libchess::Position & pos, const libchess::Bitboard occ, const 
 	return std::max(0, captured - continuation);
 }
 
-int see(const libchess::Position & pos, const libchess::Move & move)
+int IRAM_ATTR see(const libchess::Position & pos, const libchess::Move & move)
 {
 	using namespace libchess;
 	using namespace libchess::constants;
@@ -254,7 +258,7 @@ int see(const libchess::Position & pos, const libchess::Move & move)
 	return captured_value - see_rec(pos, occ, move.to_square(), !pos.side_to_move(), moving_value, 0);
 }
 
-int qs(int alpha, const int beta, const int qsdepth, search_pars_t & sp)
+int IRAM_ATTR qs(int alpha, const int beta, const int qsdepth, search_pars_t & sp)
 {
 #if defined(ESP32)
 	if (qsdepth > sp.md) {
@@ -420,7 +424,7 @@ int qs(int alpha, const int beta, const int qsdepth, search_pars_t & sp)
 	return best_score;
 }
 
-void update_history(const search_pars_t & sp, const int index, const int bonus)
+void IRAM_ATTR update_history(const search_pars_t & sp, const int index, const int bonus)
 {
 	constexpr const int max_history = 1023;
 	constexpr const int min_history = -max_history;
@@ -433,7 +437,7 @@ void update_history(const search_pars_t & sp, const int index, const int bonus)
 	sp.history[index] += final_value;
 }
 
-int search(int depth, int alpha, const int beta, const int null_move_depth, const int16_t max_depth, libchess::Move *const m, search_pars_t & sp, libchess::MoveList *const pv)
+int IRAM_ATTR search(int depth, int alpha, const int beta, const int null_move_depth, const int16_t max_depth, libchess::Move *const m, search_pars_t & sp, libchess::MoveList *const pv)
 {
 	if (sp.stop->flag)
 		return 0;
@@ -451,8 +455,8 @@ int search(int depth, int alpha, const int beta, const int null_move_depth, cons
 		es32_last_yield = esp_timer_get_time();
 		if (__atomic_add_fetch(&es32_yield_gate, 1, __ATOMIC_SEQ_CST) == 1) {
 			// First searcher to arrive: block until the peer arrives (or a
-			// 100 ms timeout), then both delay at the same time.
-			ulTaskNotifyTake(pdTRUE, 10);
+			// 20 ms timeout), then both delay at the same time.
+			ulTaskNotifyTake(pdTRUE, 2);
 			vTaskDelay(1);
 		}
 		else {
@@ -871,7 +875,7 @@ void emit(const std::string & text, const bool is_tui)
 #endif
 }
 
-std::tuple<libchess::Move, int, int> search_it(const int search_time_min, const int search_time_max, const bool is_absolute_time, search_pars_t *const sp, const int ultimate_max_depth, std::optional<uint64_t> max_n_nodes, const output_type_t output, const bool is_tui)
+std::tuple<libchess::Move, int, int> IRAM_ATTR search_it(const int search_time_min, const int search_time_max, const bool is_absolute_time, search_pars_t *const sp, const int ultimate_max_depth, std::optional<uint64_t> max_n_nodes, const output_type_t output, const bool is_tui)
 {
 	uint64_t t_offset = esp_timer_get_time();
 
