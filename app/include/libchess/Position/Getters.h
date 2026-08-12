@@ -129,6 +129,10 @@ inline Position::GameState Position::game_state() const {
 }
 
 LIBCHESS_IRAM_ATTR inline bool Position::is_legal_generated_move(Move move) const {
+    return is_legal_generated_move(move, pinned_pieces_of(side_to_move()));
+}
+
+LIBCHESS_IRAM_ATTR inline bool Position::is_legal_generated_move(Move move, Bitboard pinned) const {
     Color c = side_to_move();
     Square from = move.from_square();
     Square king_sq = king_square(c);
@@ -145,7 +149,7 @@ LIBCHESS_IRAM_ATTR inline bool Position::is_legal_generated_move(Move move) cons
         return move.type() == Move::Type::CASTLING ||
                !(attackers_to(move.to_square()) & color_bb(!c));
     } else {
-        return !(pinned_pieces_of(c) & Bitboard{from}) ||
+        return !(pinned & Bitboard{from}) ||
                (Bitboard{move.to_square()} & lookups::full_ray(king_sq, from));
     }
 }

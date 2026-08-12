@@ -75,6 +75,7 @@ class Position {
     bool is_promotion_move(Move move) const;
     bool is_legal_move(Move move) const;
     bool is_legal_generated_move(Move move) const;
+    bool is_legal_generated_move(Move move, Bitboard pinned) const;
     void unmake_move();
     void make_move(Move move);
     void make_null_move();

@@ -342,6 +342,7 @@ int IRAM_ATTR qs(int alpha, const int beta, const int qsdepth, search_pars_t & s
 	// generate list of scores: SEE order (winning captures first),
 	// with the TT move pinned to the front
 	size_t           n_moves = move_list.size();
+	libchess::Bitboard pinned = sp.pos.pinned_pieces_of(sp.pos.side_to_move());
 	std::vector<int> move_scores(n_moves);
 	for(size_t i=0; i<n_moves; i++) {
 		auto & move = *(move_list.begin() + i);
@@ -364,7 +365,7 @@ int IRAM_ATTR qs(int alpha, const int beta, const int qsdepth, search_pars_t & s
 		auto & move = *(move_list.begin() + m_idx);
 		m_idx++;
 
-		if (sp.pos.is_legal_generated_move(move) == false)
+		if (sp.pos.is_legal_generated_move(move, pinned) == false)
 			continue;
 
 		n_played++;
@@ -638,6 +639,7 @@ int IRAM_ATTR search(int depth, int alpha, const int beta, const int null_move_d
 
 	// generate list of scores
 	size_t           n_moves = move_list.size();
+	libchess::Bitboard pinned = sp.pos.pinned_pieces_of(sp.pos.side_to_move());
 	std::vector<int> move_scores(n_moves);
 	for(size_t i=0; i<n_moves; i++)
 		move_scores[i] = smc.move_evaluater(*(move_list.begin() + i));
@@ -662,7 +664,7 @@ int IRAM_ATTR search(int depth, int alpha, const int beta, const int null_move_d
 		auto & move = *(move_list.begin() + m_idx);
 		m_idx++;
 
-		if (sp.pos.is_legal_generated_move(move) == false)
+		if (sp.pos.is_legal_generated_move(move, pinned) == false)
 			continue;
 
 		// futility pruning: a quiet move cannot improve the score if the
