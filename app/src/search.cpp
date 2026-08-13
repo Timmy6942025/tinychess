@@ -127,7 +127,7 @@ bool is_check(libchess::Position & pos)
 }
 
 // https://www.reddit.com/r/chess/comments/se89db/a_writeup_on_definitions_of_insufficient_material/
-bool is_insufficient_material_draw(const libchess::Position & pos)
+bool IRAM_ATTR is_insufficient_material_draw(const libchess::Position & pos)
 {
 	using namespace libchess::constants;
 
