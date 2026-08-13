@@ -454,7 +454,7 @@ int IRAM_ATTR search(int depth, int alpha, const int beta, const int null_move_d
 	// vTaskDelay(1) at the same time via a shared gate, letting IDLE run.
 	// Triggered by time (not the node counter: that can be folded away by
 	// the compiler, making the gate unreachable).
-	if (esp_timer_get_time() - es32_last_yield >= 250000) {
+	if (esp_timer_get_time() - es32_last_yield >= 1500000) {
 		es32_last_yield = esp_timer_get_time();
 		if (__atomic_add_fetch(&es32_yield_gate, 1, __ATOMIC_SEQ_CST) == 1) {
 			// First searcher to arrive: block until the peer arrives (or a
