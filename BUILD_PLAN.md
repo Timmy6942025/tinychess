@@ -137,16 +137,31 @@ cutechess-cli -engine cmd=app/wrapper.py arg1=/dev/ttyACM0 \
 - Ship `quantised-ESP32.bin` + an alternative small net in a flash partition (we have 16 MB).
 - `setoption name EvalFile <path>` support; mmap/net in flash→ memcpy to PSRAM at boot.
 - Follow-model: **RukChess** 1.5 MB `768→512→1` and **minifish** <64 KB remain as swapped-in experiments (Phase 3.3).
+- MEASURED (2026-08-13): the implemented approach does NOT copy the net to
+  PSRAM - `weights_data` (394,816 B) sits in flash rodata and is evaluated via
+  flash XIP (map: 0x3c12a080). PSRAM holds only the 6 MB TT. The `768→512→1`
+  net above was never swapped in; the board runs the 768→256→1 net with the
+  PIE output kernel (`accx_dot16`).
 
 ### 1.4 The 2nd core / threading (lazy SMP already in Dog)
 - Pin whole engine (already) both cores; consider pondering on idle core at low priority — gives UCI terminal win.
+- MEASURED (2026-08-13): the second core is NOT idle - games run 2 searcher
+  threads (`allocate_threads(chip_info.cores)`); only the console bench forces
+  1 thread. Measured lazy-SMP scaling: 5,167 (1-thread bench) -> 8,015 nps
+  (2-thread game path) = +55%, i.e. -23% per-core efficiency from the shared
+  lock-free PSRAM TT (ESP32-S3 PSRAM is not cache-coherent across cores).
+  "Ponder on the idle core" is moot - both cores already search.
 
 ### 1.5 Memory map (final shape)
 | Region | Contents |
 |---|---|
 | SRAM | search stack, eval accumulators(thread-local), TT probe code, hash, counters |
-| PSRAM 8 MB | TT buffers (up to 6 MB), network weights copy, large stack for move-score arrays |
-| Flash 16 MB | app (code + const), base net + alternate nets, opening book (small), log |
+| PSRAM 8 MB | TT buffers (6 MB) only - no net copy, no move arrays |
+| Flash 16 MB | app (code + const), net weights (flash rodata, XIP), kindergarten tables, opening book (small), log |
+
+Measured (2026-08-13, app/build/esp32chesstest.map): .iram0.text 128,443 B;
+.flash.text 1,009,876 B; .dram0.data 20,744 B; .dram0.bss 24,736 B; no
+.ext_ram. Per-node move arrays are heap allocations (std::vector), not stack.
 
 ---
 

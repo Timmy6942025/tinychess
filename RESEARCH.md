@@ -47,9 +47,17 @@ Time-limited ~2.5 s window, startpos. Recorded in `tools/bench.csv`:
 4. Feature update not fused (`make_move` does remove+add separately).
 
 ### ESP32-S3 implications
-- 394 KB net fits 16 MB flash easily; PSRAM (8 MB) holds TT + net copy.
-- NPS scaling: host ~360 k at ~3 GHz -> S3 at 240 MHz dual-core lands near the
-  "2300-2600 CCRL-class" band from BUILD_PLAN section 0.
+- 394 KB net fits 16 MB flash easily; the net is embedded in **flash rodata**
+  (`weights_data` @ 0x3c12a080, 394,816 B per app/build/esp32chesstest.map) and
+  evaluated via flash XIP. PSRAM (8 MB) holds the 6 MB TT only - there is NO
+  net copy in PSRAM.
+- Measured corrections (2026-08-13, supersede the estimate below): board
+  1-thread fixed-2.5s bench = 5,167 nps; board 2-thread game path (UCI
+  movetime 2500) = 8,015 nps; desktop Dog-native (same protocol) = 366,390 nps.
+  Real gap under match conditions: 45.7x. Match board-vs-Dog-native 2+0.02
+  40 games: -523.4 +/- 156.1 Elo (see tools/results.log:3749 and
+  docs/SPEEDUP_PLAN.md). The "2300-2600 CCRL-class" estimate below was never
+  measured and does not match the -523 Elo (-579 vs SF17) measured.
 
 ---
 
@@ -106,8 +114,14 @@ Final intended shape for the S3:
 | Region | Contents |
 |---|---|
 | SRAM | search stack, eval accumulators (thread-local), TT probe code, hash, counters |
-| PSRAM 8 MB | TT buffers (up to 6 MB), network weights copy, large move-score arrays |
-| Flash 16 MB | app (code + const), base net + alternate nets, opening book (small), log |
+| PSRAM 8 MB | TT buffers (6 MB) only - no net copy, no move arrays |
+| Flash 16 MB | app (code + const), net weights (flash rodata, XIP), kindergarten tables, opening book (small), log |
+
+Measured placement (2026-08-13, app/build/esp32chesstest.map): weights_data is
+flash rodata (0x3c12a080); .iram0.text 128,443 B; .flash.text 1,009,876 B;
+.dram0.data 20,744 B; .dram0.bss 24,736 B; no .ext_ram. Per-node move arrays
+(MoveList = std::vector<Move> reserve(32), move_scores, child_pv) are heap
+allocations in the hot path - NOT stack, NOT PSRAM-resident by design.
 
 On the desktop validation host the net is embedded in the binary
 (`weights.cpp`); PSRAM/SRAM split is S3-only and out of scope for desktop
