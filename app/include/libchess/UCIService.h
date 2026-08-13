@@ -15,8 +15,19 @@
 #include <unordered_map>
 #include <utility>
 #include <vector>
+#if defined(ESP32)
+#include <mutex>
+#include <pthread.h>
+#endif
 
 namespace libchess {
+
+#if defined(ESP32)
+// The USB-Serial-JTAG console drops bytes when two threads write to stdout
+// concurrently (searcher thread emitting "info", go thread emitting
+// "bestmove"). Serialize every UCI-wire write through this mutex.
+inline std::recursive_mutex uci_console_mutex;
+#endif
 
 class UCIScore {
    public:
@@ -394,14 +405,41 @@ class UCIService {
 
         std::string word;
         std::string line;
+#if defined(ESP32)
+        // The go-handler thread only runs the shallow UCI glue (book probe,
+        // search setup, then waits on the persistent searcher thread). A full
+        // CONFIG_PTHREAD_TASK_STACK_SIZE_DEFAULT (32768) stack per "go" needs a
+        // contiguous internal-RAM block that this board barely fits - a
+        // transient allocation (timer entry, getline growth, book read) drops
+        // the largest free block below 32768 and pthread_create aborts the
+        // whole firmware. Use a small explicit stack instead.
+        constexpr size_t GO_THREAD_STACK_BYTES = 24 * 1024;
+        pthread_t        go_pthread = 0;
+        bool             go_pthread_live = false;
+#else
         std::optional<std::thread> go_thread;
+#endif
 
-        auto stop_search = [this, &go_thread]() {
+        auto stop_search = [this
+#if defined(ESP32)
+            , &go_pthread, &go_pthread_live
+#else
+            , &go_thread
+#endif
+        ]() {
+#if defined(ESP32)
+            if (go_pthread_live) {
+                stop_handler_();
+                pthread_join(go_pthread, nullptr);
+                go_pthread_live = false;
+            }
+#else
             if (go_thread) {
                 stop_handler_();
                 go_thread->join();
                 go_thread = {};
             }
+#endif
         };
 
         keep_running_ = true;
@@ -429,13 +467,37 @@ class UCIService {
                 stop_search();
                 auto go_parameters = parse_go_line(line_stream);
                 if (go_parameters) {
+#if defined(ESP32)
+                    struct go_args_t {
+                        std::function<void(const UCIGoParameters&)> handler;
+                        UCIGoParameters                             params;
+                    };
+                    auto *args = new go_args_t{ go_handler_, *go_parameters };
+                    pthread_attr_t attr;
+                    pthread_attr_init(&attr);
+                    pthread_attr_setstacksize(&attr, GO_THREAD_STACK_BYTES);
+                    if (pthread_create(&go_pthread, &attr, [](void *p) -> void * {
+                                        auto *a = static_cast<go_args_t *>(p);
+                                        a->handler(a->params);
+                                        delete a;
+                                        return nullptr;
+                                    }, args) == 0)
+                        go_pthread_live = true;
+                    else
+                        delete args;
+                    pthread_attr_destroy(&attr);
+#else
                     go_thread = std::thread{go_handler_, *go_parameters};
+#endif
                 }
             } else if (word == "stop") {
                 stop_search();
             } else if (word == "setoption") {
                 parse_and_run_setoption_line(line_stream);
             } else if (word == "isready") {
+#if defined(ESP32)
+                std::lock_guard<std::recursive_mutex> lock(uci_console_mutex);
+#endif
                 out_ << "readyok\n";
             } else if (word == "quit" || word == "exit") {
                 stop_search();
@@ -493,6 +555,9 @@ class UCIService {
             bestmove_str += " ponder " + *ponder_move;
         }
         bestmove_str += "\n";
+#if defined(ESP32)
+        std::lock_guard<std::recursive_mutex> lock(uci_console_mutex);
+#endif
         out << bestmove_str;
     }
     static void info(const UCIInfoParameters& info_parameters,
@@ -556,6 +621,9 @@ class UCIService {
             info_str += " string " + *info_parameters.string();
         }
         info_str += "\n";
+#if defined(ESP32)
+        std::lock_guard<std::recursive_mutex> lock(uci_console_mutex);
+#endif
         out << info_str;
         if (info_parameters.multipv()) {
             auto multipv = *info_parameters.multipv();
@@ -709,6 +777,9 @@ class UCIService {
 
    private:
     void uci_handler() {
+#if defined(ESP32)
+        std::lock_guard<std::recursive_mutex> lock(uci_console_mutex);
+#endif
         std::string id_name = "id name " + name_ + "\n";
         out_ << id_name;
 

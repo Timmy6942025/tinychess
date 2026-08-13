@@ -872,8 +872,10 @@ void emit(const std::string & text, const bool is_tui)
 #if defined(ESP32)
 	if (is_tui)
 		to_uart(text.c_str(), text.size());
-	else
+	else {
+		std::lock_guard<std::recursive_mutex> lock(libchess::uci_console_mutex);
 		printf("%s", text.c_str());
+	}
 #else
 	printf("%s", text.c_str());
 #endif
