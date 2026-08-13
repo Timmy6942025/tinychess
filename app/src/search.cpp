@@ -336,19 +336,37 @@ int IRAM_ATTR qs(int alpha, const int beta, const int qsdepth, search_pars_t & s
 	}
 
 	int  n_played  = 0;
-	const int qscr_idx = qsdepth < n_qs_scratch_levels ? qsdepth : n_qs_scratch_levels - 1;
-	node_scratch_t & qscr = sp.scratch[n_search_scratch_levels + qscr_idx];
-	gen_qs_moves_into(sp.pos, qscr.ml);
-	auto & move_list = qscr.ml;
+	libchess::MoveList local_ml;
+	std::vector<int>   local_scores;
+	node_scratch_t   * qscr = nullptr;
+	libchess::MoveList * move_list_ptr = nullptr;
+	if (qsdepth < n_qs_scratch_levels) {
+		qscr = &sp.scratch[n_search_scratch_levels + qsdepth];
+		gen_qs_moves_into(sp.pos, qscr->ml);
+		move_list_ptr = &qscr->ml;
+	}
+	else {
+		gen_qs_moves_into(sp.pos, local_ml);
+		move_list_ptr = &local_ml;
+	}
+	auto & move_list = *move_list_ptr;
 	std::optional<libchess::Move> m;
 
 	// generate list of scores: SEE order (winning captures first),
 	// with the TT move pinned to the front
 	size_t           n_moves = move_list.size();
 	libchess::Bitboard pinned = sp.pos.pinned_pieces_of(sp.pos.side_to_move());
-	qscr.scores.clear();
-	qscr.scores.resize(n_moves);
-	std::vector<int> & move_scores = qscr.scores;
+	std::vector<int> * scores_ptr;
+	if (qscr) {
+		qscr->scores.clear();
+		qscr->scores.resize(n_moves);
+		scores_ptr = &qscr->scores;
+	}
+	else {
+		local_scores.resize(n_moves);
+		scores_ptr = &local_scores;
+	}
+	std::vector<int> & move_scores = *scores_ptr;
 	for(size_t i=0; i<n_moves; i++) {
 		auto & move = *(move_list.begin() + i);
 		move_scores[i] = see(sp.pos, move);
