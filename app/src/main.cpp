@@ -476,6 +476,7 @@ void delete_threads()
 		delete i->nnue_eval;
 		delete i->stop;
 		free(i->history);
+		delete[] i->scratch;
 		delete i;
 	}
 
@@ -494,6 +495,7 @@ void allocate_threads(const int n)
 		sp.push_back(new search_pars_t({ reinterpret_cast<int16_t *>(calloc(1, history_malloc_size)), new end_t, i }));
 		sp.at(i)->nnue_eval     = new Eval(sp.at(i)->pos);
 		sp.at(i)->thread_handle = new std::thread(searcher, i);
+		sp.at(i)->scratch       = new node_scratch_t[n_search_scratch_levels + n_qs_scratch_levels];
 #if defined(ESP32)
 		sp.at(i)->md_limit      = 65535;
 #endif

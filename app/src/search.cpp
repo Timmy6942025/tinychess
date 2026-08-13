@@ -169,18 +169,18 @@ bool IRAM_ATTR is_insufficient_material_draw(const libchess::Position & pos)
         return true;
 }
 
-libchess::MoveList IRAM_ATTR gen_qs_moves(libchess::Position & pos)
+void IRAM_ATTR gen_qs_moves_into(libchess::Position & pos, libchess::MoveList & ml)
 {
 	libchess::Color side = pos.side_to_move();
 
-	if (pos.checkers_to(side))
-		return pos.pseudo_legal_move_list();
+	if (pos.checkers_to(side)) {
+		pos.pseudo_legal_move_list_into(ml);
+		return;
+	}
 
-	libchess::MoveList ml;
+	ml.clear();
 	pos.generate_promotions(ml, side);
 	pos.generate_capture_moves(ml, side);
-
-	return ml;
 }
 
 // Static Exchange Evaluation: net material balance of the capture sequence
@@ -336,14 +336,19 @@ int IRAM_ATTR qs(int alpha, const int beta, const int qsdepth, search_pars_t & s
 	}
 
 	int  n_played  = 0;
-	auto move_list = gen_qs_moves(sp.pos);
+	const int qscr_idx = qsdepth < n_qs_scratch_levels ? qsdepth : n_qs_scratch_levels - 1;
+	node_scratch_t & qscr = sp.scratch[n_search_scratch_levels + qscr_idx];
+	gen_qs_moves_into(sp.pos, qscr.ml);
+	auto & move_list = qscr.ml;
 	std::optional<libchess::Move> m;
 
 	// generate list of scores: SEE order (winning captures first),
 	// with the TT move pinned to the front
 	size_t           n_moves = move_list.size();
 	libchess::Bitboard pinned = sp.pos.pinned_pieces_of(sp.pos.side_to_move());
-	std::vector<int> move_scores(n_moves);
+	qscr.scores.clear();
+	qscr.scores.resize(n_moves);
+	std::vector<int> & move_scores = qscr.scores;
 	for(size_t i=0; i<n_moves; i++) {
 		auto & move = *(move_list.begin() + i);
 		move_scores[i] = see(sp.pos, move);
@@ -440,10 +445,15 @@ void IRAM_ATTR update_history(const search_pars_t & sp, const int index, const i
 	sp.history[index] += final_value;
 }
 
-int IRAM_ATTR search(int depth, int alpha, const int beta, const int null_move_depth, const int16_t max_depth, libchess::Move *const m, search_pars_t & sp, libchess::MoveList *const pv)
+int IRAM_ATTR search(int depth, int alpha, const int beta, const int null_move_depth, const int16_t max_depth, const int level, libchess::Move *const m, search_pars_t & sp)
 {
 	if (sp.stop->flag)
 		return 0;
+
+	const int scr_level    = level < n_search_scratch_levels ? level : n_search_scratch_levels - 1;
+	const int child_scr_lv = level + 1 < n_search_scratch_levels ? level + 1 : n_search_scratch_levels - 1;
+	node_scratch_t & scr   = sp.scratch[scr_level];
+	scr.pv_len             = 0;
 
 #if defined(ESP32)
 	// Keep the idle tasks alive so they can feed the task watchdog. The
@@ -474,7 +484,6 @@ int IRAM_ATTR search(int depth, int alpha, const int beta, const int null_move_d
 
 	if (depth == 0) {
 		int score = qs(alpha, beta, max_depth, sp);
-		pv->clear();
 		return score;
 	}
 
@@ -484,7 +493,6 @@ int IRAM_ATTR search(int depth, int alpha, const int beta, const int null_move_d
 	bool       is_root_position = max_depth == depth;
 
 	if (!is_root_position && (sp.pos.is_repeat() || sp.pos.halfmoves() > 100 || is_insufficient_material_draw(sp.pos))) {
-		pv->clear();
 		if (sp.pos.in_check()) {
 			if (sp.pos.legal_move_list().empty()) {
 				sp.cs.win[!sp.pos.side_to_move()]++;
@@ -528,11 +536,9 @@ int IRAM_ATTR search(int depth, int alpha, const int beta, const int null_move_d
 				sp.cs.data.tt_cutoff++;
 				if (tt_move.has_value()) {
 					*m = tt_move.value();  // move in TT is valid
-					pv->clear();
 					return work_score;
 				}
 				if (!is_root_position) {
-					pv->clear();
 					return work_score;
 				}
 			}
@@ -595,7 +601,6 @@ int IRAM_ATTR search(int depth, int alpha, const int beta, const int null_move_d
 		// static null pruning (reverse futility pruning)
 		if (staticeval - depth * 121 > beta) {
 			sp.cs.data.n_static_eval_hit++;
-			pv->clear();
 			return (beta + staticeval) / 2;
 		}
 	}
@@ -606,26 +611,24 @@ int IRAM_ATTR search(int depth, int alpha, const int beta, const int null_move_d
 		sp.cs.data.n_null_move++;
 
 		sp.pos.make_null_move();
-		libchess::MoveList ignore_pv;
 		libchess::Move     ignore_move { };
-		int nmscore = -search(std::max(0, depth - nm_reduce_depth), -beta, -beta + 1, null_move_depth + 1, max_depth, &ignore_move, sp, &ignore_pv);
+		int nmscore = -search(std::max(0, depth - nm_reduce_depth), -beta, -beta + 1, null_move_depth + 1, max_depth, level + 1, &ignore_move, sp);
 		sp.pos.unmake_move();
 
                 if (nmscore >= beta) {
-			libchess::MoveList ignore_pv2;
 			libchess::Move     ignore2 { };
-			int verification = search(std::max(0, depth - nm_reduce_depth), beta - 1, beta, null_move_depth, max_depth, &ignore2, sp, &ignore_pv2);
+			int verification = search(std::max(0, depth - nm_reduce_depth), beta - 1, beta, null_move_depth, max_depth, level + 1, &ignore2, sp);
 			if (verification >= beta) {
 				sp.cs.data.n_null_move_hit++;
-				pv->clear();
 				return abs(nmscore) >= max_non_mate ? beta : nmscore;
 			}
                 }
 	}
 	///////////////
 
-	int                best_score = -32767;
-	libchess::MoveList move_list  = sp.pos.pseudo_legal_move_list();
+	int                    best_score = -32767;
+	sp.pos.pseudo_legal_move_list_into(scr.ml);
+	libchess::MoveList &  move_list  = scr.ml;
 
 	sort_movelist_compare smc(sp);
 
@@ -640,7 +643,9 @@ int IRAM_ATTR search(int depth, int alpha, const int beta, const int null_move_d
 	// generate list of scores
 	size_t           n_moves = move_list.size();
 	libchess::Bitboard pinned = sp.pos.pinned_pieces_of(sp.pos.side_to_move());
-	std::vector<int> move_scores(n_moves);
+	scr.scores.clear();
+	scr.scores.resize(n_moves);
+	std::vector<int> & move_scores = scr.scores;
 	for(size_t i=0; i<n_moves; i++)
 		move_scores[i] = smc.move_evaluater(*(move_list.begin() + i));
 
@@ -649,7 +654,6 @@ int IRAM_ATTR search(int depth, int alpha, const int beta, const int null_move_d
 
 	int new_depth_basic = sp.pos.in_check() || n_moves == 1 ? depth : depth -1;
 
-	libchess::MoveList child_pv;
 	size_t             m_idx    = 0;
 	while(m_idx < n_moves) {
 		size_t selected_idx = m_idx;
@@ -686,7 +690,7 @@ int IRAM_ATTR search(int depth, int alpha, const int beta, const int null_move_d
 
 		auto undo_actions = make_move(sp.nnue_eval, sp.pos, move);
 		if (n_played == 0)
-			score = -search(new_depth_basic, -beta, -alpha, null_move_depth, max_depth, &new_move, sp, &child_pv);
+			score = -search(new_depth_basic, -beta, -alpha, null_move_depth, max_depth, level + 1, &new_move, sp);
 		else {
 			int new_depth = depth - 1;
 
@@ -705,13 +709,13 @@ int IRAM_ATTR search(int depth, int alpha, const int beta, const int null_move_d
 				}
 			}
 
-			score = -search(new_depth, -alpha - 1, -alpha, null_move_depth, max_depth, &new_move, sp, &child_pv);
+			score = -search(new_depth, -alpha - 1, -alpha, null_move_depth, max_depth, level + 1, &new_move, sp);
 
 			if (is_lmr && score > alpha)
-				score = -search(depth -1, -alpha - 1, -alpha, null_move_depth, max_depth, &new_move, sp, &child_pv);
+				score = -search(depth -1, -alpha - 1, -alpha, null_move_depth, max_depth, level + 1, &new_move, sp);
 
 			if (score > alpha && score < beta)
-				score = -search(depth - 1, -beta, -alpha, null_move_depth, max_depth, &new_move, sp, &child_pv);
+				score = -search(depth - 1, -beta, -alpha, null_move_depth, max_depth, level + 1, &new_move, sp);
 		}
 		unmake_move(sp.nnue_eval, sp.pos, undo_actions);
 
@@ -721,10 +725,12 @@ int IRAM_ATTR search(int depth, int alpha, const int beta, const int null_move_d
 			best_score         = score;
 			*m                 = move;
 
-			pv->clear();
-			pv->add(move);
-			for(auto & child_pv_move: child_pv)
-				pv->add(child_pv_move);
+			node_scratch_t & child_scr = sp.scratch[child_scr_lv];
+			scr.pv_len = 0;
+			if (scr.pv_len < 64)
+				scr.pv[scr.pv_len++] = move;
+			for(size_t i=0; i < child_scr.pv_len && scr.pv_len < 64; i++)
+				scr.pv[scr.pv_len++] = child_scr.pv[i];
 
 			if (score > alpha) {
 				if (score >= beta) {
@@ -931,8 +937,11 @@ std::tuple<libchess::Move, int, int> IRAM_ATTR search_it(const int search_time_m
 			tti.new_search();
 			if (max_depth >= 4)
 				cur_move = sp->best_moves[max_depth - 3];
+			int                score = search(max_depth, alpha, beta, 0, max_depth, 0, &cur_move, *sp);
 			libchess::MoveList pv;
-			int                score = search(max_depth, alpha, beta, 0, max_depth, &cur_move, *sp, &pv);
+			node_scratch_t &   root_scr = sp->scratch[0];
+			for(size_t i=0; i < root_scr.pv_len && i < 64; i++)
+				pv.add(root_scr.pv[i]);
 			assert(score >= -max_eval && score <= max_eval);
 
 			auto counts = simple_search_statistics();

@@ -25,6 +25,16 @@ typedef struct {
 void es32_set_yield_peer(TaskHandle_t th);
 #endif
 
+constexpr const int n_search_scratch_levels = 64;  // search() recursion levels
+constexpr const int n_qs_scratch_levels     = 24;  // qs() recursion levels
+
+struct node_scratch_t {
+	libchess::MoveList ml;
+	std::vector<int>   scores;
+	libchess::Move     pv[64];
+	size_t             pv_len;
+};
+
 typedef struct
 {
 	int16_t   *const history   { nullptr };
@@ -43,6 +53,7 @@ typedef struct
 
 	std::thread     *thread_handle { nullptr };
 	Eval            *nnue_eval     { nullptr };
+	node_scratch_t  *scratch       { nullptr };
 } search_pars_t;
 
 extern std::vector<search_pars_t *> sp;

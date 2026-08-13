@@ -341,6 +341,20 @@ LIBCHESS_IRAM_ATTR inline MoveList Position::pseudo_legal_move_list(Color stm) c
     return move_list;
 }
 
+LIBCHESS_IRAM_ATTR inline void Position::pseudo_legal_move_list_into(MoveList& move_list, Color stm) const {
+    move_list.clear();
+    generate_capture_moves(move_list, stm);
+    generate_quiet_moves(move_list, stm);
+}
+
+LIBCHESS_IRAM_ATTR inline void Position::pseudo_legal_move_list_into(MoveList& move_list) const {
+    if (in_check()) {
+        move_list = check_evasion_move_list(side_to_move());
+        return;
+    }
+    pseudo_legal_move_list_into(move_list, side_to_move());
+}
+
 LIBCHESS_IRAM_ATTR inline MoveList Position::pseudo_legal_move_list() const {
     if (in_check()) {
         return check_evasion_move_list(side_to_move());

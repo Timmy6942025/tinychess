@@ -115,6 +115,11 @@ class Position {
     MoveList pseudo_legal_move_list() const;
     MoveList legal_move_list() const;
 
+    // generate into a caller-owned (reusable) MoveList, avoiding per-node
+    // heap allocations in the searcher
+    void pseudo_legal_move_list_into(MoveList& move_list, Color stm) const;
+    void pseudo_legal_move_list_into(MoveList& move_list) const;
+
     // Utilities
     void display_raw(std::ostream& ostream = std::cout) const;
     void display(std::ostream& ostream = std::cout) const;
