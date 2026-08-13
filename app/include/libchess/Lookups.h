@@ -2,10 +2,12 @@
 #define LIBCHESS_LOOKUPS_H
 
 #include <array>
+#include <cstdint>
 
 #include "Bitboard.h"
 #include "Color.h"
 #include "PieceType.h"
+#include "attack-tables.h"
 
 namespace libchess::lookups {
 
@@ -166,44 +168,6 @@ constexpr inline std::array<Bitboard, 64> southeast() {
     return attacks;
 }
 
-constexpr inline std::array<std::array<Bitboard, 64>, 64> intervening() {
-    std::array<std::array<Bitboard, 64>, 64> intervening_bb{};
-    for (Square from = constants::A1; from <= constants::H8; ++from) {
-        for (Square to = constants::A1; to <= constants::H8; ++to) {
-            if (from == to) {
-                continue;
-            }
-            Square high = to;
-            Square low = from;
-            if (low > high) {
-                high = from;
-                low = to;
-            }
-            if (high.file() == low.file()) {
-                for (high -= 8; high > low; high -= 8) {
-                    intervening_bb[from][to] |= Bitboard{high};
-                }
-            }
-            if (high.rank() == low.rank()) {
-                for (--high; high > low; --high) {
-                    intervening_bb[from][to] |= Bitboard{high};
-                }
-            }
-            if (high.file() - low.file() == high.rank() - low.rank()) {
-                for (high -= 9; high > low; high -= 9) {
-                    intervening_bb[from][to] |= Bitboard{high};
-                }
-            }
-            if (low.file() - high.file() == high.rank() - low.rank()) {
-                for (high -= 7; high > low; high -= 7) {
-                    intervening_bb[from][to] |= Bitboard{high};
-                }
-            }
-        }
-    }
-    return intervening_bb;
-}
-
 }  // namespace init
 
 // Direction bitboards
@@ -215,7 +179,6 @@ constexpr static std::array<Bitboard, 64> NORTHWEST = init::northwest();
 constexpr static std::array<Bitboard, 64> SOUTHWEST = init::southwest();
 constexpr static std::array<Bitboard, 64> NORTHEAST = init::northeast();
 constexpr static std::array<Bitboard, 64> SOUTHEAST = init::southeast();
-constexpr static std::array<std::array<Bitboard, 64>, 64> INTERVENING = init::intervening();
 
 constexpr static Bitboard north(Square square) {
     return NORTH[square];
@@ -241,9 +204,10 @@ constexpr static Bitboard northeast(Square square) {
 constexpr static Bitboard southeast(Square square) {
     return SOUTHEAST[square];
 }
-constexpr static Bitboard intervening(Square from, Square to) {
-    return INTERVENING[from][to];
-}
+
+constexpr static std::uint64_t FILE_A_COLUMN{0x0101010101010101ULL};
+constexpr static std::uint64_t B_FILE_FOLD{0x0202020202020202ULL};
+constexpr static std::uint64_t DIAG_C2H7_FOLD{0x0080402010080400ULL};
 
 namespace init {
 
@@ -380,52 +344,27 @@ constexpr inline Bitboard rook_attacks(Square square) {
 constexpr inline Bitboard queen_attacks(Square square) {
     return QUEEN_ATTACKS[square];
 }
-constexpr inline Bitboard bishop_attacks(Square square, Bitboard occupancy) {
-    Bitboard attacks = bishop_attacks(square);
-    Bitboard nw_blockers = (northwest(square) & occupancy) | Bitboard{constants::A8};
-    Bitboard ne_blockers = (northeast(square) & occupancy) | Bitboard{constants::H8};
-    Bitboard sw_blockers = (southwest(square) & occupancy) | Bitboard{constants::A1};
-    Bitboard se_blockers = (southeast(square) & occupancy) | Bitboard{constants::H1};
-
-    attacks ^= northwest(nw_blockers.forward_bitscan());
-    attacks ^= northeast(ne_blockers.forward_bitscan());
-    attacks ^= southwest(sw_blockers.reverse_bitscan());
-    attacks ^= southeast(se_blockers.reverse_bitscan());
-    return attacks;
+LIBCHESS_IRAM_ATTR inline Bitboard bishop_attacks(Square square, Bitboard occupancy) {
+    unsigned sq = static_cast<unsigned>(square.value());
+    unsigned file = static_cast<unsigned>(square.file().value());
+    std::uint64_t occ = static_cast<std::uint64_t>(occupancy) | (UINT64_C(1) << sq);
+    std::uint64_t idx_p = ((detail::DIAG_PLUS_FOLD[sq] & occ) * B_FILE_FOLD) >> 58;
+    std::uint64_t idx_n = ((detail::DIAG_MINUS_FOLD[sq] & occ) * B_FILE_FOLD) >> 58;
+    return (Bitboard{detail::FILL_ATTACKS[file][idx_p]} & Bitboard{detail::DIAG_PLUS_LINE[sq]})
+           | (Bitboard{detail::FILL_ATTACKS[file][idx_n]} & Bitboard{detail::DIAG_MINUS_LINE[sq]});
 }
 LIBCHESS_IRAM_ATTR inline Bitboard rook_attacks(Square square, Bitboard occupancy) {
-    Bitboard attacks = rook_attacks(square);
-    Bitboard n_blockers = (north(square) & occupancy) | Bitboard{constants::H8};
-    Bitboard s_blockers = (south(square) & occupancy) | Bitboard{constants::A1};
-    Bitboard w_blockers = (west(square) & occupancy) | Bitboard{constants::A1};
-    Bitboard e_blockers = (east(square) & occupancy) | Bitboard{constants::H8};
-
-    attacks ^= north(n_blockers.forward_bitscan());
-    attacks ^= south(s_blockers.reverse_bitscan());
-    attacks ^= west(w_blockers.reverse_bitscan());
-    attacks ^= east(e_blockers.forward_bitscan());
-    return attacks;
+    unsigned sq = static_cast<unsigned>(square.value());
+    unsigned rank = static_cast<unsigned>(square.rank().value());
+    unsigned file = static_cast<unsigned>(square.file().value());
+    std::uint64_t occ = static_cast<std::uint64_t>(occupancy) | (UINT64_C(1) << sq);
+    std::uint64_t idx_r = (occ >> (rank * 8 + 1)) & 63;
+    std::uint64_t idx_f = (((occ >> file) & FILE_A_COLUMN) * DIAG_C2H7_FOLD) >> 58;
+    return (Bitboard{detail::FILL_ATTACKS[file][idx_r]} & rank_mask(square.rank()))
+           | (Bitboard{detail::FILE_ATTACKS[rank][idx_f]} << static_cast<int>(file));
 }
 LIBCHESS_IRAM_ATTR inline Bitboard queen_attacks(Square square, Bitboard occupancy) {
-    Bitboard attacks = queen_attacks(square);
-    Bitboard nw_blockers = (northwest(square) & occupancy) | Bitboard{constants::A8};
-    Bitboard ne_blockers = (northeast(square) & occupancy) | Bitboard{constants::H8};
-    Bitboard sw_blockers = (southwest(square) & occupancy) | Bitboard{constants::A1};
-    Bitboard se_blockers = (southeast(square) & occupancy) | Bitboard{constants::H1};
-    Bitboard n_blockers = (north(square) & occupancy) | Bitboard{constants::H8};
-    Bitboard s_blockers = (south(square) & occupancy) | Bitboard{constants::A1};
-    Bitboard w_blockers = (west(square) & occupancy) | Bitboard{constants::A1};
-    Bitboard e_blockers = (east(square) & occupancy) | Bitboard{constants::H8};
-
-    attacks ^= northwest(nw_blockers.forward_bitscan());
-    attacks ^= northeast(ne_blockers.forward_bitscan());
-    attacks ^= southwest(sw_blockers.reverse_bitscan());
-    attacks ^= southeast(se_blockers.reverse_bitscan());
-    attacks ^= north(n_blockers.forward_bitscan());
-    attacks ^= south(s_blockers.reverse_bitscan());
-    attacks ^= west(w_blockers.reverse_bitscan());
-    attacks ^= east(e_blockers.forward_bitscan());
-    return attacks;
+    return rook_attacks(square, occupancy) | bishop_attacks(square, occupancy);
 }
 LIBCHESS_IRAM_ATTR inline Bitboard pawn_shift(Bitboard bb, Color c, int times = 1) {
     return c == constants::WHITE ? bb << (8 * times) : bb >> (8 * times);
@@ -456,54 +395,58 @@ LIBCHESS_IRAM_ATTR inline Bitboard non_pawn_piece_type_attacks(PieceType piece_t
         case constants::KING:
             return king_attacks(square);
         default:
-            return Bitboard{0};
+            return Bitboard{};
     }
 }
 
-namespace init {
-
-constexpr inline std::array<std::array<Bitboard, 64>, 64> full_ray() {
-    std::array<std::array<Bitboard, 64>, 64> full_ray_bb{};
-    for (Square from = constants::A1; from <= constants::H8; ++from) {
-        for (Square to = constants::A1; to <= constants::H8; ++to) {
-            if (from == to) {
-                continue;
-            }
-            Square high = to;
-            Square low = from;
-            if (low > high) {
-                high = from;
-                low = to;
-            }
-            if (high.file() == low.file()) {
-                full_ray_bb[from][to] = (lookups::rook_attacks(high) & lookups::rook_attacks(low)) |
-                                        Bitboard{from} | Bitboard{to};
-            }
-            if (high.rank() == low.rank()) {
-                full_ray_bb[from][to] = (lookups::rook_attacks(high) & lookups::rook_attacks(low)) |
-                                        Bitboard{from} | Bitboard{to};
-            }
-            if (high.file() - low.file() == high.rank() - low.rank()) {
-                full_ray_bb[from][to] =
-                    (lookups::bishop_attacks(high) & lookups::bishop_attacks(low)) |
-                    Bitboard{from} | Bitboard{to};
-            }
-            if (low.file() - high.file() == high.rank() - low.rank()) {
-                full_ray_bb[from][to] =
-                    (lookups::bishop_attacks(high) & lookups::bishop_attacks(low)) |
-                    Bitboard{from} | Bitboard{to};
-            }
-        }
+LIBCHESS_IRAM_ATTR inline Bitboard full_ray(Square from, Square to) {
+    if (from == to) {
+        return Bitboard{};
     }
-    return full_ray_bb;
+    Square high = to;
+    Square low = from;
+    if (low > high) {
+        high = from;
+        low = to;
+    }
+    if (high.file() == low.file()) {
+        return file_mask(high.file());
+    }
+    if (high.rank() == low.rank()) {
+        return rank_mask(high.rank());
+    }
+    if (high.file() - low.file() == high.rank() - low.rank()) {
+        return Bitboard{detail::DIAG_PLUS_LINE[from.value()]};
+    }
+    if (low.file() - high.file() == high.rank() - low.rank()) {
+        return Bitboard{detail::DIAG_MINUS_LINE[from.value()]};
+    }
+    return Bitboard{};
 }
 
-}  // namespace init
-
-constexpr static std::array<std::array<Bitboard, 64>, 64> FULL_RAY = init::full_ray();
-
-inline Bitboard full_ray(Square from, Square to) {
-    return FULL_RAY[from][to];
+LIBCHESS_IRAM_ATTR inline Bitboard intervening(Square from, Square to) {
+    if (from == to) {
+        return Bitboard{};
+    }
+    Square high = to;
+    Square low = from;
+    if (low > high) {
+        high = from;
+        low = to;
+    }
+    if (high.file() == low.file()) {
+        return north(low) & south(high);
+    }
+    if (high.rank() == low.rank()) {
+        return east(low) & west(high);
+    }
+    if (high.file() - low.file() == high.rank() - low.rank()) {
+        return northeast(low) & southwest(high);
+    }
+    if (low.file() - high.file() == high.rank() - low.rank()) {
+        return northwest(low) & southeast(high);
+    }
+    return Bitboard{};
 }
 
 }  // namespace libchess::lookups
