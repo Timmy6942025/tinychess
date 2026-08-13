@@ -7,15 +7,29 @@ Usage:  cutechess-cli -engine cmd=wrapper.py arg1=/dev/ttyACM0 ...
 The engine boots into its console and enters UCI mode on "uci"; the wrapper
 swallows the pre-UCI boot banner and the console prompt so only UCI output
 reaches cutechess. Never buffers past a newline; flushes after every write.
+
+Why no reset: the board reboots itself when it receives "quit" (main_task ->
+esp_restart). The old reset dance (RTS pulse + close + reopen at 1.2 s, i.e.
+mid boot) wedged the chip's USB-JTAG input endpoint: every write to the tty
+blocked forever and matches hung. Opening the port fresh (rts/dtr deasserted)
+and waiting for the boot banner - or 2 s of silence if the board is already
+idle at its console prompt - is all that is needed.
+
+Why select(0.02): the select timeout is the dominant per-move latency in
+board-vs-native matches at ultra-fast TC. At 0.5 s the round trip
+(cutechess -> wrapper -> board -> wrapper -> cutechess) added up to ~1 s per
+move, so the board's 2+0.02 clock died after ~9 moves and every game was lost
+on time (the -523.4 Elo anchor match was 40/40 clock forfeits - see
+results.log correction).
 """
 
 import argparse
-import errno
 import os
 import select
 import sys
 import time
 
+import re
 import serial
 
 BAUD = 115200
@@ -29,7 +43,15 @@ args = parser.parse_args()
 def open_port(port):
     for attempt in range(50):
         try:
+            # The constructor asserts DTR/RTS, which pulses the board's
+            # USB-JTAG reset line (clean boot per game). Deassert right away
+            # so the board is not held in reset.
             ser = serial.Serial(port, BAUD, timeout=0.05)
+            try:
+                ser.setDTR(False)
+                ser.setRTS(False)
+            except (OSError, ValueError, NotImplementedError):
+                pass
             return ser
         except (serial.SerialException, OSError):
             if attempt == 49:
@@ -39,31 +61,39 @@ def open_port(port):
 
 
 ser = open_port(args.port)
-try:
-    ser.setDTR(False)
-    ser.setRTS(True)
-    time.sleep(0.1)
-    ser.setRTS(False)
-except (OSError, ValueError, NotImplementedError):
-    pass
-ser.reset_input_buffer()
 
-# drain the boot banner + console prompt (skip them, keep anything after)
+# Drain the boot banner + console prompt. If the board is already idle at its
+# prompt (it was not rebooted), 2 s of silence ends the drain so the game
+# starts without a 15 s stall. The board reboots itself on "quit", so a
+# freshly-launched wrapper usually does see a banner here.
 buf = b""
+last_data = time.time()
 deadline = time.time() + 15
 while time.time() < deadline and BANNER_END not in buf.decode("utf-8", "replace"):
     chunk = ser.read(4096)
     if chunk:
         buf += chunk
+        last_data = time.time()
+    elif time.time() - last_data > 2.0:
+        break
 buf = buf.decode("utf-8", "replace")
 tail = buf.split(BANNER_END, 1)[-1]
 if tail:
     sys.stdout.write(tail)
     sys.stdout.flush()
 
-# bidirectional pump: stdin -> serial (line-buffered), serial -> stdout
+# bidirectional pump: stdin -> serial (line-buffered), serial -> stdout.
+# The board's USB-JTAG TX occasionally drops a byte mid-burst (a known
+# 2-core race in the ESP-IDF usb_serial_jtag driver; patched locally but
+# not 100% eliminated). A corrupted bestmove ("bestmove e2e4" -> "bestmove
+# 2e4") would be an instant lost game under cutechess. The board always
+# announces the final line of the search as "info ... pv <move> ..." before
+# "bestmove", so the wrapper repairs a malformed bestmove from the last pv.
+MOVE_RE = re.compile(rb"^[a-h][1-8][a-h][1-8](?:[qrbn])?$")
+last_pv = None
+line_buf = b""
 while True:
-    r, _, _ = select.select([sys.stdin, ser], [], [], 0.5)
+    r, _, _ = select.select([sys.stdin, ser], [], [], 0.02)
     if sys.stdin in r:
         line = os.read(sys.stdin.fileno(), 65536)
         if not line:
@@ -73,7 +103,20 @@ while True:
         data = ser.read(65536)
         if not data:
             continue
-        os.write(sys.stdout.fileno(), data)
+        line_buf += data
+        while b"\n" in line_buf:
+            raw, _, line_buf = line_buf.partition(b"\n")
+            line = raw + b"\n"
+            if line.startswith(b"info") and b" pv " in line:
+                pv_tokens = line.split(b" pv ", 1)[1].split()
+                if pv_tokens and MOVE_RE.match(pv_tokens[0]):
+                    last_pv = pv_tokens[0]
+            elif line.startswith(b"bestmove"):
+                move = line.split(None, 2)
+                if len(move) >= 2 and not MOVE_RE.match(move[1]):
+                    if last_pv is not None:
+                        line = b"bestmove " + last_pv + b"\n"
+            os.write(sys.stdout.fileno(), line)
         sys.stdout.flush()
 
 ser.close()

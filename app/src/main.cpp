@@ -902,14 +902,12 @@ void main_task()
 				int ms_opponent  = is_white ? b_time : w_time;
 
 				if (ms > 0) {
-					if (a_moves_to_go.has_value() && a_moves_to_go.value() > 0) {
-						think_time_max = ms / moves_to_go + time_inc * 2 / 3;
-						think_time_min = ms / std::max(1, moves_to_go * 3) + time_inc / 2;
-					}
-					else {
-						think_time_max = ms / 10 + time_inc * 2 / 3;
-						think_time_min = ms / 30 + time_inc / 2;
-					}
+					// Use the same moves_to_go horizon whether the GUI sent
+					// `movestogo` or not. A fixed ms/10 assumption over-spends
+					// per move at incremental time controls (2+0.02 -> ~40
+					// moves to go) and forfeits both engines on the clock.
+					think_time_max = ms / moves_to_go + time_inc * 2 / 3;
+					think_time_min = ms / std::max(1, moves_to_go * 3) + time_inc / 2;
 					// a floor of 1 ms keeps a bounded search (search_time_max
 					// of 0 would disable the timeout timer entirely)
 					think_time_max = std::max(1, think_time_max);
@@ -1462,8 +1460,10 @@ static void init_uart()
 	esp_vfs_dev_usb_serial_jtag_set_tx_line_endings(ESP_LINE_ENDINGS_CRLF);
 
 	usb_serial_jtag_driver_config_t usb_serial_jtag_config;
-	usb_serial_jtag_config.rx_buffer_size = 1024;
-	usb_serial_jtag_config.tx_buffer_size = 1024;
+	// 4096 so a full move burst (several info lines + bestmove, ~400 B)
+	// always fits without overflowing the TX ringbuffer mid-burst.
+	usb_serial_jtag_config.rx_buffer_size = 4096;
+	usb_serial_jtag_config.tx_buffer_size = 4096;
 
 	esp_err_t ret = usb_serial_jtag_driver_install(&usb_serial_jtag_config);
 	if (ret != ESP_OK)
@@ -1539,7 +1539,14 @@ extern "C" void app_main()
 
 	std::ios_base::sync_with_stdio(true);
 	std::cout.setf(std::ios::unitbuf);
-	run_tui(false);
+	// The boot-time TUI thread (tui()) is a standalone human-play feature that
+	// is incompatible with UCI-over-serial: it blocks in my_getline() on the
+	// SAME stdin as the UCI go-thread and steals UCI command lines, and its
+	// check_not_searching() ASSERTs whenever a search is running. In board-vs-
+	// native matches this produced corrupted bestmoves ("d2d4" -> "2d4"),
+	// random reboots (assert in check_not_searching) and forfeits. UCI mode
+	// takes full ownership of stdin, so the TUI thread is not started at boot.
+	// run_tui(false);
 
 	main_task();
 

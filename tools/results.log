@@ -3754,3 +3754,55 @@ SPRT: llr -3 (-102.0%), lbound -2.94, ubound 2.94 - H0 was accepted
 [18:21:00] A4 WDT GATE INVESTIGATION: the gate (search.cpp:448-472) fires every node (esp_timer_get_time check) once 250ms elapsed; thread0 blocks ulTaskNotifyTake(2ms) then vTaskDelay(1)=10ms, peer resets gate + notifies + delays 10ms. PURPOSE (only): let IDLE run on both cores to feed the task WDT (CONFIG_ESP_TASK_WDT=y, timeout 60s, CHECK_IDLE_TASK_CPU0/1=y, PANIC not set). COST: 12ms per 250ms on 1-thread bench (2ms notify-timeout + 10ms delay) = 4.8%; 10ms per 250ms both-cores in 2-thread games = 4%. The gate is REQUIRED (WDT feeding), the 250ms period is pure overhead: 60s timeout gives 240x margin. DECISION: lengthen period 250ms -> 1500ms (40x margin), recovering ~4-4.8% nps. Cannot remove entirely (searchers never otherwise block; IDLE starvation would trip the task WDT).
 [18:22:00] A4 DCACHE 64KB RAM CHECK: Kconfig (esp32s3/Kconfig.cache, ESP32S3_DATA_CACHE_SIZE): "If you use 32KB data cache rather than 64KB data cache, the other 32KB will be added to the heap." -> 64KB DCache REMOVES 32KB from internal heap. Measured largest free internal block ~31.7KB (see 16:50 entry: 32KB std::thread stack abort). 64KB DCache would breach headroom -> C3 REJECTED unless funded (e.g. shrink searcher std::thread stacks 32KB->24KB each = 32KB recovered; requires stack-depth measurement of search() recursion first - deferred, not in Tier 1). 32KB DCache stays.
 [19:20:00] C1 VERDICT (-DNDEBUG): fresh-flash bench 12,781/5,078 (baseline) vs NDEBUG build 12,834/5,100 + 12,788/5,071 -> +0.0% nps. BENCH GATE FAIL (needs >= +2%) -> REVERTED (CMakeLists.txt restored). Asserts (35 in eval.cpp, 9 in search.cpp) are in IRAM'd functions; conditions are register checks, failure strings in rodata never touched -> ~0 cost. -DNDEBUG confirmed in compile_commands (14x) and fresh binary flashed (19:17, md5 93e23bf), so the negative result is real, not a stale build.
+[19:26:01] FINGERPRINT A=board(wrapper,port=/dev/ttyACM0)  B=/home/timmy/chess2/engine/app/src/linux-windows/build/Dog-native 72992886320576582013839f74d669de
+[19:26:15] MATCH board-vs-native-20260813-192601  A=board(port=/dev/ttyACM0, wrapper)  B=/home/timmy/chess2/engine/app/src/linux-windows/build/Dog-native  tc=2+0.02 games=3 adj=yes
+Score of BoardXS3 vs DogNative: 0 - 1 - 0  [0.000] 1
+Score of BoardXS3 vs DogNative: 0 - 2 - 0  [0.000] 2
+Score of BoardXS3 vs DogNative: 0 - 3 - 0  [0.000] 3
+Elo difference: -inf +/- nan, LOS: 4.2 %, DrawRatio: 0.0 %
+[19:27:18] FINGERPRINT A=board(wrapper,port=/dev/ttyACM0)  B=/home/timmy/chess2/engine/app/src/linux-windows/build/Dog-native 72992886320576582013839f74d669de
+[19:27:35] MATCH board-vs-native-20260813-192718  A=board(port=/dev/ttyACM0, wrapper)  B=/home/timmy/chess2/engine/app/src/linux-windows/build/Dog-native  tc=2+0.02 games=3 adj=yes
+Score of BoardXS3 vs DogNative: 0 - 1 - 0  [0.000] 1
+Score of BoardXS3 vs DogNative: 0 - 2 - 0  [0.000] 2
+Score of BoardXS3 vs DogNative: 0 - 3 - 0  [0.000] 3
+Elo difference: -inf +/- nan, LOS: 4.2 %, DrawRatio: 0.0 %
+[19:34:59] FINGERPRINT A=board(wrapper,port=/dev/ttyACM0)  B=/home/timmy/chess2/engine/app/src/linux-windows/build/Dog-native 72992886320576582013839f74d669de
+[19:35:16] MATCH board-vs-native-20260813-193459  A=board(port=/dev/ttyACM0, wrapper)  B=/home/timmy/chess2/engine/app/src/linux-windows/build/Dog-native  tc=2+0.02 games=3 adj=yes
+Score of BoardXS3 vs DogNative: 0 - 1 - 0  [0.000] 1
+Score of BoardXS3 vs DogNative: 0 - 2 - 0  [0.000] 2
+Score of BoardXS3 vs DogNative: 0 - 3 - 0  [0.000] 3
+Elo difference: -inf +/- nan, LOS: 4.2 %, DrawRatio: 0.0 %
+[19:42:16] FINGERPRINT A=board(wrapper,port=/dev/ttyACM0)  B=/home/timmy/chess2/engine/app/src/linux-windows/build/Dog-native 72992886320576582013839f74d669de
+[19:42:48] MATCH board-vs-native-20260813-194216  A=board(port=/dev/ttyACM0, wrapper)  B=/home/timmy/chess2/engine/app/src/linux-windows/build/Dog-native  tc=2+0.02 games=3 adj=yes
+Score of BoardXS3 vs DogNative: 0 - 1 - 0  [0.000] 1
+Score of BoardXS3 vs DogNative: 0 - 2 - 0  [0.000] 2
+Score of BoardXS3 vs DogNative: 0 - 3 - 0  [0.000] 3
+Elo difference: -inf +/- nan, LOS: 4.2 %, DrawRatio: 0.0 %
+[21:xx] HARNESS ROOT CAUSE + FIX STACK (commit "harness"):
+  - -523.4 Elo anchor INVALID: 40/40 games were clock forfeits (20x "White loses on time" +
+    19x "Black loses on time" + 1 illegal move), not chess (runs/board-vs-native-20260813-155900.txt).
+  - Per-move latency decomposed: ~51ms input poll + ~145ms SPIFFS book query (fseek/fread binary
+    search per go) + search time. Wrapper select 0.5s -> 0.02s.
+  - FIX book-in-RAM: whole /spiffs/dog-book.bin read into heap at begin(); read_entry() from RAM.
+    go 251ms -> 51ms (input floor); go wtime 204 -> 101ms. Bench-invisible (5,079 nps).
+  - FIX TUI thread: run_tui(false) at app_main spawned a detached thread that stole UCI stdin lines
+    and asserted check_not_searching (tui.cpp:1430) during searches -> random reboots + corrupted
+    bestmoves ("d2d4"->"2d4"). Removed at boot; 20-move stress: 0 reboots (was: frequent).
+  - FIX time formula: think_time_max = ms/10 + inc*2/3 assumed ~10 moves to go; at 2+0.02 both
+    engines forfeited by move ~13. Now uses the 40-move horizon (ms/moves_to_go) in both branches.
+    Per-move 200-400ms -> 51-105ms; games now COMPLETE at 2+0.02 (3/3 finished: 2x resign-adjudication
+    + 1x mate; harness clean, no forfeits/illegal moves/stalls).
+  - FIX USB-JTAG TX race (ESP-IDF esp_driver_usb_serial_jtag): fifo_status read/write raced between
+    the ISR (other core) and usb_serial_jtag_write_bytes -> first byte of a burst dropped
+    ("bestmove e2e4" -> "bestmove 2e4"). Patched ~/esp/esp-idf (spinlock-serialized check + no bare
+    atomic_store reset): 40% -> ~4.5% corruption. TX_FLUSH_TIMEOUT_US 50ms -> 5s + console ringbuffers
+    256B -> 4096B (driver config in main.cpp; header default also bumped).
+  - FIX wrapper (tools/wrapper.py): line-buffered pump; repairs a malformed bestmove from the
+    engine's own last "info ... pv <move>" line (pv[0] == bestmove by construction).
+    30-move stress through wrapper: 0 corrupt. Direct 50-move test earlier: 49/50.
+  - Desktop twin rebuilt with recorded libchess (2-arg legality + local perf patches restored after
+    libchess master refresh broke 2-arg calls + removed uci_console_mutex; the Makefile's "git
+    checkout constexpr" branch no longer exists upstream). md5 7299288 -> 8766b56c. Desktop bench is
+    host-load dependent (366k at low load; 150-290k under load 7-9 from desktop browser) - A2 record
+    unchanged, match gates are relative and unaffected.
+  - Board bench after full stack: 5,079 nps (unchanged, load-independent).

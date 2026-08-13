@@ -60,6 +60,9 @@ bool polyglot_book::begin(const std::string & filename)
 {
 	if (fh)
 		fclose(fh);
+	fh = nullptr;
+	free(buf);
+	buf = nullptr;
 
 	fh = fopen(filename.c_str(), "rb");
 	if (fh) {
@@ -67,6 +70,21 @@ bool polyglot_book::begin(const std::string & filename)
 		const long size = ftell(fh);
 		n = size / sizeof(polyglot_entry);
 		assert((size % sizeof(polyglot_entry)) == 0);
+		if (size > 0) {
+			buf = malloc(size);
+			if (buf) {
+				fseek(fh, 0, SEEK_SET);
+				if (fread(buf, 1, size, fh) != size_t(size)) {
+					my_printf("Failed to read book into memory, using file directly\n");
+					free(buf);
+					buf = nullptr;
+				}
+				else {
+					fclose(fh);
+					fh = nullptr;
+				}
+			}
+		}
 		return true;
 	}
 
@@ -78,6 +96,20 @@ polyglot_book::~polyglot_book()
 {
 	if (fh)
 		fclose(fh);
+	free(buf);
+}
+
+bool polyglot_book::read_entry(const long index, polyglot_entry & entry) const
+{
+	if (buf) {
+		memcpy(&entry, static_cast<const char *>(buf) + index * sizeof(polyglot_entry), sizeof(polyglot_entry));
+		return true;
+	}
+	if (fh == nullptr)
+		return false;
+	if (fseek(fh, index * sizeof(polyglot_entry), SEEK_SET) == -1)
+		return false;
+	return fread(&entry, sizeof(polyglot_entry), 1, fh) == 1;
 }
 
 size_t polyglot_book::size() const
@@ -149,12 +181,8 @@ void polyglot_book::scan(const libchess::Position & p, const long start_index, c
 		index += direction;
 		if (index == end)
 			break;
-		if (fseek(fh, index * sizeof(polyglot_entry), SEEK_SET) == -1) {
+		if (read_entry(index, entry) == false) {
 			my_printf("Seek in book failed: %s\n", strerror(errno));
-			break;
-		}
-		if (fread(&entry, sizeof(polyglot_entry), 1, fh) != 1) {
-			my_printf("Problem reading from book: %s\n", strerror(errno));
 			break;
 		}
 		if (my_NTOHLL(entry.hash) != hash)
@@ -180,16 +208,11 @@ std::optional<libchess::Move> polyglot_book::query(const libchess::Position & p,
 	while(low < high) {
 		size_t mid = (low + high) / 2;
 
-		if (fseek(fh, mid * sizeof(polyglot_entry), SEEK_SET) == -1) {
+		polyglot_entry entry { };
+		if (read_entry(mid, entry) == false) {
 			my_printf("Seek in book failed: %s\n", strerror(errno));
 			break;
 		}
-		polyglot_entry entry { };
-		if (fread(&entry, sizeof(polyglot_entry), 1, fh) != 1) {
-			my_printf("Problem reading from book: %s\n", strerror(errno));
-			break;
-		}
-
 		if (my_NTOHLL(entry.hash) < hash)
 			low = mid + 1;
 		else if (my_NTOHLL(entry.hash) > hash)

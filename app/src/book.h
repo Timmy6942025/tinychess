@@ -4,12 +4,16 @@
 #include <optional>
 #include <libchess/Position.h>
 
+struct polyglot_entry;
 
 class polyglot_book
 {
 private:
 	FILE              *fh  { nullptr };
 	size_t             n   { 0       };
+	void              *buf { nullptr };
+
+	bool read_entry(const long index, polyglot_entry & entry) const;
 
 	void scan(const libchess::Position & p, const long start_index, const int direction, const long end, std::vector<std::pair<libchess::Move, int> > & moves_out);
 
