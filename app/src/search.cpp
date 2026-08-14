@@ -679,7 +679,7 @@ int IRAM_ATTR search(int depth, int alpha, const int beta, const int null_move_d
 	std::optional<libchess::Move> beta_cutoff_move;
 	libchess::Move new_move;
 
-	int new_depth_basic = sp.pos.in_check() || n_moves == 1 ? depth : depth -1;
+	int new_depth_basic = depth - 1 + (sp.pos.in_check() || n_moves == 1 ? 1 : 0);
 
 	size_t             m_idx    = 0;
 	while(m_idx < n_moves) {
@@ -719,7 +719,7 @@ int IRAM_ATTR search(int depth, int alpha, const int beta, const int null_move_d
 		if (n_played == 0)
 			score = -search(new_depth_basic, -beta, -alpha, null_move_depth, max_depth, level + 1, &new_move, sp);
 		else {
-			int new_depth = depth - 1;
+			int new_depth = new_depth_basic;
 
 			if (n_played >= lmr_start && !sp.pos.is_capture_move(move) && !sp.pos.is_promotion_move(move)) {
 				is_lmr = true;
@@ -727,12 +727,12 @@ int IRAM_ATTR search(int depth, int alpha, const int beta, const int null_move_d
 
 				if (alpha == beta -1) {
 					int reduction = lmr_reductions[std::min(N_LMR_DEPTH - 1, int(depth))][std::min(N_LMR_MOVES - 1, n_played)];
-					new_depth = std::max(depth - reduction, 0);
+					new_depth = std::max(new_depth_basic - reduction, 0);
 				}
 				else if (n_played >= lmr_start + 2)
-					new_depth = (depth - 1) * 2 / 3;
+					new_depth = new_depth_basic * 2 / 3;
 				else {
-					new_depth = depth - 2;
+					new_depth = new_depth_basic - 1;
 				}
 			}
 
