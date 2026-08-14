@@ -388,6 +388,13 @@ int IRAM_ATTR qs(int alpha, const int beta, const int qsdepth, search_pars_t & s
 		auto & move = *(move_list.begin() + m_idx);
 		m_idx++;
 
+		// qsearch pruning: a capture with a negative SEE cannot improve
+		// the score (the TT move is exempt: its stored score may make it
+		// valuable regardless; never prune evasions)
+		if (move_scores[m_idx - 1] < 0 && !sp.pos.in_check()
+			&& !(tt_move.has_value() && move == tt_move.value()))
+			continue;
+
 		if (sp.pos.is_legal_generated_move(move, pinned) == false)
 			continue;
 
