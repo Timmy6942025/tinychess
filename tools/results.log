@@ -3819,3 +3819,4 @@ Elo difference: -inf +/- nan, LOS: 4.2 %, DrawRatio: 0.0 %
   ITEM 5 aspiration 75 -> 50: -33.1 (LOS 2.6%); 75 -> 100: -8.7 (LOS 28.9%) -> REJECTED, 75 is optimum
   ITEM 6 TT 2-way -> 4-way + deeper-keep: -8.7 (LOS 32.6%, draw ratio 38.5% vs 60%) -> REJECTED
   CUMULATIVE Phase B so far: +86.9 Elo vs Tier-1 state (razor + check extension only)
+[02:00] PHASE B continuation: qs SEE pruning (SEE<0 captures skipped, TT move exempt, never in check): 200-game +29.6 (LOS 98.0%) -> ACCEPTED (30f8e56). Blind singular extension (TT entry 120+ above alpha at depth>=4): FAILED mate-in-N unit sweep (missed mate at depth 19) -> REJECTED (reverted). Cumulative accepted: +116.5 Elo (razor + check ext + qs SEE).
