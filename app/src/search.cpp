@@ -621,6 +621,15 @@ int IRAM_ATTR search(int depth, int alpha, const int beta, const int null_move_d
 			sp.cs.data.n_static_eval_hit++;
 			return (beta + staticeval) / 2;
 		}
+
+		// razoring: at shallow depth a position whose static eval is far
+		// below alpha is hopeless - skip move generation, qsearch only
+		// (captures can still recover the material deficit)
+		if (!is_pv && !tt_move.has_value() && depth <= 3 && beta <= max_non_mate
+			&& staticeval + 350 + depth * 150 < alpha) {
+			sp.cs.data.n_razor++;
+			return qs(alpha, beta, max_depth, sp);
+		}
 	}
 
 	///// null move
