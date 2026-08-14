@@ -1,9 +1,10 @@
 # MaxDogOne
 
 A fork of [Dog](https://github.com/folkertvanheusden/Dog) (written by Folkert van
-Heusden, MIT licensed) for the XIAO ESP32-S3 Plus, with a SPRT-gated experiment
+Heusden, MIT licensed) for the XIAO ESP32-S3 Plus, with a gate-gated experiment
 pipeline for tuning the engine. Every search/eval/net change is measured before
-it is kept.
+it is kept: 3-game board gates + 200-game desktop gates at 2+0.02 for strength
+items, a 40-game clean board match per milestone.
 
 ## Highlights
 
@@ -11,28 +12,45 @@ it is kept.
   vs the shipped 128-wide net (`ab-bignet-20260805-000637` ACCEPT,
   `ab-bignet2-20260805-012247` ACCEPT). Enabled in `app/src/weights.cpp`
   (`#if 0` selects the 197440 B small blob, `#else` the active 394816 B big net).
+- **Board speed (Tier-1)** — the board bench went **5,079 → 6,857 nps**:
+  C2 WDT gate period 250 ms → 1.5 s (+3.3%), C5 per-node heap allocations
+  killed via depth-indexed per-thread scratch (+3.1%); the rest (~+30%) was a
+  clean-rebuild artifact of the harness era. C4 (QIO flash) was tried and
+  **reverted**: the runtime-quad bootloader is unstable under sustained
+  2-thread load (12-min hang) and the +32.7% it showed was the rebuild artifact.
+  A5 (split-brain TT) was dropped: the 2-thread nps gate passed (15.4k ≥ 9,800)
+  but the Elo gate failed (0-40 board match). The final 40-game board match at
+  the Tier-1 state completed **0-40-0 with zero stalls/forfeits**.
+- **Search strength (Phase B, desktop)** — three accepted items, **+116.5 Elo**
+  cumulative at 2+0.02 (200-game gates): razoring (+12.2, LOS 78.5%), check
+  extension — all in-check moves keep depth, preserved through LMR (~+75,
+  LOS 100%), qs SEE pruning (+29.6, LOS 98.0%). Nine probed variants were
+  rejected with measured evidence (killers, LMR PV `*3/4`, aspiration ±50/±100,
+  TT 4-way, blind singular extension, null-move R=5, razor depth-2, razor
+  300+120d — verdicts in `tools/results.log`). All accepted items are ported
+  to the board: **bench 7,128 nps** (+3.9%), 3-game gate clean.
 - **libchess vendored** — this is a monorepo; `app/include/libchess` is regular
   source (with Dog-specific fixes: FEN en-passant validation, `go st` UCI
   support). A canonical copy lives at `github.com/Timmy6942025/libchess`.
-- **SPRT harness** — `tools/fast_sprt.sh` (cutechess-cli, elo0/elo1 = 0/20,
-  bounds ±2.944, cap 1500 games, 5+0.05). Every verdict is appended to
-  `tools/results.log` with a run tag; experiments are reproducible via
-  `tools/patches/`. The 8-item board-free plan is closed: item 6 LMR table
-  recalibration ACCEPT (+34.6, `ab-lmr065`), item 7 calibration variants and
-  item 8 RukChess port REJECTed (verdicts in `tools/results.log`). Current
-  reference binary: `tools/runs/bin/Dog-lmr065`
-  (md5 `93b244eecd33079ba000545ed0ed57f4`); final rating anchor vs Stockfish 17
-  @ 2+0.02 (200 games): **-56.1 +/- 43.4**.
+- **Match harness** — `tools/wrapper.py` (line-based pump + bestmove repair for
+  the board's USB-JTAG console) makes the XIAO a first-class UCI engine for
+  cutechess-cli; `tools/board_session.py` runs the on-board test suite + bench
+  + UCI smoke. Every verdict is appended to `tools/results.log`. Earlier
+  SPRT-era results (LMR recalibration ACCEPT +34.6 `ab-lmr065`, -56.1 anchor vs
+  Stockfish 17) are superseded; the first clean board-vs-native anchor
+  (40 games, 2+0.02) was **0-40-0** and the -523.4 anchor is INVALID (clock
+  forfeits, see `90ef99e`). Current reference binary: `app/src/linux-windows/build/Dog-native`
+  at HEAD (md5 `1773e3c807d0752a40da2ae78ea82924`).
 - **Hardware targets** — XIAO ESP32-S3 Plus (WS2812 LED on GPIO44, PSRAM TT up
   to 6 MB, configurable via `app/src/Kconfig`).
 
 ## Repo layout
 
 ```
-app/src/            engine source (search, eval, NNUE, TT, UCI)
+app/src/            engine source (search, eval, NNUE, TT, UCI) - single source tree
 app/include/libchess  vendored libchess library (board model, movegen, FEN)
-app/main/           ESP32-IDF project (esp32s3 target)
-tools/              fast_sprt.sh, native_check.sh, board_session.py, patches/, runs/ (results)
+app/main/           symlink -> src/ (ESP32-IDF project, esp32s3 target)
+tools/              wrapper.py, board_session.py, fast_sprt.sh, native_check.sh, results.log
 docs/               upstream Dog reference docs, training notes, experiment queue
 README.md           this file
 ```
@@ -42,7 +60,7 @@ README.md           this file
 Requires gcc/g++ 14+ (or clang 14+, gcc produces faster binaries):
 
 ```sh
-tools/native_check.sh     # builds + runs the 17/17 unit suite + bench, exit 0 = green
+tools/native_check.sh     # builds + runs the 18/18 unit suite + bench, exit 0 = green
 ```
 
 Or manually:
@@ -67,24 +85,24 @@ idf.py build && idf.py flash   # set IDF_PATH, e.g. source ~/esp/esp-idf/export.
 
 - Board: XIAO ESP32-S3 Plus. LED feature is a Kconfig option
   (`DOG_LED_WS2812`; disable for boards without it or for QEMU).
-- Serial tooling: `tools/board_session.py` + `tools/test_board_session.py`
-  (e2e harness running a QEMU image), `tools/board_check.sh`.
-- Reference material from the original Dog project (build variants, LED
-  pins, training-data collection) is archived in `docs/` —
-  see `docs/upstream-dog-readme.md`, `docs/helping-me-out.md`,
-  `docs/HARDWARE_READINESS.md` (hardware), `docs/RESEARCH.md` (experiment
-  queue + net-training plan).
+- Serial tooling: `tools/board_session.py` (on-board test suite + bench + UCI
+  smoke), `tools/board_check.sh`, `tools/wrapper.py` (cutechess engine adapter;
+  requires a `uci` first when used from a plain terminal).
+- Flash with `esptool write_flash "@flash_args"` from `app/build`; boot mode
+  (dio/qio) can be verified via a serial DTR toggle.
 
 ## Experiment pipeline
 
-```sh
-tools/fast_sprt.sh ab <tag> <A-binary> <B-binary>   # SPRT: A vs B
-tools/fast_sprt.sh baseline                          # fixed-games anchor vs stockfish
-```
+- **Desktop strength gates** (search items): 200-game matches at 2+0.02 vs the
+  previous accepted state via cutechess-cli; keep on positive Elo + LOS, revert
+  otherwise. Deterministic node-count comparisons at fixed depth supplement the
+  Elo signal.
+- **Board integrity gates**: 3-game matches vs the desktop native (no stalls,
+  forfeits, or illegal moves), plus a bench on every ported state.
+- **Milestone matches**: full 40-game board-vs-native runs (2+0.02) per phase.
 
-Verdicts: ACCEPT (keep, exit 0) / REJECT (revert, exit 1) / KEEP-REVERT (cap
-reached, decided by llr sign). All verdicts land in `tools/results.log`; match
-logs live in `tools/runs/`. Never run a match while building or running
+Verdicts: ACCEPT (keep, exit 0) / REJECT (revert, exit 1) — all land in
+`tools/results.log`. Never run a match while building or running
 `native_check.sh` (the 7.6 GB dev box OOM-kills cutechess under a parallel
 build).
 
@@ -93,13 +111,20 @@ tablebase probing) — clone with `--recursive`.
 
 ## Notes
 
-- Rejected experiments are documented in `tools/results.log` (hist3d, checkext,
-  TT eval cache, LMR retune) — all REJECT under the corrected SPRT gate
-  (elo1=20); see the "Power notes" in `tools/fast_sprt.sh`.
+- Rejected experiments are documented in `tools/results.log`; the current
+  rejected list: killers (redundant with the history mechanism), LMR PV `*2/3 →
+  *3/4`, aspiration windows ±50/±100 (75 is the optimum), TT 4-way buckets +
+  deeper-keep, blind singular extension (broke the mate-in-N sweep), null-move
+  R=5, razor depth ≤ 2 and razor 300+120d — the engine's search parameters sit
+  at a measured local optimum for all probed directions.
 - The big net is markedly slower at endgame mate detection (two-rook ladder
   mate found at depth 19 vs 5); accounted for in `app/src/test.cpp`.
 - Native bench with the big net: ~200 kNPS on the dev box (vs ~360 kNPS for
-  the small net).
+  the small net); the board benches ~7,100 nps (bench is position-dependent —
+  game-path positions run ~2x faster than the start position).
+- Board Elo vs the native at 2+0.02 remains far behind despite the +116.5
+  Elo: the ~20-40x speed gap (~90-110 Elo of the deficit) plus the residual
+  eval/search gap dominates; the gain shows as longer, more competitive games.
 
 Upstream: https://github.com/folkertvanheusden/Dog
 License: MIT
