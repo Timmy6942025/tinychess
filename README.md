@@ -6,6 +6,37 @@ pipeline for tuning the engine. Every search/eval/net change is measured before
 it is kept: 3-game board gates + 200-game desktop gates at 2+0.02 for strength
 items, a 40-game clean board match per milestone.
 
+## Quick start
+
+**Option A - prebuilt binaries (easiest, no toolchain needed)**
+
+Grab the latest release (`v0.1-prebuilt` = current state at commit `75e6d10`):
+https://github.com/Timmy6942025/tinychess/releases
+
+- **Desktop** (`Dog-native`, Linux x86_64, ~340k nps): `chmod +x Dog-native &&
+  ./Dog-native` - a UCI engine; usable directly or via cutechess-cli
+  (`cmd=./Dog-native`). Or run the 18-test unit suite with `./Dog-native test`.
+- **Board flash** (`board-flash.zip`): needs only Python 3 + esptool
+  (`pip install esptool`):
+
+  ```sh
+  unzip board-flash.zip -d board-flash && cd board-flash
+  python -m esptool --port /dev/ttyACM0 write_flash "@flash_args"
+  ```
+
+  That flashes the whole current firmware (bootloader, partition table, app,
+  opening book). For matches against the board, use `tools/wrapper.py` as the
+  cutechess engine adapter: `-engine cmd=python3 arg=tools/wrapper.py
+  arg=/dev/ttyACM0`.
+
+**Option B - build from source**
+
+- Desktop: see "Build & test (Linux/native)" below (gcc/g++ 14+ only).
+- Board: install ESP-IDF with `./tools/setup_esp_idf.sh` (pins v5.3, the
+  version this project is built with), then `source "$IDF_PATH/export.sh" &&
+  cd app && idf.py build && idf.py -p /dev/ttyACM0 flash`.
+- For running matches: `cutechess-cli` (see "Experiment pipeline" below).
+
 ## Highlights
 
 - **NNUE big net** (HIDDEN_SIZE=256, 395 KB blob) — SPRT-confirmed **+25 elo**
