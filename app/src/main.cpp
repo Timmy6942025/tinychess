@@ -875,10 +875,25 @@ void main_task()
 			// Number of moves the GUI expects us to complete in the current
 			// time period. Prefer the explicit `movestogo` token; fall back to
 			// a 40-move horizon estimate when it is absent.
+			//
+			// ESP32 build: floor the fallback at 30 moves. Without a floor,
+			// once a game passes move 40 the horizon collapses to
+			// `max(1, negative)` = 1, making think_time_max = whole remaining
+			// clock on a single move, and the slow board forfeits on time
+			// (observed: 16 time losses at 2+0.02, 2 at 10+0.1).
+			//
+			// Desktop build: keep the aggressive horizon. On fast hardware the
+			// board-like collapse never forfeits (games end around then and
+			// the increment covers recovery) and the deep single-move search
+			// is free strength (gating floor-30 on desktop measured ~-79).
 			auto a_moves_to_go = go_parameters.movestogo();
 			int moves_to_go = a_moves_to_go.has_value() && a_moves_to_go.value() > 0
 				? a_moves_to_go.value()
+#if defined(ESP32)
+				: std::max(30, 40 - sp.at(0)->pos.fullmoves());
+#else
 				: std::max(1, 40 - sp.at(0)->pos.fullmoves());
+#endif
 
 			int think_time_min = 0;
 			int think_time_max = 0;
