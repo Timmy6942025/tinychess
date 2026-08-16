@@ -381,9 +381,58 @@ void prepare_threads_state()
 	}
 }
 
-void start_ponder()
+// Pondering depth cap. The search is unbounded in TIME (it runs on the
+// opponent's clock), so it must be bounded in depth or a slow opponent would
+// make it search forever. 40 is far above the board's reachable depth, so in
+// practice the ponder search stops when the opponent moves (stop_ponder) or,
+// for a very slow opponent, when it runs out of deepening iterations.
+constexpr int ponder_max_depth = 40;
+
+// The principal variation of the most recent search on thread 0.
+libchess::MoveList current_pv_line()
+{
+	libchess::MoveList line;
+	for(size_t i=0; i < sp.at(0)->scratch[0].pv_len && i < 64; i++)
+		line.add(sp.at(0)->scratch[0].pv[i]);
+	return line;
+}
+
+void start_ponder(const libchess::MoveList & line)
 {
 	my_trace("# start ponder\n");
+
+	// The position to ponder is the one AFTER our just-searched best move
+	// (PV[0]) plus the opponent's predicted reply (PV[1]). Requires a searched
+	// PV of >= 2 plies; book/tablebase moves have no PV, so nothing to ponder.
+	if (line.size() < 2) {
+		my_trace("# ponder: no predicted reply, skipping\n");
+		return;
+	}
+
+	libchess::Move our_move    = *(line.cbegin() + 0);
+	libchess::Move their_reply = *(line.cbegin() + 1);
+
+	// In UCI mode `pos` is still the pre-move position (the GUI has not yet
+	// sent the next `position`), so our_move is playable. In TUI play mode the
+	// engine already made its move, so `pos` is already the opponent-to-move
+	// position and only the predicted reply needs applying.
+	if (sp.at(0)->pos.is_legal_move(our_move)) {
+		sp.at(0)->pos.make_move(our_move);
+		if (sp.at(0)->pos.is_legal_move(their_reply) == false) {
+			sp.at(0)->pos.unmake_move();
+			my_trace("# ponder: predicted reply illegal, skipping\n");
+			return;
+		}
+		sp.at(0)->pos.make_move(their_reply);
+	}
+	else {
+		if (sp.at(0)->pos.is_legal_move(their_reply) == false) {
+			my_trace("# ponder: position already past our move, predicted reply illegal, skipping\n");
+			return;
+		}
+		sp.at(0)->pos.make_move(their_reply);
+	}
+
 	{
 		std::unique_lock<std::mutex> lck(work.search_fen_lock);
 
@@ -392,25 +441,21 @@ void start_ponder()
 		work.search_think_time_min = -1;
 		work.search_think_time_max = -1;
 		work.search_is_abs_time    = false;
-		work.search_max_depth      = -1;
+		work.search_max_depth      = ponder_max_depth;
 		work.search_max_n_nodes.reset();
 		work.search_version++;
 		work.search_best_move.reset();
 		work.search_best_score     = -32768;
 		work.search_output         = false;
-		work.search_n_started      = 0;
 		work.search_cv.notify_all();
 	}
 
 	my_trace("# ponder started\n");
 
-	if (t != T_ASCII) {
-		store_cursor_position();
-		my_printf("\x1b[1;80H\x1b[1;5;7mP");
-		restore_cursor_position();
-	}
-
-	wait_searches_started(true);
+	// Do not wait for the search to finish: it runs in the background on the
+	// opponent's clock, warming the transposition table for the predicted line.
+	// The next `position`/`go` stops it via stop_ponder() before searching the
+	// real position.
 }
 
 void stop_ponder()
@@ -938,6 +983,11 @@ void main_task()
 			int  best_score { 0 };
 			bool has_best   { false };
 
+			// Searched principal variation, used to predict the opponent's
+			// reply for pondering (PV[0] = our move, PV[1] = their reply).
+			// Empty on the book/syzygy paths, which have no PV to ponder.
+			libchess::MoveList ponder_line;
+
 			// probe the Syzygy endgame table base
 #if defined(linux) || defined(_WIN32) || defined(__APPLE__)
 			if (with_syzygy) {
@@ -999,6 +1049,9 @@ void main_task()
 					best_move  = work.search_best_move.value();
 					best_score = work.search_best_score;
 				}
+
+				// capture the searched PV for pondering
+				ponder_line = current_pv_line();
 			}
 
 			// emit result
@@ -1015,7 +1068,7 @@ void main_task()
 			global_cs.add(calculate_search_statistics());
 
 			if (allow_ponder)
-				start_ponder();
+				start_ponder(ponder_line);
 		}
 		catch(const std::exception& e) {
 #if defined(__ANDROID__)

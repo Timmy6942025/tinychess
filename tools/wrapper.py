@@ -39,6 +39,11 @@ parser = argparse.ArgumentParser()
 parser.add_argument("port", nargs="?", default=os.environ.get("PORT", "/dev/ttyACM1"))
 args = parser.parse_args()
 
+# Enable the board's internal pondering after the uci handshake when set.
+# The board ponders the predicted line on the opponent's clock (warms the TT),
+# invisible to cutechess either way. PONDER=1 is used for the A/B gate.
+PONDER = os.environ.get("PONDER", "0") == "1"
+
 
 def open_port(port):
     for attempt in range(50):
@@ -92,6 +97,7 @@ if tail:
 MOVE_RE = re.compile(rb"^[a-h][1-8][a-h][1-8](?:[qrbn])?$")
 last_pv = None
 line_buf = b""
+ponder_sent = False
 while True:
     r, _, _ = select.select([sys.stdin, ser], [], [], 0.02)
     if sys.stdin in r:
@@ -107,6 +113,9 @@ while True:
         while b"\n" in line_buf:
             raw, _, line_buf = line_buf.partition(b"\n")
             line = raw + b"\n"
+            if not ponder_sent and PONDER and b"uciok" in line:
+                ser.write(b"setoption name Ponder value true\n")
+                ponder_sent = True
             if line.startswith(b"info") and b" pv " in line:
                 pv_tokens = line.split(b" pv ", 1)[1].split()
                 if pv_tokens and MOVE_RE.match(pv_tokens[0]):

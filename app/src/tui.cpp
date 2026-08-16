@@ -1299,7 +1299,7 @@ void tui()
 			p_a_k = false;
 			if (do_ponder) {
 				std::string fen = sp.at(0)->pos.fen();
-				start_ponder();
+				start_ponder(current_pv_line());
 				press_any_key();
 				stop_ponder();
 				sp.at(0)->pos = libchess::Position(fen);
@@ -1433,7 +1433,7 @@ void tui()
 			std::string fen;
 			if (do_ponder && !finished) {
 				fen = sp.at(0)->pos.fen();
-				start_ponder();
+				start_ponder(current_pv_line());
 			}
 
 			human_think_start = esp_timer_get_time();

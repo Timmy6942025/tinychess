@@ -3828,3 +3828,10 @@ Elo difference: -inf +/- nan, LOS: 4.2 %, DrawRatio: 0.0 %
   30+0.1: 0-12-0 -> ~-500-600. CONCLUSION: depth-by-time does NOT lift the board vs SF17 at ANY TC -> board ~2800-2900 absolute, NOT ~3050. Earlier doubling-math extrapolation (~390 Elo for 48x nps) was optimistic; real port cost ~500-550.
 [08:35] DESKTOP CONTROL (same code, 2+0.02, 20 games): DogDesktop vs SF17 = 9-6-5 (0.575, +53) -> ENGINE LOGIC IS SF17-LEVEL. Board losses are the PORT/hardware (48x nps, depth 8-10), not the engine.
 [08:45] TIME-MGMT FIX (board forfeits): root cause = moves_to_go horizon `max(1, 40-fullmoves)` collapses to 1 after move 40 -> think_time_max = whole remaining clock on ONE move -> board forfeits on time (16 at 2+0.02, 2 at 10+0.1). Fix: floor at 30 ON ESP32 ONLY (`#if defined(ESP32)`); desktop keeps aggressive horizon (gating floor-30-on-desktop measured 27-69-103, 0.394 = -76 REGRESSION -> reverted to platform-conditional). Desktop gate after conditional: 32-39-129, 0.482 (-12, neutral, PASS). Board re-flashed with floor-30: 30+0.1 diagnostic showed ZERO time losses (only 2 USB connection stalls - unrelated). COMMIT: main.cpp moves_to_go ESP32 floor.
+[09:30] Pondering implemented (internal: after bestmove, search the PV[1] opponent-reply position at ponder_max_depth=40, output off, TT-warmed; next position/go stops it via stop_ponder).
+  - go_handler captures PV via current_pv_line() -> start_ponder(ponder_line); TUI play mode calls start_ponder(current_pv_line()) at both sites.
+  - Ponder option gates it; ESP32 boots with allow_ponder=true (main.cpp:1603), desktop default false; wrapper.py PONDER=1 injects setoption after uciok.
+  - Unit gate (desktop, ponder build): 18 OK / 0 failures = PASS.
+  - Desktop gate 2+0.02, 200 games, PonderOn vs PonderOff: 49-46-105 = 0.507 (+5 Elo) = NEUTRAL PASS (windows ~0 at blitz; no crashes).
+  - Board flash: functional test PASS - "# start ponder/# ponder started" after bestmove, "# stop ponder" on position/go, interrupt + re-ponder clean.
+  - Board USB-JTAG note: closing the host port while the ponder search runs wedges tty input; keep port open until "quit" (wrapper does this).
