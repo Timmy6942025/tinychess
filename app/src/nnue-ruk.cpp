@@ -115,13 +115,19 @@ int IRAM_ATTR Eval::evaluate(const bool white_to_move) const
 void IRAM_ATTR Eval::add_piece(const int piece, const int square, const bool is_white)
 {
 	assert(piece >= 0 && piece < 6);
+	// RukChess numbers squares a1=56..h8=7 (rank-flipped vs libchess a1=0),
+	// so its square maps to our (square ^ 56). The two accumulators are fixed
+	// perspectives, not per-piece-color slots: acc[white] always holds the
+	// white-view rows (piece + 6*color), acc[black] the black-view rows
+	// (piece + 6*(1-color), square unflipped). Verified bit-exact against the
+	// RukChess trainer's NNPredict on the published net (net-7342fb032855).
 	if (is_white) {
-		add_feature(this->white, 64 * piece + square);
-		add_feature(this->black, 64 * (6 + piece) + (square ^ 56));
+		add_feature(this->white, 64 * piece + (square ^ 56));
+		add_feature(this->black, 64 * (6 + piece) + square);
 	}
 	else {
-		add_feature(this->black, 64 * piece + (square ^ 56));
-		add_feature(this->white, 64 * (6 + piece) + square);
+		add_feature(this->white, 64 * (6 + piece) + (square ^ 56));
+		add_feature(this->black, 64 * piece + square);
 	}
 }
 
@@ -129,12 +135,12 @@ void IRAM_ATTR Eval::remove_piece(const int piece, const int square, const bool 
 {
 	assert(piece >= 0 && piece < 6);
 	if (is_white) {
-		remove_feature(this->white, 64 * piece + square);
-		remove_feature(this->black, 64 * (6 + piece) + (square ^ 56));
+		remove_feature(this->white, 64 * piece + (square ^ 56));
+		remove_feature(this->black, 64 * (6 + piece) + square);
 	}
 	else {
-		remove_feature(this->black, 64 * piece + (square ^ 56));
-		remove_feature(this->white, 64 * (6 + piece) + square);
+		remove_feature(this->white, 64 * (6 + piece) + (square ^ 56));
+		remove_feature(this->black, 64 * piece + square);
 	}
 }
 

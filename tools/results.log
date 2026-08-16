@@ -3837,3 +3837,20 @@ Elo difference: -inf +/- nan, LOS: 4.2 %, DrawRatio: 0.0 %
   - Board USB-JTAG note: closing the host port while the ponder search runs wedges tty input; keep port open until "quit" (wrapper does this).
 [10:05] Ponder 30+0.1 board gate (30 games, pondering active): 0-30-0 = no change vs 0-12-0 baseline. Ponder window (SF17 think ~0.5-2s/move) ~= board's own move budget -> marginal bonus; does not close the ~500-600 gap. Ponder = shipped feature, not a strength lever at match TCs.
 [10:05] USB-JTAG quirk assessment: NOT serious. Board self-reboots on host disconnect (both clean "quit" -> esp_restart and abrupt port close -> reboot on reconnect); reopened sessions fully responsive (tested 3x). Added 5-min ponder time cap (ponder_max_time_ms) so a zombie ponder cannot burn CPU indefinitely after a host vanish; stop_ponder() added at both quit paths (after uci_service->run() and menu quit). Desktop unit gate 18 OK = PASS.
+
+## 2026-08-16 RUK 512 net (net-7342fb032855) — DEFINITIVE REJECT (3rd attempt)
+- Root-caused the wiring bug: accumulators are FIXED perspectives (acc[white] always
+  white-view rows, acc[black] always black-view rows), NOT per-piece-color slots.
+  Original commit 42d99a3 had black pieces' rows in the wrong accumulator.
+- Fixed nnue-ruk.cpp; verified BIT-EXACT against the actual RukChessTrainer build
+  (NNPredict) on the published net: startpos +23.67, R+K vs k +177.12 (w and b),
+  Q+K +161.58; C++ eval matches (23/-29/211). Incremental == set().
+- The released net is genuinely color-ASYMMETRIC (eval(pos,w) != -eval(pos,b);
+  e.g. R+K pos: +177 vs -93) and its scale is ~4x smaller than Dog's 256 net.
+- Gates (vs Dog-256-base, all 2+0.02 unless noted):
+  wrap-quant 200g (killed @105): 11-82-12 = 0.162  (~-300, LOS 0%)
+  wrap-quant 30g @5+0.05:         2-23-5  = 0.150
+  saturating-output-quant 30g:    4-26-0  = 0.133
+- Speed: ruk eval 126k nps vs 269k (2.14x slower) -> depth deficit at blitz.
+- VERDICT: REJECT. The 512 net loses ~250-325 Elo in Dog at every TC/variant.
+  Eval-strength path remains NNUE retrain with Dog's own data (collect-fens-Dog-nnue.py).
