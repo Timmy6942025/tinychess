@@ -388,6 +388,11 @@ void prepare_threads_state()
 // for a very slow opponent, when it runs out of deepening iterations.
 constexpr int ponder_max_depth = 40;
 
+// Hard cap on the ponder search: bounds CPU burn if the host disconnects
+// without "quit" (USB-JTAG input wedge + no stop_ponder). Far above any real
+// opponent think window at match TCs.
+constexpr int ponder_max_time_ms = 5 * 60 * 1000;
+
 // The principal variation of the most recent search on thread 0.
 libchess::MoveList current_pv_line()
 {
@@ -439,7 +444,7 @@ void start_ponder(const libchess::MoveList & line)
 		prepare_threads_state();
 
 		work.search_think_time_min = -1;
-		work.search_think_time_max = -1;
+		work.search_think_time_max = ponder_max_time_ms;
 		work.search_is_abs_time    = false;
 		work.search_max_depth      = ponder_max_depth;
 		work.search_max_n_nodes.reset();
@@ -1125,6 +1130,7 @@ void main_task()
 
 		if (line == "uci") {
 			uci_service->run();
+			stop_ponder();  // run() returned after "quit"; never leave a ponder search running
 			break;  // else lichess-bot will break
 		}
 		else if (line == "info")
@@ -1151,6 +1157,7 @@ void main_task()
 		else if (line == "bench long")
 			run_bench_single(true, true);
 		else if (line == "quit") {
+			stop_ponder();
 			break;
 		}
 		else {
