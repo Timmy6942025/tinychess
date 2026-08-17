@@ -15,12 +15,12 @@ blocked forever and matches hung. Opening the port fresh (rts/dtr deasserted)
 and waiting for the boot banner - or 2 s of silence if the board is already
 idle at its console prompt - is all that is needed.
 
-Why select(0.02): the select timeout is the dominant per-move latency in
+Why select(0.005): the select timeout is the dominant per-move latency in
 board-vs-native matches at ultra-fast TC. At 0.5 s the round trip
 (cutechess -> wrapper -> board -> wrapper -> cutechess) added up to ~1 s per
 move, so the board's 2+0.02 clock died after ~9 moves and every game was lost
 on time (the -523.4 Elo anchor match was 40/40 clock forfeits - see
-results.log correction).
+results.log correction). 0.005 s keeps the round trip at ~30-50 ms.
 """
 
 import argparse
@@ -67,19 +67,22 @@ def open_port(port):
 
 ser = open_port(args.port)
 
-# Drain the boot banner + console prompt. If the board is already idle at its
-# prompt (it was not rebooted), 2 s of silence ends the drain so the game
-# starts without a 15 s stall. The board reboots itself on "quit", so a
-# freshly-launched wrapper usually does see a banner here.
+# Drain the boot banner + console prompt. A fresh open always pulses the
+# board's reset line, so a boot banner always follows - but the ESP32S3 boot
+# can take up to ~40 s (flash verify + SPIFFS + USB re-enumeration), so the
+# drain must wait for the banner, not a fixed 15 s. The 8 s silence break only
+# covers the rare case where the reset pulse did not take (board already idle
+# at its prompt): writes sent before the banner lands mid-boot and wedge the
+# chip's USB-JTAG input endpoint (every subsequent write blocks forever).
 buf = b""
 last_data = time.time()
-deadline = time.time() + 15
+deadline = time.time() + 45
 while time.time() < deadline and BANNER_END not in buf.decode("utf-8", "replace"):
     chunk = ser.read(4096)
     if chunk:
         buf += chunk
         last_data = time.time()
-    elif time.time() - last_data > 2.0:
+    elif time.time() - last_data > 8.0:
         break
 buf = buf.decode("utf-8", "replace")
 tail = buf.split(BANNER_END, 1)[-1]
@@ -99,7 +102,7 @@ last_pv = None
 line_buf = b""
 ponder_sent = False
 while True:
-    r, _, _ = select.select([sys.stdin, ser], [], [], 0.02)
+    r, _, _ = select.select([sys.stdin, ser], [], [], 0.005)
     if sys.stdin in r:
         line = os.read(sys.stdin.fileno(), 65536)
         if not line:
