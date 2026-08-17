@@ -3932,3 +3932,13 @@ Elo difference: -inf +/- nan, LOS: 4.2 %, DrawRatio: 0.0 %
   irreducible flash-cache-bound row updates.
 - Probes (nnue_debug_bench 0-7) removed after use; bench2 keeps the CCOUNT
   truth lines (pos-only-ccount 710cyc, full-ccount 21323cyc on clean scalar).
+- qs lazy-SEE ordering experiment (MVV-LVA upfront scores + lazy per-move
+  SEE replacing upfront SEE pass): REJECT. 200g @2+0.02 vs HEAD:
+  Elo -24.4 +/- 32.0, LOS 6.8%, draw 56%. The SEE-order carries real
+  strength; nps gain does not compensate. Reverted.
+- Search profile (CCOUNT, go depth 8, startpos, 2-thread, wall-confirmed):
+  ~7.3k nps real = ~136us/node; qs subtrees dominate the node budget;
+  search movegen+ordering ~2.1k cycles/node; TT ~0.25k cycles/node;
+  full make+eval+unmake 21.3k cycles. esp_timer_get_time poisoning is
+  BIDIRECTIONAL (also observed deflating: claimed 3.2s for a real ~7.4s
+  run) - wall clock / CCOUNT are the only trustworthy clocks.
