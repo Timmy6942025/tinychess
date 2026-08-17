@@ -3976,3 +3976,17 @@ Elo difference: -inf +/- nan, LOS: 4.2 %, DrawRatio: 0.0 %
   return (returns 0x1 = {a1} instead of 0 - latent bug, behavior-changing
   to fix, needs a strength gate if ever touched).
   Board reflashed to HEAD: bench 8,292-8,303 nps @ depth 8.
+- Search tuning round probes (all vs efe3222 baseline, 200g @2+0.02
+  desktop-vs-desktop, Threads=1 Hash=8):
+  - LMR table mul 0.65 -> 0.75 (tools/gen_lmr_table.py): REJECTED on the
+    unit gate - 18-test suite fails: mate-in-19 (6k1/8/8/8/8/8/8/R3R1K1)
+    scored 3207 (no mate) vs 19998. Depth-11 startpos nodes 192,445 ->
+    121,527 (-37%: much deeper) but the tactical miss is a hard stop.
+    Consistent with the earlier LMR PV *3/4 rejection: this search likes
+    its current reduction level.
+  - qs SEE pruning margin 0 -> -40 (search losing captures down to -40cp):
+    REJECTED. -33.1 Elo +/- 33.2, LOS 2.6%, 28W-67L-105D. More qs work
+    hurts at this NPS - the SEE<0 prune is the right level.
+  Both confirm the search parameters sit at a measured local optimum;
+  the residual knobs (razor margin multiple, stand-pat skip 350+150d,
+  null-move R=2, lmr_start) all have weak or adjacent-rejected priors.
