@@ -768,7 +768,6 @@ void main_task()
 		int iters = 200;
 		int it_arg;
 		if (input >> it_arg) iters = it_arg;
-		for (int w = 0; w <= 7; w++) nnue_debug_bench(w, sp.at(0)->nnue_eval, &sp.at(0)->pos);
 		int64_t sink = 0;
 		uint64_t t0, dt;
 		uint64_t ops = uint64_t(iters) * legal.size();

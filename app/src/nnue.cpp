@@ -7,7 +7,6 @@
 #include "weights.h"
 
 #include "main.h"
-#include "eval.h"
 #include "nnue.h"
 
 #if defined(ESP32)
@@ -182,72 +181,3 @@ void IRAM_ATTR Eval::remove_piece(const int piece, const int square, const bool 
 	}
 }
 
-// TEMP: board memory-isolation microbench. which:
-//  0 = stream-read all 768 feature rows (394KB flash walk)
-//  1 = stream-read one 512B row, 1000x
-//  2 = accumulate-write only (DRAM target, no flash)
-//  3 = read one row into a DRAM sink (flash read + DRAM write)
-//  4 = real Eval::add_piece x1000 (real accumulator location)
-//  5 = real Eval::evaluate x1000 (real accumulators, PIE dot)
-//  6 = eval make+unmake x1000 on a real Position (no evaluate)
-//  7 = full op: make + evaluate + unmake x1000
-extern "C" void IRAM_ATTR nnue_debug_bench(const int which, Eval *e, libchess::Position *pos)
-{
-	const int iters = 1000;
-	volatile int64_t sink = 0;
-	uint64_t t0 = esp_timer_get_time();
-	if (which == 0) {
-		for (int r = 0; r < 768; r++) {
-			const std::int16_t *row = NNUE->feature_weights[r].vals.data();
-			for (int i = 0; i < 256; i++) sink += row[i];
-		}
-	}
-	else if (which == 1) {
-		const std::int16_t *row = NNUE->feature_weights[0].vals.data();
-		for (int r = 0; r < iters; r++)
-			for (int i = 0; i < 256; i++) sink += row[i];
-	}
-	else if (which == 2) {
-		Accumulator acc { };
-		volatile std::int16_t *dst = acc.vals.data();
-		for (int r = 0; r < iters; r++)
-			for (int i = 0; i < 256; i++) dst[i] = (std::int16_t)(dst[i] + i);
-	}
-	else if (which == 3) {
-		const std::int16_t *row = NNUE->feature_weights[0].vals.data();
-		Accumulator acc { };
-		volatile std::int16_t *dst = acc.vals.data();
-		for (int r = 0; r < iters; r++)
-			for (int i = 0; i < 256; i++) dst[i] = (std::int16_t)(dst[i] + row[i]);
-	}
-	else if (which == 4) {
-		for (int r = 0; r < iters; r++)
-			e->add_piece(0, 0, true);
-	}
-	else if (which == 5) {
-		for (int r = 0; r < iters; r++)
-			sink += e->evaluate(true);
-	}
-	else if (which == 6) {
-		auto legal = pos->legal_move_list();
-		for (int r = 0; r < iters; r++) {
-			for (auto & m : legal) {
-				auto acts = make_move(e, *pos, m);
-				unmake_move(e, *pos, acts);
-			}
-		}
-	}
-	else if (which == 7) {
-		auto legal = pos->legal_move_list();
-		for (int r = 0; r < iters; r++) {
-			for (auto & m : legal) {
-				auto acts = make_move(e, *pos, m);
-				sink += nnue_evaluate(e, *pos);
-				unmake_move(e, *pos, acts);
-			}
-		}
-	}
-	uint64_t t1 = esp_timer_get_time();
-	printf("# nnue_debug_bench %d: %llu us total, sink %lld\n", which,
-	       (unsigned long long)(t1 - t0), (long long)sink);
-}

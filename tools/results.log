@@ -3921,3 +3921,14 @@ Elo difference: -inf +/- nan, LOS: 4.2 %, DrawRatio: 0.0 %
 - MoveList ctor does reserve(32) heap alloc per construction (minor).
 - Tooling added: bench2 with CCOUNT lines, nnue_debug_bench probes 0-7
   (flash walk, row read, DRAM RMW, real add_piece/evaluate, composed ops).
+- PIE acceleration of add_feature/remove_feature: DEAD END. The ESP32-S3 PIE
+  is the reduced dot-product subset (EE.VMUL.S16, EE.VMULAS.S16.ACCX, VLD,
+  VST, ZERO.ACCX only) - EE.VADD.S16 / EE.VSUB.S16 / EE.VNEG.S16 are NOT
+  assembled by the espressif toolchain (unknown opcode) and are not in the
+  S3 silicon's PIE (the full add/sub PIE is S2-only). Acc updates are
+  memory-bound scalar (3.1 cycles/update warm, measured via CCOUNT) and
+  cannot be vectorized on this chip. Board ~7.1-7.4k nps is near the
+  practical ceiling; eval machinery is ~65% of the node budget, mostly
+  irreducible flash-cache-bound row updates.
+- Probes (nnue_debug_bench 0-7) removed after use; bench2 keeps the CCOUNT
+  truth lines (pos-only-ccount 710cyc, full-ccount 21323cyc on clean scalar).
