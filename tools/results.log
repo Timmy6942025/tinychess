@@ -3950,3 +3950,13 @@ Elo difference: -inf +/- nan, LOS: 4.2 %, DrawRatio: 0.0 %
   depth-8 nodes 17,845 -> 20,965 (+17.5% in same claimed window); sink
   identical (bit-exact). 3-game board-vs-native stability gate PASS.
   No strength gate needed (behavior-neutral).
+- Cached checkers_to experiment (State.checkers_ computed eagerly in
+  make_move/null_move/set/vflip; checkers_to(stm) returns the cache; masked
+  to enemy color - a same-color knight can attack its own king's square in
+  a legal position): NEUTRAL, REVERTED. bench2 full-ccount 19,013 -> 20,121
+  cycles/op (+6%, eager attackers_to cost); bench depth-8 nps 8,303 -> 8,321
+  (noise, ~0%). The saved in_check/movegen attackers_to calls are offset by
+  the eager make_move cost. Kept the simpler code. Also: the USB-JTAG input
+  endpoint wedge (write during boot -> input dead across chip resets,
+  reflashes, host driver reloads; only a physical power cycle clears it).
+  Board bench back at PSRAM state: 8,303 nps @ depth 8.
