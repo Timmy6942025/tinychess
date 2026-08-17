@@ -6,6 +6,10 @@
 #include "weights.cpp"
 #include "weights.h"
 
+#if defined(ESP32)
+#include <esp_heap_caps.h>
+#endif
+
 #include "main.h"
 #include "nnue.h"
 
@@ -108,7 +112,27 @@ struct Network {
 	}
 };
 
-const Network *const NNUE = reinterpret_cast<const Network *>(weights_data);
+const Network *NNUE = reinterpret_cast<const Network *>(weights_data);
+
+#if defined(ESP32)
+// Copy the weight table into PSRAM at boot: the eval update loops are
+// memory-bound and PSRAM (OPI 80MHz) has a faster cache-miss path than
+// DIO flash XIP (~15MB/s). Byte-identical copy, so evaluation stays
+// bit-exact. Rows are 512B each; a 16-byte-aligned base keeps every row
+// aligned for the PIE loads in accx_dot16.
+void IRAM_ATTR nnue_load_weights_to_psram()
+{
+	const size_t n = sizeof(weights_data);
+	void *mem = heap_caps_aligned_alloc(16, n, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+	if (mem == nullptr) {
+		printf("# PSRAM weight copy failed (%u bytes) - using flash XIP\n", unsigned(n));
+		return;
+	}
+	memcpy(mem, weights_data, n);
+	NNUE = reinterpret_cast<const Network *>(mem);
+	printf("# weights in PSRAM: %u bytes\n", unsigned(n));
+}
+#endif
 
 Eval::Eval()
 {

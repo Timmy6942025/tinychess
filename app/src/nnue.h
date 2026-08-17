@@ -33,3 +33,7 @@ public:
 	void remove_piece(const int piece, const int square, const bool is_white);
 };
 
+#if defined(ESP32)
+void nnue_load_weights_to_psram();
+#endif
+

@@ -3942,3 +3942,11 @@ Elo difference: -inf +/- nan, LOS: 4.2 %, DrawRatio: 0.0 %
   full make+eval+unmake 21.3k cycles. esp_timer_get_time poisoning is
   BIDIRECTIONAL (also observed deflating: claimed 3.2s for a real ~7.4s
   run) - wall clock / CCOUNT are the only trustworthy clocks.
+- PSRAM weights: ACCEPT. Boot-time copy of the 394,816-byte weight table to
+  PSRAM (heap_caps_aligned_alloc(16, SPIRAM|8BIT), memcpy from flash XIP).
+  Byte-identical so eval stays bit-exact. DIO flash cache-miss path (~15MB/s)
+  was a real share of the eval-update cost; OPI PSRAM miss path is faster.
+  Measured: bench2 full-ccount 21,323 -> 19,013 cycles/op (-11%); bench
+  depth-8 nodes 17,845 -> 20,965 (+17.5% in same claimed window); sink
+  identical (bit-exact). 3-game board-vs-native stability gate PASS.
+  No strength gate needed (behavior-neutral).

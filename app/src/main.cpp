@@ -1743,6 +1743,8 @@ extern "C" void app_main()
 
 	heap_caps_register_failed_alloc_callback(heap_caps_alloc_failed_hook);
 
+	nnue_load_weights_to_psram();
+
 	esp_chip_info_t chip_info { };
 	esp_chip_info(&chip_info);
 	allocate_threads(chip_info.cores);
