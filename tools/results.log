@@ -3898,3 +3898,26 @@ Elo difference: -inf +/- nan, LOS: 4.2 %, DrawRatio: 0.0 %
   feature (256-int16 loops, ~3.5 instr/elem) remains the board candidate.
 - New measurement tool: bench2 UCI command (iters arg) with inline
   cntvct/mono ground truth; move-type debug line.
+
+2026-08-17 board eval-machinery profile (CCOUNT ground truth):
+- Board esp_timer_get_time() deltas are INFLATED ~1000x when called from
+  the console task while searcher threads exist (~1.85ms blocking per call,
+  cross-core esp_timer lock contention with the waiting searcher task).
+  The SEARCH's own esp_timer timing (searcher task, console idle) is
+  truthful: go depth 8 = 40,342 nodes / 5474ms claimed vs 6.0s wall incl.
+  ~0.5s serial overhead -> 7,369 nps REAL (2-thread 7,100 anchor confirmed).
+- Desktop had the same disease (gettimeofday deltas inflated, inline
+  cntvct/mono truthful). Lesson: esp_timer_get_time deltas are unreliable
+  in cross-task contexts; use CCOUNT (Xtensa) / cntvct (aarch64) inline.
+- REAL board per-op costs (CCOUNT @240MHz):
+  - pos make+unmake: 667 cycles (2.8us)
+  - full make+eval+unmake: 21,214 cycles (88us)
+  - eval feature updates: ~65us per op (2048 int16 updates @31ns/update)
+  - nnue_evaluate (PIE accx_dot16): ~2.9us - already PIE, tiny
+  - search node: ~136us (2-thread 7100 nps)
+- Breakdown: eval machinery = ~65% of a node; scalar feature-update loops
+  = ~48% of a node. TARGET: PIE (EE.VADD.S16, 8 lanes) add_feature/
+  remove_feature -> 65us -> ~12us, saving ~50us/node (~40-55% nps gain).
+- MoveList ctor does reserve(32) heap alloc per construction (minor).
+- Tooling added: bench2 with CCOUNT lines, nnue_debug_bench probes 0-7
+  (flash walk, row read, DRAM RMW, real add_piece/evaluate, composed ops).

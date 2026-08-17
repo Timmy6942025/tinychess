@@ -32,3 +32,5 @@ public:
 	void add_piece   (const int piece, const int square, const bool is_white);
 	void remove_piece(const int piece, const int square, const bool is_white);
 };
+
+extern "C" void nnue_debug_bench(const int which, Eval *e, libchess::Position *pos);

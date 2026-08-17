@@ -768,6 +768,7 @@ void main_task()
 		int iters = 200;
 		int it_arg;
 		if (input >> it_arg) iters = it_arg;
+		for (int w = 0; w <= 7; w++) nnue_debug_bench(w, sp.at(0)->nnue_eval, &sp.at(0)->pos);
 		int64_t sink = 0;
 		uint64_t t0, dt;
 		uint64_t ops = uint64_t(iters) * legal.size();
@@ -781,6 +782,21 @@ void main_task()
 		}
 		dt = esp_timer_get_time() - t0;
 		printf("# b2 pos-only: %.2f us/op\n", dt * 1000.0 / double(ops));
+#if defined(ESP32)
+		{
+			uint32_t c0, c1;
+			__asm__ volatile("rsr %0, ccount" : "=r"(c0));
+			for (int it = 0; it < iters; it++) {
+				for (auto & m : legal) {
+					sp.at(0)->pos.make_move(m);
+					sp.at(0)->pos.unmake_move();
+				}
+			}
+			__asm__ volatile("rsr %0, ccount" : "=r"(c1));
+			printf("# b2 pos-only-ccount: %llu cycles/op\n",
+			       (unsigned long long)(c1 - c0) / ops);
+		}
+#endif
 
 		t0 = esp_timer_get_time();
 		for (int it = 0; it < iters; it++) {
@@ -855,6 +871,24 @@ void main_task()
 		}
 		dt = esp_timer_get_time() - t0;
 		printf("# b2 full: %.2f us/op (sink %lld)\n", dt * 1000.0 / double(ops), (long long)sink);
+#if defined(ESP32)
+		{
+			uint32_t c0, c1;
+			__asm__ volatile("rsr %0, ccount" : "=r"(c0));
+			volatile int64_t sink2 = 0;
+			for (int it = 0; it < iters; it++) {
+				for (auto & m : legal) {
+					auto acts = make_move(sp.at(0)->nnue_eval, sp.at(0)->pos, m);
+					sink2 += nnue_evaluate(sp.at(0)->nnue_eval, sp.at(0)->pos);
+					unmake_move(sp.at(0)->nnue_eval, sp.at(0)->pos, acts);
+				}
+			}
+			__asm__ volatile("rsr %0, ccount" : "=r"(c1));
+			sink += sink2;
+			printf("# b2 full-ccount: %llu cycles/op\n",
+			       (unsigned long long)(c1 - c0) / ops);
+		}
+#endif
 	};
 
 	auto fen_handler = [](std::istringstream&) {
