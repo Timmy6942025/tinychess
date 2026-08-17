@@ -221,6 +221,10 @@ auto stop_handler = []()
 #if defined(linux) || defined(_WIN32) || defined(__ANDROID__) || defined(__APPLE__)
 uint64_t esp_timer_get_time()
 {
+	// NOTE: on this board libc clock reads through this call return
+	// inflated deltas (vDSO/timekeeper quirk, ~1000x on short intervals);
+	// relative timings (nps, bench) are still usable, absolute ones are
+	// not -- use the inline cntvct/monotonic blocks in bench2 for truth.
 	timeval tv { };
 	gettimeofday(&tv, nullptr);
 	return tv.tv_sec * 1000000 + tv.tv_usec;
@@ -752,6 +756,107 @@ void main_task()
 		printf("# eval: %d\n", score);
 	};
 
+	auto bench2_handler = [](std::istringstream & input) {
+		// TEMP eval-machinery microbench: us per make+eval+unmake op
+		auto legal = sp.at(0)->pos.legal_move_list();
+		printf("# b2 pos: %s, %zu legal moves\n", sp.at(0)->pos.fen().c_str(), legal.size());
+		{
+			std::string types;
+			for (auto & m : legal) types += std::to_string(int(m.type())) + ",";
+			printf("# b2 move types: %s\n", types.c_str());
+		}
+		int iters = 200;
+		int it_arg;
+		if (input >> it_arg) iters = it_arg;
+		int64_t sink = 0;
+		uint64_t t0, dt;
+		uint64_t ops = uint64_t(iters) * legal.size();
+
+		t0 = esp_timer_get_time();
+		for (int it = 0; it < iters; it++) {
+			for (auto & m : legal) {
+				sp.at(0)->pos.make_move(m);
+				sp.at(0)->pos.unmake_move();
+			}
+		}
+		dt = esp_timer_get_time() - t0;
+		printf("# b2 pos-only: %.2f us/op\n", dt * 1000.0 / double(ops));
+
+		t0 = esp_timer_get_time();
+		for (int it = 0; it < iters; it++) {
+			for (auto & m : legal) {
+				auto acts = make_move(sp.at(0)->nnue_eval, sp.at(0)->pos, m);
+				unmake_move(sp.at(0)->nnue_eval, sp.at(0)->pos, acts);
+			}
+		}
+		dt = esp_timer_get_time() - t0;
+		printf("# b2 eval-makeonly: %.2f us/op\n", dt * 1000.0 / double(ops));
+
+		t0 = esp_timer_get_time();
+		for (int it = 0; it < iters; it++) {
+			for (auto & m : legal) {
+				sink += nnue_evaluate(sp.at(0)->nnue_eval, sp.at(0)->pos);
+			}
+		}
+		dt = esp_timer_get_time() - t0;
+		printf("# b2 eval-only: %.2f us/op\n", dt * 1000.0 / double(ops));
+
+		t0 = esp_timer_get_time();
+		volatile int64_t acc = 0;
+		for (int it = 0; it < iters; it++) {
+			for (auto & m : legal) {
+				for (int i = 0; i < 500; i++) acc += i * (m.to_square().value() + 1);
+			}
+		}
+		dt = esp_timer_get_time() - t0;
+		sink += acc;
+		printf("# b2 calib: %.2f us/op (500 int ops) raw t0=%llu t1=%llu dt=%llu\n",
+		       dt * 1000.0 / double(ops), (unsigned long long)t0, (unsigned long long)(t0 + dt),
+		       (unsigned long long)dt);
+
+#if defined(__aarch64__)
+		{
+			uint64_t t0c, t1c;
+			__asm__ volatile("mrs %0, cntvct_el0" : "=r"(t0c));
+			acc = 0;
+			for (int it = 0; it < iters; it++) {
+				for (auto & m : legal) {
+					for (int i = 0; i < 500; i++) acc += i * (m.to_square().value() + 1);
+				}
+			}
+			__asm__ volatile("mrs %0, cntvct_el0" : "=r"(t1c));
+			sink += acc;
+			printf("# b2 calib-cycles: %llu ticks/op\n",
+			       (unsigned long long)((t1c - t0c) / ops));
+		}
+#endif
+		{
+			struct timespec ts0, ts1;
+			clock_gettime(CLOCK_MONOTONIC, &ts0);
+			acc = 0;
+			for (int it = 0; it < iters; it++) {
+				for (auto & m : legal) {
+					for (int i = 0; i < 500; i++) acc += i * (m.to_square().value() + 1);
+				}
+			}
+			clock_gettime(CLOCK_MONOTONIC, &ts1);
+			sink += acc;
+			printf("# b2 calib-mono: %.3f us/op\n",
+			       (double(ts1.tv_sec - ts0.tv_sec) * 1e6 + double(ts1.tv_nsec - ts0.tv_nsec) / 1e3) / double(ops));
+		}
+
+		t0 = esp_timer_get_time();
+		for (int it = 0; it < iters; it++) {
+			for (auto & m : legal) {
+				auto acts = make_move(sp.at(0)->nnue_eval, sp.at(0)->pos, m);
+				sink += nnue_evaluate(sp.at(0)->nnue_eval, sp.at(0)->pos);
+				unmake_move(sp.at(0)->nnue_eval, sp.at(0)->pos, acts);
+			}
+		}
+		dt = esp_timer_get_time() - t0;
+		printf("# b2 full: %.2f us/op (sink %lld)\n", dt * 1000.0 / double(ops), (long long)sink);
+	};
+
 	auto fen_handler = [](std::istringstream&) {
 		printf("# fen: %s\n", sp.at(0)->pos.fen().c_str());
 	};
@@ -1112,6 +1217,7 @@ void main_task()
 
 	uci_service->register_handler("play",       play_handler, true);
 	uci_service->register_handler("eval",       eval_handler, true);
+	uci_service->register_handler("bench2",     bench2_handler, true);
 	uci_service->register_handler("fen",        fen_handler, true);
 	uci_service->register_handler("d",          display_handler, true);
 	uci_service->register_handler("display",    display_handler, true);

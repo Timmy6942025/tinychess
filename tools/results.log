@@ -3872,3 +3872,29 @@ Elo difference: -inf +/- nan, LOS: 4.2 %, DrawRatio: 0.0 %
   -eval(pos,b)), endgame evals distorted 2-3x by int16 quantization
   amplification (queen-up 3552 vs 1213), and scale mismatch beyond the
   middlegame. DO NOT retry; eval path = Folkert retrain pipeline only.
+
+2026-08-17 desktop clock investigation (board NPS R&D):
+- Found 5 orphaned Dog engine processes (Aug 15-16) eating ~400% CPU
+  (Dog-base-qsee 2847 CPU-min, Dog-native, Dog-ruk x2, Dog-256-base);
+  killed. They polluted every load>1 measurement since Aug 15.
+- After cleanup: bench2 microbench (make+eval+unmake loops) still measured
+  69-2500 us/op while the real search does 190k nodes in 0.38s wall.
+- Root cause: esp_timer_get_time() on the DESKTOP (gettimeofday vDSO) is
+  unreliable on this board: deltas inflated ~2x-1000x (varies with
+  interval). Verified: inline cntvct_el0 (134 ticks @54MHz = 2.48us) and
+  inline CLOCK_MONOTONIC (2.53us) agree with each other AND with wall
+  clock (time); the function-call path through the shim reports 1000x.
+  Rebuilding with clock_gettime/cntvct shims did NOT fix it (still lies);
+  direct inline reads are truthful. Reverted shim to gettimeofday.
+- Consequences: desktop absolute nps claims are garbage (real ~540k nps
+  on depth-12, not 269k); RELATIVE same-session comparisons remain valid
+  (both engines under same distortion) - ruk512/ruk256 rejections stand.
+  Board (ESP32) uses hardware esp_timer - its 7100 nps was always real.
+  Desktop matches: cutechess enforces wall clock, engines never exceed
+  budget - match verdicts unaffected.
+- Real desktop eval-machinery costs (inline cntvct/mono): pos make+unmake
+  ~1.5us, eval-makeonly ~6us, nnue_evaluate ~1us, full op ~15us. Scalar
+  but normal - nothing pathological. PIE SIMD for add_feature/remove_
+  feature (256-int16 loops, ~3.5 instr/elem) remains the board candidate.
+- New measurement tool: bench2 UCI command (iters arg) with inline
+  cntvct/mono ground truth; move-type debug line.
