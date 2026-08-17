@@ -4,7 +4,11 @@
 #include <cstdint>
 #include <cstring>
 
+#ifdef USE_RUK_NET_256
+#include "weights-ruk256.cpp"
+#else
 #include "weights-ruk.cpp"
+#endif
 #include "weights.h"
 
 #include "main.h"
@@ -32,8 +36,17 @@ struct RukHdr
 };
 
 static_assert(sizeof(RukHdr) == 40, "RukHdr layout");
-static_assert(HIDDEN_SIZE == 512, "Ruk net requires HIDDEN_SIZE=512");
+static_assert(HIDDEN_SIZE == 512 || HIDDEN_SIZE == 256, "Ruk net hidden size");
 static_assert(ruk_weights_size == int(sizeof(RukHdr) + 768 * HIDDEN_SIZE * 2 + HIDDEN_SIZE * 2 + 2 * HIDDEN_SIZE * 2 + 4), "Ruk blob length");
+
+// RukChess nets evaluate on a ~4x smaller scale than Dog's 400-scale net;
+// rescale so the search's margins (aspiration, futility, razor, resign)
+// behave as tuned. Verified against the float nets on calibrating positions.
+#ifdef USE_RUK_NET_256
+static constexpr int RUK_SCALE = 4;
+#else
+static constexpr int RUK_SCALE = 1;
+#endif
 
 static const int16_t *ruk_feature_weights = reinterpret_cast<const int16_t *>(ruk_weights_data + sizeof(RukHdr));
 static const int16_t *ruk_feature_bias    = ruk_feature_weights + 768 * HIDDEN_SIZE;
@@ -49,7 +62,7 @@ static bool ruk_net_valid(void)
 	return memcmp(h->magic, "MDRK", 4) == 0
 		&& h->src_magic == 0x524b5242u
 		&& h->src_hash  == ruk_src_hash
-		&& h->hidden    == 512
+		&& h->hidden    == HIDDEN_SIZE
 		&& h->input     == 768
 		&& h->output    == 1
 		&& h->qin       == 64
@@ -108,6 +121,7 @@ int IRAM_ATTR Eval::evaluate(const bool white_to_move) const
 	}
 
 	output /= 32768;  // qin * qout
+	output *= RUK_SCALE;
 
 	return std::clamp(int(output), -max_non_mate, max_non_mate);
 }

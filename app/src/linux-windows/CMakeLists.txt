@@ -167,6 +167,12 @@ add_executable(
 target_compile_options(Dog-ruk PRIVATE -march=native -mtune=native -O3 -DUSE_RUK_NET -DBUILD_TARGET=\"ruk\")
 
 add_executable(
+  Dog-ruk256
+  ${APP_SOURCES_RUK}
+)
+target_compile_options(Dog-ruk256 PRIVATE -march=native -mtune=native -O3 -DUSE_RUK_NET_256 -DBUILD_TARGET=\"ruk256\")
+
+add_executable(
     Dog-stats-prober
     ../emit_stats.cpp
 )
@@ -190,6 +196,7 @@ else()
 	target_link_libraries(Dog PRIVATE Threads::Threads)
 	target_link_libraries(Dog-native PRIVATE Threads::Threads)
 	target_link_libraries(Dog-ruk PRIVATE Threads::Threads)
+	target_link_libraries(Dog-ruk256 PRIVATE Threads::Threads)
 endif()
 
 if (GPROF EQUAL 1)
@@ -200,6 +207,7 @@ endif()
 target_include_directories(Dog PUBLIC ../../include ../fathom/src)
 target_include_directories(Dog-native PUBLIC ../../include ../fathom/src)
 target_include_directories(Dog-ruk PUBLIC ../../include ../fathom/src)
+target_include_directories(Dog-ruk256 PUBLIC ../../include ../fathom/src)
 target_include_directories(Dog-stats-prober PUBLIC ../../include ../fathom/src)
 
 set_target_properties(Dog PROPERTIES OUTPUT_NAME Dog)

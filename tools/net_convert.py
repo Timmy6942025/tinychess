@@ -28,7 +28,7 @@ def convert(src: str, dst: str) -> None:
     magic, hh = struct.unpack("<IQ", d[:12])
     if magic != 0x524B5242:
         raise SystemExit(f"{src}: bad magic {magic:08x}")
-    hidden = 512
+    hidden = int(sys.argv[3]) if len(sys.argv) > 3 else 512
     input_dim = 768
     q_in, q_out = 64, 512
     expect = 12 + (input_dim*hidden + hidden + 2*hidden + 1) * 4
@@ -64,7 +64,7 @@ def convert(src: str, dst: str) -> None:
     blob += struct.pack("<i", ob32)
     src_name = os.path.basename(src)
     hdr = f"""// Auto-converted from {src} ({src_name})
-// RukChess 768->512->1 float net; quant in x{q_in} out x{q_out}; output bias i32.
+// RukChess 768->H->1 float net; quant in x{q_in} out x{q_out}; output bias i32.
 // source magic 0x524b5242, source arch hash 0x{hh:016x}, blob length {len(blob)}.
 constexpr uint64_t ruk_src_hash = 0x{hh:016x}ull;
 constexpr int32_t ruk_hidden = {hidden};

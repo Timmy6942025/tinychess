@@ -718,6 +718,7 @@ void tests()
 	}
 
 	#ifndef USE_RUK_NET
+	#ifndef USE_RUK_NET_256
 // NNUE eval (using san parsing data); expected values are for the
 	// HIDDEN_SIZE=256 big net (weights.cpp #if 0 block)
 	{
@@ -731,6 +732,7 @@ void tests()
 
 		printf("OK\n");
 	}
+	#endif
 
 #endif
 

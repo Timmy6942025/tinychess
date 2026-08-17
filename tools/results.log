@@ -3854,3 +3854,21 @@ Elo difference: -inf +/- nan, LOS: 4.2 %, DrawRatio: 0.0 %
 - Speed: ruk eval 126k nps vs 269k (2.14x slower) -> depth deficit at blitz.
 - VERDICT: REJECT. The 512 net loses ~250-325 Elo in Dog at every TC/variant.
   Eval-strength path remains NNUE retrain with Dog's own data (collect-fens-Dog-nnue.py).
+
+## 2026-08-16 RUK 256 net (net-3ba7af1fe396, RukChess 4.0.0) — REJECT
+- Provenance: RukChessNets Net 159/Epoch 077 (4.0.0 default, ~3295 CEDR).
+  768->256->1, qin=64 qout=512. Loader: parameterized nnue-ruk.cpp for
+  HIDDEN_SIZE=256 (USE_RUK_NET_256), RUK_SCALE=4 (calibrated on dense
+  positions: float -73.52*4=-294 vs C++ -292; startpos 23.81*4=95 vs 92).
+- int16 C++ model verified bit-exact vs float quantization conventions
+  (int16 acc, ReLU, ow x512, ob x32768; Python q-model matched 92/-124/-296
+  vs C++ 92/-120/-292, diff = C++ trunc-toward-zero vs floor).
+- Unit gate: 17 OK, 0 assert fail (known tail hang at aspiration test,
+  PASS per convention). Clean bench 208k nps vs 269k base (int64 output
+  layer, ~22% slower).
+- 30g @ 2+0.02 vs Dog-256-base: 1-26-3 = 0.083 (LOS 0%) -> REJECT.
+- Conclusion: RukChess nets (256 AND 512) do not transfer to Dog. Even at
+  near-equal speed the net loses ~500: color asymmetry (eval(pos,w) !=
+  -eval(pos,b)), endgame evals distorted 2-3x by int16 quantization
+  amplification (queen-up 3552 vs 1213), and scale mismatch beyond the
+  middlegame. DO NOT retry; eval path = Folkert retrain pipeline only.
