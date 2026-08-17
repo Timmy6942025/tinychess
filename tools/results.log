@@ -3990,3 +3990,14 @@ Elo difference: -inf +/- nan, LOS: 4.2 %, DrawRatio: 0.0 %
   Both confirm the search parameters sit at a measured local optimum;
   the residual knobs (razor margin multiple, stand-pat skip 350+150d,
   null-move R=2, lmr_start) all have weak or adjacent-rejected priors.
+- qs subtree component profile (board CCOUNT, startpos depth-8, 3699 main
+  nodes / 24614 qs nodes = 6.65 qs/main): per-qs-node own cost 1959 cycles
+  = stand-pat eval 878 (45%), gen_qs_moves_into 487 (25%), SEE scoring 297
+  (15%), qs TT probe 292 (15%), selection sort 5 (0.3% - the O(n^2) scan is
+  a non-issue, qs breaks early: 5.7 scan steps per qs node). Recursive
+  children (make+unmake span 81k cycles incl. the child subtree) = 5875 of
+  the 7834 cycles per qs node (75%). CONCLUSION: the qs subtree is at its
+  floor - eval is the eval, pruning level was already probed (SEE -40
+  rejected), SEE/movegen/TT are cheap. The full 29k cycles/node budget is
+  now accounted for (op 19k + movegen/ordering 2.1k + TT 0.25k + qs 7.8k)
+  with no reducible components left. NPS R&D complete.
