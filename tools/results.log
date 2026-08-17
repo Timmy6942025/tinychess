@@ -3960,3 +3960,19 @@ Elo difference: -inf +/- nan, LOS: 4.2 %, DrawRatio: 0.0 %
   endpoint wedge (write during boot -> input dead across chip resets,
   reflashes, host driver reloads; only a physical power cycle clears it).
   Board bench back at PSRAM state: 8,303 nps @ depth 8.
+- Incremental x-ray SEE (see_rec carries the attacker set; per-level
+  new_attackers = attackers ^ {from} + collinear walk discovers the first
+  blocker beyond the removed piece; on_line guard for non-slider deltas):
+  NEUTRAL, REVERTED. Fuzz-verified bit-exact (see_verify vs brute-force
+  make/unmake: all mismatches fixed, 18/18 OK) but bench depth-8 nps
+  8,303 -> 8,326 and go depth-10 nps 8,582 -> 8,593 (+0.1-0.3%, noise).
+  The qs SEE ordering cost was not the bottleneck the profile suggested;
+  the per-level fold was cheaper than estimated. Kept the simpler code.
+  NOTE the debugging landmine this surfaced: Bitboard{0} resolves to the
+  Bitboard(int shift) ctor = 1<<0 = square a1, NOT an empty bitboard
+  (Bitboard{} is the empty one). The pre-existing libchess code has
+  Bitboard{0} in Lookups.h default args (knight/king ignore occupancy,
+  harmless) and in Position/Attacks.h:38 attacks_of_piece_on's empty-square
+  return (returns 0x1 = {a1} instead of 0 - latent bug, behavior-changing
+  to fix, needs a strength gate if ever touched).
+  Board reflashed to HEAD: bench 8,292-8,303 nps @ depth 8.
