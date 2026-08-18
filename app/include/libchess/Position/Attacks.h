@@ -35,7 +35,7 @@ LIBCHESS_IRAM_ATTR inline Bitboard Position::attackers_to(Square square, Bitboar
 LIBCHESS_IRAM_ATTR inline Bitboard Position::attacks_of_piece_on(libchess::Square square) const {
     auto piece = piece_on(square);
     if (!piece) {
-        return Bitboard{0};
+        return Bitboard{};
     }
 
     if (piece->type() == constants::PAWN) {

@@ -67,7 +67,7 @@ state_exporter::~state_exporter()
 	}
 
 	if (pdata)
-		munmap(pdata, 0);
+		munmap(pdata, sizeof(state_exporter::_export_structure_));
 	if (fd != -1)
 		close(fd);
 }
@@ -112,7 +112,6 @@ void state_exporter::handler()
 		int rc = pthread_mutex_trylock(&pdata->mutex);
 		if (rc == 0) {
 			if (sp) {
-				static int cnt = 0;
 				pdata->counters = sp->cs.data;
 				pdata->cur_move = sp->cur_move;
 				pdata->revision++;

@@ -136,7 +136,7 @@ set(APP_SOURCES_RUK ${APP_SOURCES} ../nnue-ruk.cpp)
 
 add_executable(
   Dog
-  ${APP_SOURCES}
+  ${APP_SOURCES_DOG}
 )
 target_compile_options(Dog PRIVATE -DBUILD_TARGET=\"regular\")
 

@@ -329,10 +329,10 @@ constexpr static std::array<Bitboard, 64> QUEEN_ATTACKS = init::queen_attacks();
 constexpr inline Bitboard pawn_attacks(Square square, Color color) {
     return PAWN_ATTACKS[color][square];
 }
-constexpr inline Bitboard knight_attacks(Square square, Bitboard = Bitboard{0}) {
+constexpr inline Bitboard knight_attacks(Square square, Bitboard = Bitboard{}) {
     return KNIGHT_ATTACKS[square];
 }
-constexpr inline Bitboard king_attacks(Square square, Bitboard = Bitboard{0}) {
+constexpr inline Bitboard king_attacks(Square square, Bitboard = Bitboard{}) {
     return KING_ATTACKS[square];
 }
 constexpr inline Bitboard bishop_attacks(Square square) {
@@ -382,7 +382,7 @@ LIBCHESS_IRAM_ATTR inline Bitboard relative_rank_mask(Rank rank, Color c) {
 }
 LIBCHESS_IRAM_ATTR inline Bitboard non_pawn_piece_type_attacks(PieceType piece_type,
                                             Square square,
-                                            Bitboard occupancies = Bitboard{0}) {
+                                            Bitboard occupancies = Bitboard{}) {
     switch (piece_type) {
         case constants::KNIGHT:
             return knight_attacks(square);

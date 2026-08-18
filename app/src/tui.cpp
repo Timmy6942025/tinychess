@@ -249,7 +249,7 @@ bool store_position(const std::string & fen, const int initial_think_time)
 	FILE *fh = fopen(RECALL_FILE, "w");
 	if (fh) {
 		fprintf(fh, "%s\n", fen.c_str());
-		fprintf(fh, "%d\n", initial_think_time);
+fprintf(fh, "%d\n",  (int)initial_think_time);
 		fclose(fh);
 
 		return true;
@@ -841,7 +841,7 @@ void write_settings()
 
 	fprintf(fh, "%d\n",  t);
 	fprintf(fh, "%d\n",  default_trace);
-	fprintf(fh, "%lu\n", initial_think_time);
+	fprintf(fh, "%d\n",  (int)initial_think_time);
 	fprintf(fh, "%d\n",  do_ponder);
 	fprintf(fh, "%d\n",  clock_type);
 	fprintf(fh, "%d\n",  do_ping);
