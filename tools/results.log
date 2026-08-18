@@ -4013,3 +4013,7 @@ Elo difference: -inf +/- nan, LOS: 4.2 %, DrawRatio: 0.0 %
   Unit gate 18 OK / 0 fail (mate-in-N sweep clean). 200-game gate vs
   Dog-native-baseline-efe3222 (2+0.02, srand 42): 66-33-101 [0.583] = +57.8 +/- ~29
   Elo, LOS ~99.0% -> ACCEPT. Biggest accepted gain since the check extension.
+[12:20] BOARD PORT (recapture extension, commit 2c000fc): flashed via esptool
+  (16MB, DIO, 80m), console bench verified ~8,300 nps (depth-8, 1-thread; depth-5
+  line 7,726 nps warmup), 3-game board-vs-native gate CLEAN 0-3-0 (no
+  stalls/aborts/illegal moves; 3 benign PV byte-drop warnings, wrapper repair OK).
