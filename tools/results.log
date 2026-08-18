@@ -4054,3 +4054,10 @@ Elo difference: -inf +/- nan, LOS: 4.2 %, DrawRatio: 0.0 %
   saves ~4 tail moves at zero strength cost but ~+25 Elo vs +/-32 gate
   noise - not gateable. At the board's real TC (30+0.1) serial is
   amortized and allocation is fine. NO CHANGE.
+[22:30] BUG FIND (find-bugs pass): (1) tt.cpp depth-0 store guard - the qs's
+  always-store overwrites deep matching entries; gated the guard fix: -15.6
+  +/- 37.2, LOS 20.5% - the qs's fresh entries are mild ordering value, NOT
+  accepted, REVERTED. (2) Dead qtt_query/hit/cutoff counters + div-by-zero
+  ("nan% hit") in emit_stats.cpp after the probe removal - REMOVED the dead
+  counters (stats.h/stats.cpp/tui.cpp/emit_stats.cpp), prober now prints the
+  live qs-store count only. Unit 18 OK both targets. ESP32 built + flashed.

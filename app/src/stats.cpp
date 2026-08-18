@@ -39,10 +39,7 @@ void chess_stats::add(const chess_stats & source)
         this->data.tt_cutoff  += source.data.tt_cutoff;
         this->data.tt_invalid += source.data.tt_invalid;
 
-	this->data.qtt_query  += source.data.qtt_query;
-	this->data.qtt_hit    += source.data.qtt_hit;
 	this->data.qtt_store  += source.data.qtt_store;
-        this->data.qtt_cutoff += source.data.qtt_cutoff;
 
 	this->data.n_null_move     += source.data.n_null_move;
 	this->data.n_null_move_hit += source.data.n_null_move_hit;
