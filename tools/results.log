@@ -4044,3 +4044,13 @@ Elo difference: -inf +/- nan, LOS: 4.2 %, DrawRatio: 0.0 %
   pruned book (995 exits): leaky 0.9% (19x better), negative 17.8%, mean
   +119.3. Board SPIFFS reflashed with the pruned book. The remaining ~9
   leaks are deep rare branches (diminishing returns, skipped second pass).
+[22:10] TIME-MANAGEMENT PROBE (no change): budget at 2+0.02 =
+  (raw-100)/moves_to_go + inc*2/3 ~= 60ms; real spend 60ms search + ~50ms
+  serial = ~110ms vs 70ms/move income -> clock dies ~move 45 (the 2/20
+  forfeits). The ~50ms USB-JTAG serial is a hard floor: the last ~2 moves
+  of any fast-TC game forfeit regardless. Serial-aware budget (60-50=10ms)
+  would eliminate forfeits but cost ~1.5-2 plies (-50 to -80 Elo) - a net
+  wash. Emergency clamp (budget=clock-serial-margin when clock<~200ms)
+  saves ~4 tail moves at zero strength cost but ~+25 Elo vs +/-32 gate
+  noise - not gateable. At the board's real TC (30+0.1) serial is
+  amortized and allocation is fine. NO CHANGE.
