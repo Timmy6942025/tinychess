@@ -1608,11 +1608,11 @@ int main(int argc, char *argv[])
 	if (my_trace_file.empty() == false)
 		my_trace("# tracing to file enabled\n");
 
-	allocate_threads(thread_count);
-
 #if !defined(_WIN32) && !defined(ESP32)
 	se = new state_exporter(20);
 #endif
+
+	allocate_threads(thread_count);
 
 	setvbuf(stdout, nullptr, _IONBF, 0);
 

@@ -296,29 +296,9 @@ int IRAM_ATTR qs(int alpha, const int beta, const int qsdepth, search_pars_t & s
 
 	int            start_alpha = alpha;
 
-	// TT //
-	uint64_t       hash        = sp.pos.hash();
-	std::optional<libchess::Move> tt_move;
-	std::optional<tt_entry> te = tti.lookup(hash);
-	sp.cs.data.qtt_query++;
-
-        if (te.has_value()) {  // TT hit?
-		sp.cs.data.qtt_hit++;
-
-		int  score      = te.value().score;
-		int  work_score = eval_from_tt(score, qsdepth);
-		auto flag       = te.value().flags;
-		bool use        = flag == EXACT ||
-				(flag == LOWERBOUND && work_score >= beta) ||
-				(flag == UPPERBOUND && work_score <= alpha);
-		if (use) {
-			sp.cs.data.qtt_cutoff++;
-			return work_score;
-		}
-
-		if (te.value().M)  // move stored in TT?
-			tt_move = uint_to_libchessmove(te.value().M);
-	}
+	// TT // (probe disabled: 2.6% hit / 2.4% cutoff at ~292 cycles/qnode
+	// is net-negative; the qs still stores results for the main search)
+	uint64_t hash = sp.pos.hash();
 	////////
 
 	int  best_score = -32767;
@@ -370,8 +350,6 @@ int IRAM_ATTR qs(int alpha, const int beta, const int qsdepth, search_pars_t & s
 	for(size_t i=0; i<n_moves; i++) {
 		auto & move = *(move_list.begin() + i);
 		move_scores[i] = see(sp.pos, move);
-		if (tt_move.has_value() && move == tt_move.value())
-			move_scores[i] += 100000;
 	}
 
 	size_t m_idx  = 0;
@@ -389,10 +367,8 @@ int IRAM_ATTR qs(int alpha, const int beta, const int qsdepth, search_pars_t & s
 		m_idx++;
 
 		// qsearch pruning: a capture with a negative SEE cannot improve
-		// the score (the TT move is exempt: its stored score may make it
-		// valuable regardless; never prune evasions)
-		if (move_scores[m_idx - 1] < 0 && !sp.pos.in_check()
-			&& !(tt_move.has_value() && move == tt_move.value()))
+		// the score (never prune evasions)
+		if (move_scores[m_idx - 1] < 0 && !sp.pos.in_check())
 			continue;
 
 		if (sp.pos.is_legal_generated_move(move, pinned) == false)
@@ -437,7 +413,7 @@ int IRAM_ATTR qs(int alpha, const int beta, const int qsdepth, search_pars_t & s
 	assert(best_score >= -max_eval);
 	assert(best_score <=  max_eval);
 
-	if (sp.stop->flag == false && (te.has_value() == false || te.value().depth == 0)) {
+	if (sp.stop->flag == false) {
 		sp.cs.data.qtt_store++;
 
 		tt_entry_flag flag = EXACT;
