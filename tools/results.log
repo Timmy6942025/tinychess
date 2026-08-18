@@ -4017,3 +4017,22 @@ Elo difference: -inf +/- nan, LOS: 4.2 %, DrawRatio: 0.0 %
   (16MB, DIO, 80m), console bench verified ~8,300 nps (depth-8, 1-thread; depth-5
   line 7,726 nps warmup), 3-game board-vs-native gate CLEAN 0-3-0 (no
   stalls/aborts/illegal moves; 3 benign PV byte-drop warnings, wrapper repair OK).
+[14:10] BUG HUNT (commit d7f63e4): 8 bugs fixed - (1-3) Bitboard{0} -> Bitboard{}
+  defaults/returns (knight/king attack tables, non-pawn occupancy, Attacks.h)
+  which made every empty square read as occupied by a1; (4) emit_stats %u on
+  uint64_t syzygy counters; (5) tui.cpp %lu/%d vs int32_t (ESP32 -Werror);
+  (6) unused static; (7) munmap(p,0) -> munmap(p,sizeof) (EINVAL on glibc);
+  (8) Dog target missing nnue.cpp (link failure). Unit 21 OK, all 4 desktop
+  targets build, ESP32 clean, board reflashed + verified (16 OK, bench lines).
+[14:40] QS TT AUDIT + REMOVAL (commit 8e31f60): stats-prober audit (fixed the
+  exporter's startup order in main(): allocate_threads ran before se was created,
+  so the exporter never got the search state; games worked only because the
+  Threads option re-triggered the set) -> qs TT hit rate 2.65%, cut-off 2.42%
+  (208k queries / 21.5k stores per ~210k qs nodes). Probe removed from qsearch
+  (kept the qs store; always-store guard, replace_slot keeps deeper entries).
+  Desktop bench A/B noise; controlled 6 s movetime: nps EQUAL (probe was
+  cache-cheap on desktop). 200-game gate vs Dog-native-baseline-efe3222 (2+0.02,
+  srand 42): 55-35-110 [0.550] = +34.9 +/- 32.3 Elo, LOS 98.2% -> ACCEPT. The
+  stale qs TT cutoffs (horizon-context scores cutting real evals) were net-harmful.
+  Unit gate 18 OK / 0 fail. Board flashed, console bench 8,288 nps (par with
+  pre-removal 8,300 - PSRAM probe was cache-cheap; gain is strength, not nps).
