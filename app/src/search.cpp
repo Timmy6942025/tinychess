@@ -688,6 +688,14 @@ int IRAM_ATTR search(int depth, int alpha, const int beta, const int null_move_d
 
 	int new_depth_basic = depth - 1 + (sp.pos.in_check() || n_moves == 1 ? 1 : 0);
 
+	// Recapture extension: if the opponent's last move was a capture on
+	// square S, our move capturing back on S gets +1 ply (the classic
+	// companion to the check extension - the position's material balance
+	// is in flux on the recapture square and cheap errors there ripple).
+	std::optional<libchess::Square> recapture_square { };
+	if (auto prev = sp.pos.previous_move(); prev.has_value() && sp.pos.is_capture_move(prev.value()))
+		recapture_square = prev.value().to_square();
+
 	size_t             m_idx    = 0;
 	while(m_idx < n_moves) {
 		size_t selected_idx = m_idx;
@@ -704,6 +712,12 @@ int IRAM_ATTR search(int depth, int alpha, const int beta, const int null_move_d
 
 		if (sp.pos.is_legal_generated_move(move, pinned) == false)
 			continue;
+
+		// per-move recapture extension: +1 ply when we capture back on the
+		// square the opponent's last move captured on
+		int recapture_ext = 0;
+		if (recapture_square.has_value() && move.to_square() == recapture_square.value() && sp.pos.is_capture_move(move))
+			recapture_ext = 1;
 
 		// futility pruning: a quiet move cannot improve the score if the
 		// static eval plus a depth-scaled margin still falls below alpha
@@ -724,9 +738,9 @@ int IRAM_ATTR search(int depth, int alpha, const int beta, const int null_move_d
 
 		auto undo_actions = make_move(sp.nnue_eval, sp.pos, move);
 		if (n_played == 0)
-			score = -search(new_depth_basic, -beta, -alpha, null_move_depth, max_depth, level + 1, &new_move, sp);
+			score = -search(new_depth_basic + recapture_ext, -beta, -alpha, null_move_depth, max_depth, level + 1, &new_move, sp);
 		else {
-			int new_depth = new_depth_basic;
+			int new_depth = new_depth_basic + recapture_ext;
 
 			if (n_played >= lmr_start && !sp.pos.is_capture_move(move) && !sp.pos.is_promotion_move(move)) {
 				is_lmr = true;

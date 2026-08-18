@@ -4007,3 +4007,9 @@ Elo difference: -inf +/- nan, LOS: 4.2 %, DrawRatio: 0.0 %
 - Root cause of the 0-201-0-era 16 forfeits was already fixed (moves_to_go ESP32 floor-30, committed); residual 2+0.02 forfeits are fast-TC clock math: board spends ~60 ms search + ~50 ms overhead = ~110 ms/move vs ~70 ms sustainable (2000+20*40)/40 -> clock dies ~move 40, the rate observed (2/20 = 10%, anchor 8%).
 - WRAPPER FIXES (tools/wrapper.py): select 0.02 -> 0.005 (shaves ~20-40 ms off the round trip); banner drain deadline 15 s -> 45 s + silence break 2 s -> 8 s (a fresh open always pulses reset, and the ESP32S3 boot can take up to ~40 s; the 15 s deadline raced the boot and wedged the USB-JTAG input endpoint, hanging the wrapper - seen in probe sessions, fixed, verified: uciok + bestmove e2e4 clean).
 - 20-game forfeit check vs Dog-native-baseline (2+0.02, srand 42): 0-20-0, ZERO stalls/aborts/illegals, 2 time losses (games 17-18, long games ~move 40+, consistent with the clock math above). VERDICT: serial overhead at floor (~50 ms), baud no-op, wrapper drain race fixed; remaining forfeits are a time-management probe (search budget at fast TC), not infra. No board re-flash needed (board firmware unchanged).
+[12:00] RECAPTURE EXTENSION (research item 2): search.cpp - opponent's last move
+  was a capture on square S -> our move capturing back on S gets +1 ply (per-move,
+  applied to the first-move and LMR depth bases; companion to the +75 check ext).
+  Unit gate 18 OK / 0 fail (mate-in-N sweep clean). 200-game gate vs
+  Dog-native-baseline-efe3222 (2+0.02, srand 42): 66-33-101 [0.583] = +57.8 +/- ~29
+  Elo, LOS ~99.0% -> ACCEPT. Biggest accepted gain since the check extension.
