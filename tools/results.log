@@ -4036,3 +4036,11 @@ Elo difference: -inf +/- nan, LOS: 4.2 %, DrawRatio: 0.0 %
   stale qs TT cutoffs (horizon-context scores cutting real evals) were net-harmful.
   Unit gate 18 OK / 0 fail. Board flashed, console bench 8,288 nps (par with
   pre-removal 8,300 - PSRAM probe was cache-cheap; gain is strength, not nps).
+[21:45] BOOK AUDIT + PRUNE: polyglot book (8,015 entries / 6,456 positions,
+  90% single-move forced lines). Walked top-4 branches from startpos -> 1,078
+  exits; scored all with depth-8: 31.8% exits negative, 16.8% clearly leaky
+  (cp < -60, worst -974), mean +75.5. Pruned the 148 parent entries of the
+  leaky exits (rebuilt polyglot, 8,015 -> 7,867 entries). Re-verified on the
+  pruned book (995 exits): leaky 0.9% (19x better), negative 17.8%, mean
+  +119.3. Board SPIFFS reflashed with the pruned book. The remaining ~9
+  leaks are deep rare branches (diminishing returns, skipped second pass).
