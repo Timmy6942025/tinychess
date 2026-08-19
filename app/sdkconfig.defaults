@@ -70,3 +70,9 @@ CONFIG_ESP_WIFI_STATIC_TX_BUFFER_NUM=8
 # patch). With the SoftAP up, internal RAM has no 24KB contiguous block at
 # go-time; the go thread is shallow glue + blocking waits, never DMA/ISR. ---
 CONFIG_SPIRAM_ALLOW_STACK_EXTERNAL_MEMORY=y
+
+# Phase 1: wifi+LWIP buffers prefer PSRAM so the internal heap keeps
+# headroom for the search path; the beacon/TX paths crashed with NULL
+# derefs in the wifi ppTask when the internal pool ran dry under web
+# /move traffic.
+CONFIG_SPIRAM_TRY_ALLOCATE_WIFI_LWIP=y

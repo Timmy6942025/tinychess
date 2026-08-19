@@ -4096,3 +4096,20 @@ Elo difference: -inf +/- nan, LOS: 4.2 %, DrawRatio: 0.0 %
   a physical power cycle), drops boot-log lines that leak past the prompt
   (would break cutechess init). Gate command needs `arg=/dev/ttyACM0`
   (cutechess 1.5.1 syntax, not arg1=).
+
+[23:20] BOARD PHASE 1 GATE (web engine bridge, post wifi-PSRAM fix): 10+0.1, 3 games, wifi client connected
+  -> 0-3-0 vs Dog-native, zero disconnects/stalls/illegal moves (empty
+  wrapper stderr). Same-code proof: /move, serial UCI and desktop native all
+  return b8c6 for "position startpos moves e2e4 e7e5 g1f3" @ movetime 1000.
+  60-ply HTTP self-play game, no crashes. Bench 10,080 nps (baseline 8,245).
+  Web stability fixes in this round:
+  - httpd handler stack 4K -> 8K + body cap 2K: running the go/position
+    handlers on the 4K httpd stack overflowed it and corrupted the heap
+    (searcher panicked in esp_timer timer_insert, LoadStoreAlignment).
+  - go/position now run on a 24K PSRAM-stack worker thread per request
+    (identical to the serial go-pthread pattern).
+  - CONFIG_SPIRAM_TRY_ALLOCATE_WIFI_LWIP=y: wifi+LWIP buffers prefer PSRAM.
+    The internal pool (~19K free with a client) ran dry under /move TCP
+    traffic and the wifi ppTask NULL-derefed in the beacon/SA-query path
+    (LoadProhibited in ieee80211_hostap_send_beacon_process, 2 crashes).
+    Internal heap with client: 19K -> 79K free.

@@ -10,6 +10,7 @@
 #include <condition_variable>
 #include <cstdio>
 #include <cstring>
+#include <functional>
 #include <iostream>
 #include <mutex>
 #include <signal.h>
@@ -90,6 +91,21 @@ bool with_syzygy = false;
 #include "tt.h"
 #include "tui.h"
 #include "web.h"
+
+#if defined(ESP32)
+// Web engine-bridge glue (Phase 1). The web handlers run the very same
+// registered UCI handlers the serial path uses; the mutex serializes the
+// two producers (serial UCI loop / httpd) so a search can never be started
+// while another is in flight, and the position can never be mutated mid-
+// search. Searches are bounded (movetime), so blocking on the mutex is
+// always bounded.
+std::mutex g_web_engine_mutex;
+std::function<void(const libchess::UCIPositionParameters &)> g_web_position_handler;
+std::function<void(const libchess::UCIGoParameters &)> g_web_go_handler;
+web_search_result_t g_web_result;
+#endif
+
+chess_stats g_global_cs;
 
 
 std::vector<search_pars_t *> sp;
@@ -750,7 +766,7 @@ void main_task()
 {
 	libchess::UCIService *uci_service = new libchess::UCIService("Dog v" DOG_VERSION, "Folkert van Heusden", std::cout, is);
 
-	chess_stats global_cs;
+	chess_stats & global_cs = g_global_cs;
 
 	auto eval_handler = [](std::istringstream&) {
 		int score = nnue_evaluate(sp.at(0)->nnue_eval, sp.at(0)->pos);
@@ -939,6 +955,9 @@ void main_task()
 	};
 
 	auto position_handler = [](const libchess::UCIPositionParameters & position_parameters) {
+#if defined(ESP32)
+		std::lock_guard<std::mutex> web_lock(g_web_engine_mutex);
+#endif
 		stop_ponder();
 		sp.at(0)->pos = libchess::Position { position_parameters.fen() };
 		init_move(sp.at(0)->nnue_eval, sp.at(0)->pos);
@@ -1030,6 +1049,13 @@ void main_task()
 	};
 
 	auto go_handler = [&global_cs](const libchess::UCIGoParameters & go_parameters) {
+#if defined(ESP32)
+		// Serialize searches across the serial UCI loop and the web bridge:
+		// only one search may be in flight at a time (the searchers share
+		// the work struct). Bounded by movetime/clock, never held by the
+		// searchers themselves, so no deadlock is possible.
+		std::lock_guard<std::mutex> web_lock(g_web_engine_mutex);
+#endif
 		uint64_t start_ts = esp_timer_get_time();
 
 		try {
@@ -1199,6 +1225,18 @@ void main_task()
 			}
 
 			// emit result
+#if defined(ESP32)
+			// web bridge: stash the result (book/syzygy/search paths all land
+			// here). Read by web_engine_last_result() in the same httpd
+			// thread after the blocking go call; safe without an extra lock.
+			g_web_result.valid     = true;
+			g_web_result.best_move = best_move.to_str();
+			g_web_result.score     = best_score;
+			g_web_result.depth     = sp.at(0)->md;
+			g_web_result.pv.clear();
+			for (auto & pv_move : ponder_line)
+				g_web_result.pv.push_back(pv_move.to_str());
+#endif
 			libchess::UCIService::bestmove(best_move.to_str());
 
 			my_trace("info string had %d...%d ms, used %.3f ms (including overhead)\n", think_time_min, think_time_max, (esp_timer_get_time() - start_ts) / 1000.);
@@ -1248,6 +1286,11 @@ void main_task()
 	uci_service->register_position_handler(position_handler);
 	uci_service->register_go_handler      (go_handler);
 	uci_service->register_stop_handler    (stop_handler);
+#if defined(ESP32)
+	// web bridge: hand the registered handlers to the httpd side
+	g_web_position_handler = position_handler;
+	g_web_go_handler       = go_handler;
+#endif
 
 	uci_service->register_handler("play",       play_handler, true);
 	uci_service->register_handler("eval",       eval_handler, true);
@@ -1314,6 +1357,51 @@ void main_task()
 
 	printf("TASK TERMINATED\n");
 }
+
+#if defined(ESP32)
+// ---- web engine bridge (Phase 1): same handlers, same search ----
+
+bool web_engine_set_position(const std::vector<std::string> & moves)
+{
+	if (!g_web_position_handler)
+		return false;
+
+	std::optional<libchess::UCIMoveList> move_list;
+	if (!moves.empty())
+		move_list = libchess::UCIMoveList(moves);
+
+	g_web_position_handler(libchess::UCIPositionParameters{
+		"rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", std::move(move_list)});
+	return true;
+}
+
+bool web_engine_go_movetime(int movetime_ms)
+{
+	if (!g_web_go_handler)
+		return false;
+
+	g_web_go_handler(libchess::UCIGoParameters(
+		std::nullopt,                          // nodes
+		movetime_ms,                           // movetime (absolute time)
+		std::nullopt,                          // depth
+		std::nullopt, std::nullopt,            // wtime, winc
+		std::nullopt, std::nullopt,            // btime, binc
+		std::nullopt,                          // movestogo
+		false, false, std::nullopt));          // infinite, ponder, searchmoves
+	return true;
+}
+
+const web_search_result_t & web_engine_last_result()
+{
+	return g_web_result;
+}
+
+std::string web_engine_fen()
+{
+	std::lock_guard<std::mutex> lock(g_web_engine_mutex);
+	return sp.at(0)->pos.fen();
+}
+#endif
 
 void run_bench_single(const bool long_bench, const bool via_usb)
 {
