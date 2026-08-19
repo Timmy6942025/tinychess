@@ -118,13 +118,47 @@ Phone-side components (all static, no CDN):
   cutechess handshake). Gate command needs `arg=/dev/ttyACM0`
   (cutechess-cli 1.5.1 syntax, not `arg1=`).
 
-### Phase 1 — Engine bridge (acceptance: move round-trip over HTTP)
+### Phase 1 — Engine bridge — ✅ DONE (2026-08-19, commit bab5e47)
 - Command pipe + futures; `/move` executes a real search and returns the
-  bestmove within the expected time budget.
-- `/new`, `/state` (FEN, legal moves, score/depth), `/battery`.
-- Keep serial UCI working (3-game board-vs-native gate, unit 18 OK).
+  bestmove within the expected time budget. ✅
+- `/new`, `/state` (FEN, legal moves, score/depth), `/battery`. ✅
+- Keep serial UCI working (3-game board-vs-native gate, unit 18 OK). ✅
 - Gate: web game at movetime ~1s plays a full game vs serial-driven board
-  with identical results on identical positions (same-code proof).
+  with identical results on identical positions (same-code proof). ✅
+
+**How it works:** the httpd calls the SAME registered UCI handlers as the
+serial path (web_engine_set_position / web_engine_go_movetime in main.cpp
+wrap the registered position/go handlers). A mutex serializes the two
+producers (serial UCI loop, httpd) — searches are movetime-bounded, so a
+blocked producer always recovers. The page sends the full move list on
+every /move, so the position re-derives from scratch per request and any
+console-side tinkering self-heals. This replaces the "command pipe +
+futures" sketch: the handlers ARE the single consumer; the mutex is the
+serialization; the result is stashed by go_handler for the JSON response.
+
+**API:** `POST /move {"moves":"e2e4 e7e5 g1f3","movetime":1000}` ->
+`{"bestmove":"b8c6","score":-95,"depth":11,"pv":"..."}`. `POST /new`
+{color, level} resets to startpos (color/level stored, used in Phase 2).
+`GET /state` adds `fen` + `last`. `GET /battery` reads the XIAO battery
+ADC (raw; voltage scaling is Phase 2/3).
+
+**Verified:** same-code proof — /move, serial UCI and desktop native all
+return `b8c6` for `e2e4 e7e5 g1f3` @ movetime 1000. 60-ply HTTP self-play
+game, no crashes, each /move ~1.1 s for a 1 s budget. Gate: 0-3-0 vs
+native at 10+0.1 with a wifi client connected, zero infra issues. Bench
+10,080 nps (baseline 8,245). Internal heap with client: 79 KB free.
+
+**Found & fixed during acceptance (stability):**
+- The engine handlers must NOT run on the httpd task: the 4 KB stack
+  (Phase-0 tuning) overflowed, corrupted the heap, and the searcher
+  panicked in `esp_timer timer_insert` (LoadStoreAlignment). Each /move
+  now spawns a 24 KB PSRAM-stack worker thread (identical to the serial
+  go-pthread pattern); httpd stack raised to 8 KB, body capped at 2 KB.
+- The internal heap ran dry (~19 KB free with a client) under /move TCP
+  bursts and the wifi ppTask NULL-derefed in
+  `ieee80211_hostap_send_beacon_process` (LoadProhibited, 2 panics).
+  `CONFIG_SPIRAM_TRY_ALLOCATE_WIFI_LWIP=y`: wifi+LWIP buffers prefer
+  PSRAM — internal heap with client went 19 KB → 79 KB free.
 
 ### Phase 2 — Web GUI (acceptance: a friend plays a complete game on a phone)
 - Board rendering, move input (tap + drag), promotion, clocks, result
