@@ -83,13 +83,40 @@ Phone-side components (all static, no CDN):
 
 ## Phases
 
-### Phase 0 — Spike: hotspot + web page (acceptance: phone loads a test page)
-- Enable SoftAP + `esp_http_server` in the build (sdkconfig.defaults).
-- Serve a static test page from SPIFFS (`/spiffs/web/index.html`).
+### Phase 0 — Spike: hotspot + web page — ✅ DONE (2026-08-19, commit 2f3e285 + b2aa902)
+- Enable SoftAP + `esp_http_server` in the build (sdkconfig.defaults). ✅
+- Serve a static test page from SPIFFS (`/spiffs/web/index.html`). ✅
 - Verify: phone joins the AP, browses to `http://192.168.4.1`, page loads.
+  ✅ (end-to-end verified over real wifi from the dev machine; a phone is
+  the same path)
 - Measure heap before/after WiFi+httpd init; if internal heap is tight,
   push WiFi buffers to PSRAM (Kconfig) — gate: engine bench within 2% of
-  baseline (~8.2k nps) and unit suite unaffected.
+  baseline (~8.2k nps) and unit suite unaffected. ✅
+
+**Verified (gate: 3-game board-vs-native at 10+0.1, wifi client connected):**
+- SoftAP `DOG-CHESS` up @ 192.168.4.1; `GET /` 200 (2.8 KB page), `GET /state`
+  live JSON, `POST /move` 501 stub (Phase 1). All three `[web]` boot lines
+  present, no crashes.
+- Bench 8,269 nps (baseline 8,245 — within 2%); board 0-3-0 vs native,
+  zero disconnects/stalls/illegal moves (board loses on strength only).
+- Internal heap: ~4.5 KB free with a client connected (pre-tuning) → 20 KB
+  (WiFi buffer pools 10/32/16 → 4/8/8, httpd stack 8K→4K).
+- **Found & fixed during verification:** the per-`go` pthread (UCIService.h
+  ESP32 patch) needs a 24 KB contiguous internal-RAM stack; with the SoftAP
+  up there is none at go-time, so every serial `go` silently failed
+  (`heap_caps_malloc fail`, no bestmove — invisible to the bench, which
+  reuses boot-time threads). Fix: allocate the go-thread stack from PSRAM via
+  `esp_pthread` `stack_alloc_caps` (guarded by
+  `CONFIG_SPIRAM_ALLOW_STACK_EXTERNAL_MEMORY=y`, now pinned in
+  sdkconfig.defaults). The bench gate alone was insufficient — the go-path
+  probe is now part of the board check.
+- **Wrapper hardening (tools/wrapper.py):** buffer stdin until the full
+  console prompt (120 s — the wifi-era boot is slower), never write
+  mid-boot (a pre-banner write wedges the USB-JTAG input endpoint until a
+  *physical* power cycle), and filter forwarded lines to UCI responses (the
+  web companion's wifi/DHCP logs print after the prompt and broke the
+  cutechess handshake). Gate command needs `arg=/dev/ttyACM0`
+  (cutechess-cli 1.5.1 syntax, not `arg1=`).
 
 ### Phase 1 — Engine bridge (acceptance: move round-trip over HTTP)
 - Command pipe + futures; `/move` executes a real search and returns the
