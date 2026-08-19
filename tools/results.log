@@ -4083,3 +4083,16 @@ Elo difference: -inf +/- nan, LOS: 4.2 %, DrawRatio: 0.0 %
   opponent. Absolute estimate holds: ~2800-2900 vs SF17 at 30+0.1. The
   +209.5 cumulative search gains remain gated/valid at 2+0.02 but cannot
   resolve at this anchor resolution.
+
+[19:20] BOARD PHASE 0 GATE (web companion, post web-enabled firmware 2f3e285+UCIService-psram-fix): 10+0.1, 3 games, wifi client connected throughout
+  -> 0-3-0 vs Dog-native (board lost on strength only; zero disconnects/
+  stalls/illegal moves; empty wrapper stderr). Bench 8,269 nps (baseline
+  8,245). Verified: go path works with SoftAP+httpd up (was silently failing:
+  UCIService per-go pthread needed a 24KB internal-RAM stack, unavailable with
+  wifi up -> heap_caps_malloc fail -> no bestmove ever). Fix: go-pthread stack
+  now allocates from PSRAM via esp_pthread stack_alloc_caps (UCIService.h).
+  Wrapper hardened: buffers stdin until full console prompt (120s, covers
+  slower wifi-era boot), never writes mid-boot (USB-JTAG input wedge -> needs
+  a physical power cycle), drops boot-log lines that leak past the prompt
+  (would break cutechess init). Gate command needs `arg=/dev/ttyACM0`
+  (cutechess 1.5.1 syntax, not arg1=).

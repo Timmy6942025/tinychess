@@ -69,34 +69,40 @@ ser = open_port(args.port)
 
 # Drain the boot banner + console prompt. A fresh open always pulses the
 # board's reset line, so a boot banner always follows - but the ESP32S3 boot
-# can take up to ~40 s (flash verify + SPIFFS + USB re-enumeration), so the
-# drain must wait for the banner, not a fixed 15 s. The 8 s silence break only
-# covers the rare case where the reset pulse did not take (board already idle
-# at its prompt): writes sent before the banner lands mid-boot and wedge the
-# chip's USB-JTAG input endpoint (every subsequent write blocks forever).
+# can take a while (flash verify + SPIFFS + USB re-enumeration + wifi/SoftAP
+# init, up to ~90 s on a cold boot), so the drain must wait for the banner,
+# not a fixed budget. The silence break only covers the rare case where the
+# reset pulse did not take (board already idle at its prompt). Never forward
+# anything before the prompt: writes sent mid-boot wedge the chip's USB-JTAG
+# input endpoint (every subsequent write blocks forever), and dumping the
+# raw banner to cutechess reads as a protocol violation ("Could not
+# initialize player Board"). If the prompt never arrives, exit non-zero so
+# cutechess reports a clean diagnostic instead of a wedged pipe.
 buf = b""
 last_data = time.time()
-deadline = time.time() + 45
+deadline = time.time() + 120
 while time.time() < deadline and BANNER_END not in buf.decode("utf-8", "replace"):
     chunk = ser.read(4096)
     if chunk:
         buf += chunk
         last_data = time.time()
-    elif time.time() - last_data > 8.0:
+    elif time.time() - last_data > 30.0:
         break
+if BANNER_END not in buf.decode("utf-8", "replace"):
+    sys.stderr.write("wrapper: board did not reach the console prompt\n")
+    sys.exit(1)
 buf = buf.decode("utf-8", "replace")
-tail = buf.split(BANNER_END, 1)[-1]
-if tail:
-    sys.stdout.write(tail)
-    sys.stdout.flush()
+# Drop the post-prompt remnant instead of forwarding it. Pre-wifi this was
+# always empty, but the web companion's wifi/SoftAP/DHCP log lines ("I (4926)
+# esp_netif_lwip: DHCP server ...") print after the console prompt and, if
+# forwarded during cutechess's uci handshake, read as a protocol violation
+# ("Could not initialize player Board").
 
 # bidirectional pump: stdin -> serial (line-buffered), serial -> stdout.
-# The board's USB-JTAG TX occasionally drops a byte mid-burst (a known
-# 2-core race in the ESP-IDF usb_serial_jtag driver; patched locally but
-# not 100% eliminated). A corrupted bestmove ("bestmove e2e4" -> "bestmove
-# 2e4") would be an instant lost game under cutechess. The board always
-# announces the final line of the search as "info ... pv <move> ..." before
-# "bestmove", so the wrapper repairs a malformed bestmove from the last pv.
+# Only UCI-wire responses are forwarded: boot logs and console chatter that
+# leak past the prompt (wifi events, "info" console command output) would
+# break the cutechess protocol. Lines are matched on their first word.
+UCI_RESP_RE = re.compile(rb"^(id|option|uciok|readyok|info|bestmove|copyprotection|registration)\b")
 MOVE_RE = re.compile(rb"^[a-h][1-8][a-h][1-8](?:[qrbn])?$")
 last_pv = None
 line_buf = b""
@@ -128,7 +134,8 @@ while True:
                 if len(move) >= 2 and not MOVE_RE.match(move[1]):
                     if last_pv is not None:
                         line = b"bestmove " + last_pv + b"\n"
-            os.write(sys.stdout.fileno(), line)
+            if UCI_RESP_RE.match(line):
+                os.write(sys.stdout.fileno(), line)
         sys.stdout.flush()
 
 ser.close()

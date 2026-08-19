@@ -18,6 +18,8 @@
 #if defined(ESP32)
 #include <mutex>
 #include <pthread.h>
+#include "esp_heap_caps.h"
+#include "esp_pthread.h"
 #endif
 
 namespace libchess {
@@ -412,7 +414,12 @@ class UCIService {
         // contiguous internal-RAM block that this board barely fits - a
         // transient allocation (timer entry, getline growth, book read) drops
         // the largest free block below 32768 and pthread_create aborts the
-        // whole firmware. Use a small explicit stack instead.
+        // whole firmware. Use a small explicit stack instead, allocated from
+        // PSRAM (stack_alloc_caps + CONFIG_SPIRAM_ALLOW_STACK_EXTERNAL_MEMORY):
+        // with the web companion (SoftAP + httpd) up, internal RAM has no
+        // 24KB contiguous block at go-time and pthread_create silently drops
+        // every "go". The go thread only does shallow glue + blocking waits,
+        // never DMA/ISR work, so an external stack is safe.
         constexpr size_t GO_THREAD_STACK_BYTES = 24 * 1024;
         pthread_t        go_pthread = 0;
         bool             go_pthread_live = false;
@@ -473,19 +480,27 @@ class UCIService {
                         UCIGoParameters                             params;
                     };
                     auto *args = new go_args_t{ go_handler_, *go_parameters };
-                    pthread_attr_t attr;
-                    pthread_attr_init(&attr);
-                    pthread_attr_setstacksize(&attr, GO_THREAD_STACK_BYTES);
-                    if (pthread_create(&go_pthread, &attr, [](void *p) -> void * {
+                    // esp_pthread_set_cfg is process-wide and racy against
+                    // concurrent pthread_create, but at go-time the only
+                    // creator is this UCI loop thread.
+                    esp_pthread_cfg_t cfg = esp_pthread_get_default_config();
+                    cfg.stack_size      = GO_THREAD_STACK_BYTES;
+                    cfg.stack_alloc_caps = MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT;
+                    esp_pthread_set_cfg(&cfg);
+                    int go_rc = pthread_create(&go_pthread, nullptr, [](void *p) -> void * {
                                         auto *a = static_cast<go_args_t *>(p);
                                         a->handler(a->params);
                                         delete a;
                                         return nullptr;
-                                    }, args) == 0)
+                                    }, args);
+                    esp_pthread_cfg_t restore = esp_pthread_get_default_config();
+                    restore.stack_size      = CONFIG_PTHREAD_TASK_STACK_SIZE_DEFAULT;
+                    restore.stack_alloc_caps = MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT;
+                    esp_pthread_set_cfg(&restore);
+                    if (go_rc == 0)
                         go_pthread_live = true;
                     else
                         delete args;
-                    pthread_attr_destroy(&attr);
 #else
                     go_thread = std::thread{go_handler_, *go_parameters};
 #endif
