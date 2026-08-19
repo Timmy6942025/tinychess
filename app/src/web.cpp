@@ -145,7 +145,11 @@ bool                    g_web_done = false;
 // Run an engine task on a PSRAM-stack thread (24 KB, like the serial
 // go-pthread) -- never on the httpd task's 4 KB stack. Returns false if
 // the task did not finish within the timeout.
-bool run_web_task(const std::function<void()> & task)
+//
+// The task is taken BY VALUE: on the timeout path the worker is detached
+// and outlives the caller's stack, so everything it touches (the task, and
+// what the task itself captured) must be owned by the worker.
+bool run_web_task(std::function<void()> task)
 {
 	g_web_done = false;
 
@@ -154,7 +158,7 @@ bool run_web_task(const std::function<void()> & task)
 	cfg.stack_alloc_caps = MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT;
 	esp_pthread_set_cfg(&cfg);
 
-	std::thread worker([&] {
+	std::thread worker([task] {
 		task();
 		{
 			std::lock_guard<std::mutex> lk(g_web_done_mutex);
@@ -183,7 +187,8 @@ bool run_web_task(const std::function<void()> & task)
 
 bool run_web_search(const std::vector<std::string> & moves, int movetime)
 {
-	return run_web_task([&] {
+	// capture by value: the worker may outlive this frame (timeout path)
+	return run_web_task([moves, movetime] {
 		web_engine_set_position(moves);
 		web_engine_go_movetime(movetime);
 	});
@@ -225,6 +230,15 @@ esp_err_t handle_move(httpd_req_t *req)
 	}
 
 	const web_search_result_t & last = web_engine_last_result();
+	if (last.game_over) {
+		char resp[128];
+		snprintf(resp, sizeof(resp),
+			"{\"game_over\":true,\"result\":\"%s\",\"score\":%d}",
+			last.game_state.c_str(), last.score);
+		printf("[web] /move: game over (%s)\n", last.game_state.c_str());
+		httpd_resp_set_type(req, "application/json");
+		return httpd_resp_sendstr(req, resp);
+	}
 	if (!last.valid || last.best_move.empty()) {
 		printf("[web] /move: search produced no move\n");
 		return httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "no move");
@@ -257,17 +271,19 @@ esp_err_t handle_new(httpd_req_t *req)
 		return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "bad body");
 
 	cJSON *json = cJSON_Parse(body);
-	const char *color = "white";
+	if (!json)
+		return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "bad json");
+
+	std::string color = "white";
 	int level = 1;
-	if (json) {
-		cJSON *c = cJSON_GetObjectItem(json, "color");
-		if (c && cJSON_IsString(c))
-			color = c->valuestring;
-		c = cJSON_GetObjectItem(json, "level");
-		if (c && cJSON_IsNumber(c))
-			level = (int)c->valuedouble;
-		cJSON_Delete(json);
-	}
+	// copy out of the cJSON tree before it is freed below
+	cJSON *c = cJSON_GetObjectItem(json, "color");
+	if (c && cJSON_IsString(c))
+		color = c->valuestring;
+	c = cJSON_GetObjectItem(json, "level");
+	if (c && cJSON_IsNumber(c))
+		level = (int)c->valuedouble;
+	cJSON_Delete(json);
 
 	if (!run_web_task([&] { web_engine_set_position({}); })) {
 		printf("[web] /new: engine busy\n");
@@ -276,8 +292,8 @@ esp_err_t handle_new(httpd_req_t *req)
 
 	char resp[128];
 	snprintf(resp, sizeof(resp), "{\"ok\":true,\"color\":\"%s\",\"level\":%d}",
-	         color, level);
-	printf("[web] /new: %s, level %d\n", color, level);
+	         color.c_str(), level);
+	printf("[web] /new: %s, level %d\n", color.c_str(), level);
 
 	httpd_resp_set_type(req, "application/json");
 	return httpd_resp_sendstr(req, resp);

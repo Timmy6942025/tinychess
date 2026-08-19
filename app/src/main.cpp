@@ -1055,6 +1055,10 @@ void main_task()
 		// the work struct). Bounded by movetime/clock, never held by the
 		// searchers themselves, so no deadlock is possible.
 		std::lock_guard<std::mutex> web_lock(g_web_engine_mutex);
+		// a /move must never serve a stale result: invalidate up front so
+		// an exception mid-search yields "no move" instead of the last
+		// completed search's answer
+		g_web_result.valid = false;
 #endif
 		uint64_t start_ts = esp_timer_get_time();
 
@@ -1229,13 +1233,34 @@ void main_task()
 			// web bridge: stash the result (book/syzygy/search paths all land
 			// here). Read by web_engine_last_result() in the same httpd
 			// thread after the blocking go call; safe without an extra lock.
-			g_web_result.valid     = true;
-			g_web_result.best_move = best_move.to_str();
-			g_web_result.score     = best_score;
-			g_web_result.depth     = sp.at(0)->md;
-			g_web_result.pv.clear();
-			for (auto & pv_move : ponder_line)
-				g_web_result.pv.push_back(pv_move.to_str());
+			// Terminal positions: the search's sentinel bestmove is garbage
+			// (pre-existing engine behavior, unreachable over serial since
+			// GUIs stop at mate) -- flag game over instead of serving it.
+			auto terminal_state = sp.at(0)->pos.game_state();
+			if (terminal_state != libchess::Position::GameState::IN_PROGRESS) {
+				g_web_result.valid     = true;
+				g_web_result.game_over = true;
+				g_web_result.game_state =
+					terminal_state == libchess::Position::GameState::CHECKMATE
+					? (sp.at(0)->pos.side_to_move() == libchess::constants::WHITE ? "black_wins" : "white_wins")
+					: "draw";
+				g_web_result.best_move.clear();
+				g_web_result.score     = best_score;
+				g_web_result.depth     = 0;
+				g_web_result.fen       = sp.at(0)->pos.fen();
+				g_web_result.pv.clear();
+			}
+			else {
+				g_web_result.valid     = true;
+				g_web_result.game_over = false;
+				g_web_result.best_move = best_move.to_str();
+				g_web_result.score     = best_score;
+				g_web_result.depth     = sp.at(0)->md;
+				g_web_result.fen       = sp.at(0)->pos.fen();
+				g_web_result.pv.clear();
+				for (auto & pv_move : ponder_line)
+					g_web_result.pv.push_back(pv_move.to_str());
+			}
 #endif
 			libchess::UCIService::bestmove(best_move.to_str());
 
@@ -1398,8 +1423,15 @@ const web_search_result_t & web_engine_last_result()
 
 std::string web_engine_fen()
 {
-	std::lock_guard<std::mutex> lock(g_web_engine_mutex);
-	return sp.at(0)->pos.fen();
+	// Never block the httpd task: if a search is in flight (the engine
+	// mutex is held), serve the position the in-flight search was started
+	// from (stored by the go handler) -- exactly what the page needs.
+	std::unique_lock<std::mutex> lock(g_web_engine_mutex, std::try_to_lock);
+	if (lock.owns_lock())
+		return sp.at(0)->pos.fen();
+	if (!g_web_result.fen.empty())
+		return g_web_result.fen;
+	return "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 }
 #endif
 

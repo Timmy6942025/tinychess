@@ -9,9 +9,12 @@ void init_web();
 
 struct web_search_result_t {
 	bool valid = false;
+	bool game_over = false;
+	std::string game_state; // white_wins / black_wins / draw when game_over
 	std::string best_move;
 	int score = 0;
 	int depth = 0;
+	std::string fen; // position the search ran on (for /state during searches)
 	std::vector<std::string> pv;
 };
 
