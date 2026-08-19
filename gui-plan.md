@@ -148,6 +148,22 @@ game, no crashes, each /move ~1.1 s for a 1 s budget. Gate: 0-3-0 vs
 native at 10+0.1 with a wifi client connected, zero infra issues. Bench
 10,080 nps (baseline 8,245). Internal heap with client: 79 KB free.
 
+**Deep verification (2026-08-20, commit 30a2fa9):** endpoint matrix all
+correct (bad JSON 400, method mismatch 405, oversized movetime capped to
+60 s, invalid moves fall back to the valid prefix); web requests wait
+behind a serial `go` (mutex) and both producers get correct results; a
+serial *infinite* go makes /move return HTTP 500 at exactly 90.3 s with
+no crash and clean recovery after `stop` (fixed: worker/`run_web_search`
+capture by value — the old by-ref captures dangled on that detach path);
+fixed `/new` color use-after-free (cJSON freed before the response was
+built); stale-result guard (`valid=false` at go start); `/state` never
+blocks (try-lock + stored FEN fallback); terminal positions return
+`{"game_over":true,"result":"black_wins"|...}` instead of the search's
+sentinel bestmove (fool's mate verified). Soak: 3 full web games (514
+plies, one 30 s transient request stall — page should retry; board
+recovered instantly), zero panics, heap stable 54-74 KB. Unit 18 OK,
+desktop bench 591,807 nps.
+
 **Found & fixed during acceptance (stability):**
 - The engine handlers must NOT run on the httpd task: the 4 KB stack
   (Phase-0 tuning) overflowed, corrupted the heap, and the searcher
