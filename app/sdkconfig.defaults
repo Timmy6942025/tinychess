@@ -54,3 +54,14 @@ CONFIG_ESP32S3_INSTRUCTION_CACHE_32KB=y
 # --- Task WDT: main task can legitimately block >5s (serial read while idle,
 # long UCI searches); feed it in the loops and give a generous timeout ---
 CONFIG_ESP_TASK_WDT_TIMEOUT_S=60
+
+# --- Web companion (gui-plan.md Phase 0): SoftAP + http server ---
+CONFIG_ESP_HTTP_SERVER_ENABLE=y
+
+# --- Web companion: shrink WiFi buffers to free internal RAM for the search
+# (10+32 static/dynamic RX + 16 static TX @1600B each was ~93KB internal; with
+# at most 4 AP clients, 4/8/8 is ample: ~45KB freed). Measured pre-tuning:
+# ~4.5KB free internal heap with a client connected (too tight for Phase 1). ---
+CONFIG_ESP_WIFI_STATIC_RX_BUFFER_NUM=4
+CONFIG_ESP_WIFI_DYNAMIC_RX_BUFFER_NUM=8
+CONFIG_ESP_WIFI_STATIC_TX_BUFFER_NUM=8

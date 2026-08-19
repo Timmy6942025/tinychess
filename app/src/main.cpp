@@ -89,6 +89,7 @@ bool with_syzygy = false;
 #include "test.h"
 #include "tt.h"
 #include "tui.h"
+#include "web.h"
 
 
 std::vector<search_pars_t *> sp;
@@ -1749,6 +1750,8 @@ extern "C" void app_main()
 	esp_chip_info(&chip_info);
 	allocate_threads(chip_info.cores);
 	allow_ponder = true;
+
+	init_web();
 
 #if defined(ESP32_S3_XIAO) && defined(CONFIG_DOG_LED_WS2812)
 	init_ws2812();
