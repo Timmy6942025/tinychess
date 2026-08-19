@@ -1055,8 +1055,22 @@ std::tuple<libchess::Move, int, int> IRAM_ATTR search_it(const int search_time_m
 				if (sp->thread_nr == 0) {
 					int search_time = itd_moves.size() / double(max_depth) * (search_time_max - search_time_min) + search_time_min;
 
+					// ESP32: stop only once the full adaptive budget is spent.
+					// The desktop's `search_time / 2` threshold halves an
+					// already-collapsed budget (itd_moves.size()=1 with a
+					// stable root move -> search_time ~= min = max/3), so the
+					// board spent ~200-400 ms of its ~1 s budget at 30+0.1
+					// (measured via Trace: "My time: 30000 ... moves_to_go: 39"
+					// with bestmove at depth 5 in 0.34 s). Desktop keeps the
+					// /2: full spend at 2+0.02 drains the clock and forfeits
+					// (gated: TimeFix 24-68-87, 0.379, forfeits at move 40-49;
+					// same finding as the floor-30 desktop regression).
+#if defined(ESP32)
+					if (search_time > 0 && int(thought_ms) >= search_time) {
+#else
 					if ((int(thought_ms) > search_time / 2 && search_time > 0 && is_absolute_time == false) ||
 					    (int(thought_ms) >= search_time && is_absolute_time == true)) {
+#endif
 						my_trace("info string %d time %u is up %" PRIu64 " (%.2f %% | %.2f %%)\n", sp->pos.fullmoves(), search_time, thought_ms, thought_ms * 100. / search_time, thought_ms * 100. / search_time_max);
 						break;
 					}
