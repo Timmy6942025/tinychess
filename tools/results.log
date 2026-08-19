@@ -4075,3 +4075,11 @@ Elo difference: -inf +/- nan, LOS: 4.2 %, DrawRatio: 0.0 %
   FIX APPLIED ESP32-ONLY (#if defined(ESP32), precedent: floor-30): desktop
   keeps the /2 + its 2+0.02 history; board spends the full adaptive budget.
   Unit 18 OK desktop. Board flash + probe + 30+0.1 anchor re-run pending.
+[16:50] BOARD vs SF17 ANCHOR (post time-fix firmware 014edb4): 30+0.1, 12 games
+  -> 0-12-0, zero time losses/disconnects. Fix confirmed active: board moves
+  depth 5-6 in ~0.7-0.9s (pre-fix depth 4-5 in ~0.3-0.5s). Result UNCHANGED
+  vs the pre-fix anchor (0-12-0) - all games resign-adjudicated by move ~9;
+  the +1 ply is invisible at a 12-game gauntlet vs a ~500-600 Elo stronger
+  opponent. Absolute estimate holds: ~2800-2900 vs SF17 at 30+0.1. The
+  +209.5 cumulative search gains remain gated/valid at 2+0.02 but cannot
+  resolve at this anchor resolution.
