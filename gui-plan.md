@@ -324,6 +324,46 @@ a real-phone playtest (join the AP + touch UX on an actual Android/iOS
 phone); optional: serial console mid-game (USB-JTAG input wedge is a
 dev-env quirk, serial output is readable).
 
+**Phase 3 deep verification (2026-08-20, post-soak):**
+- **Task WDT made real (sdkconfig)** — `CONFIG_ESP_TASK_WDT_PANIC` was off:
+  the watchdog could only log (invisibly, on the wedged serial), never
+  reset. A hung 2-thread search (the QIO killer) would have bricked the
+  board until a manual reboot. Enabled PANIC (both legacy + canonical
+  symbols); the bootloader WDT (9 s) was already on. Verified: boots clean
+  across flashes, no false trips in play.
+- **Yield-gate coordination bug FIXED (`search.cpp`)** — the 1.5 s WDT
+  gate only let ONE searcher yield per window (the peer's time check failed
+  because the first arrival stamped `es32_last_yield`), so one core's IDLE
+  starved for the entire search and a PANIC-enabled WDT reset the board
+  ~60 s into any long search (reproduced: L10 120 s move → reboot). Fixed:
+  the first arrival stamps the window and blocks until the peer follows
+  (peer's pre-check sees the open gate == 1), so both searchers delay
+  together and both IDLE tasks feed. Verified: L10 120 s search (d7d5,
+  depth 27) with no reset, uptime continuous; full game clean; the gate is
+  the only thing between a hung search and a self-recovering reboot.
+- **Opening book dead since forever FIXED (`book.cpp`)** — `query()` early-
+  returned on `!fh`, but `begin()` loads the book into memory and then
+  closes the file (`fh = nullptr`), so the book never hit when the malloc
+  succeeded (always, on this firmware). `!fh` → `!fh && !buf`. Verified:
+  startpos white reply now ~25 ms (book e2e4) vs ~1965 ms (full L4 search)
+  before; book replies have no PV so the auto-ponder still covers the next
+  position.
+- **3-fold repetition verified through the web path** — a third
+  occurrence of a position (human-created or engine-created) returns
+  `game_over: draw` via the pre-search and post-reply terminal checks
+  (`game_state()` in libchess detects `THREEFOLD_REPETITION`). Scripted
+  knight-shuffle lines (9 and 12 plies) → `{"game_over":true,"result":"draw"}`.
+- **Two simultaneous clients** — player + spectator polling `/state` in
+  parallel: 369/372 polls, 0 timeouts, no interference; a `/move` during
+  the concurrent polls lands cleanly (single-task httpd serializes).
+- **Legal-move replay verified** — an illegal/wrong-side move in a
+  submitted list is rejected (`str_to_move` fails, replay breaks at it) and
+  the engine answers the last valid position; the game log keeps the raw
+  request (page never sends such lists).
+- **Long-search vs httpd** — `/state`/`/battery` queue behind a long
+  `/move` (8 s client polls time out during a 120 s move; the page's 15 s
+  poll and 160 s move timeouts absorb it by design).
+
 ### Phase 4 — Playtest with friends + release
 - 2-3 friends, real devices (Android + iOS), no setup beyond joining the
   AP and opening the IP.

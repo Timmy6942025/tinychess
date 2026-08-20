@@ -197,7 +197,7 @@ void polyglot_book::scan(const libchess::Position & p, const long start_index, c
 
 std::optional<libchess::Move> polyglot_book::query(const libchess::Position & p, const bool verbose)
 {
-	if (!fh)
+	if (!fh && !buf)
 		return { };
 
 	const uint64_t hash = p.hash();

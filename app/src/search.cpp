@@ -464,16 +464,25 @@ int IRAM_ATTR search(int depth, int alpha, const int beta, const int null_move_d
 	// CPU to the peer searcher. Instead, the two searchers block in
 	// vTaskDelay(1) at the same time via a shared gate, letting IDLE run.
 	// Triggered by time (not the node counter: that can be folded away by
-	// the compiler, making the gate unreachable).
-	if (esp_timer_get_time() - es32_last_yield >= 1500000) {
-		es32_last_yield = esp_timer_get_time();
+	// the compiler, making the gate unreachable). The pre-check is a plain
+	// load in the common case (gate closed, window not due). The first
+	// searcher to pass it stamps the window and waits for the peer; the
+	// peer's pre-check sees the open gate (==1) and follows it in, so both
+	// searchers delay together and BOTH idle tasks get CPU time to feed
+	// the task watchdog (one yielding searcher would leave the other
+	// core's IDLE starved and trip a PANIC-enabled WDT on long searches).
+	const uint32_t gate_val = __atomic_load_n(&es32_yield_gate, __ATOMIC_SEQ_CST);
+	if (gate_val == 1 || esp_timer_get_time() - es32_last_yield >= 1500000) {
 		if (__atomic_add_fetch(&es32_yield_gate, 1, __ATOMIC_SEQ_CST) == 1) {
-			// First searcher to arrive: block until the peer arrives (or a
-			// 20 ms timeout), then both delay at the same time.
+			// First searcher to arrive: stamp the window, then block until
+			// the peer follows (guaranteed: its pre-check sees the open
+			// gate), then both delay at the same time.
+			es32_last_yield = esp_timer_get_time();
 			ulTaskNotifyTake(pdTRUE, 2);
 			vTaskDelay(1);
 		}
 		else {
+			// Peer: close the gate and wake the first searcher.
 			__atomic_store_n(&es32_yield_gate, 0, __ATOMIC_SEQ_CST);
 			TaskHandle_t peer = es32_yield_peer;
 			if (peer != NULL)
