@@ -291,6 +291,39 @@ playtest zero desync.
 - Edge cases: mid-game refresh (state survives via `/state`), phone
   disconnect, promotion of repeated positions, book on/off.
 
+**Software items done (2026-08-20):**
+- **15-min soak PASSED** — scripted web game at L4 (2 s/move) for 15.0 min:
+  29 games, 783 plies, **0 errors / 0 desyncs / 0 watchdog resets**, heap
+  stable 51-54 KB, `/state` latency 8-298 ms (avg 80 ms). The 2-thread
+  stability rule (httpd + search concurrent) is green.
+- **Long-search + httpd coexistence** — a 120 s L10 move (reply at depth 27)
+  with a concurrent `/state` request: the single-task httpd queues the
+  request behind the search (1m57s, the documented limit) and serves it
+  after; no reset, heap stable. The 150 s worker timeout governs the 120 s
+  budget.
+- **Mid-game refresh/join** — a fresh page load mid-game joins the running
+  game (moves, board, clocks, history) without disturbing the mover; it
+  follows game-over → new-game transitions as a spectator.
+- **Spectator stale game-over FIXED (found during Phase 3)** — a page that
+  witnessed a game-over kept `gameOver=true` forever even after the mover
+  started a new game (taps disabled, "game over" status). `refreshState`
+  now clears a stale game-over when the server reports a fresh game, with a
+  `clientFlagged` guard so a client-side human flag is never wiped mid-race.
+  Verified: fool's mate → result overlay → mover `/new` → page clears and
+  follows the new game.
+- **Battery endpoint + chip** — `/battery` reads ADC1_CH2 (GPIO2, 2:1
+  divider, 12 dB atten): `adc_raw`/`v_mv_est` (`raw*2600/4095`) with a
+  hardcoded `calibrated:false`. On USB (no battery) the page correctly
+  shows "USB"; the 3300-4200 mV → 0-100% mapping and the scale constant
+  still need a real battery + multimeter (user item below).
+
+**Remaining (physical / device, needs the user):** battery calibration
+(multimeter vs `v_mv_est*2`, set the scale + flip `calibrated`); a 2 h
+untethered battery session (brownout/WDT under sustained search + WiFi TX);
+a real-phone playtest (join the AP + touch UX on an actual Android/iOS
+phone); optional: serial console mid-game (USB-JTAG input wedge is a
+dev-env quirk, serial output is readable).
+
 ### Phase 4 — Playtest with friends + release
 - 2-3 friends, real devices (Android + iOS), no setup beyond joining the
   AP and opening the IP.

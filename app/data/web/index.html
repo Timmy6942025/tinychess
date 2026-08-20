@@ -197,6 +197,7 @@ let level = 4;
 let moves = [];             // full move list of the game (server-authoritative)
 let gameOver = false;
 let gameResult = "";
+let clientFlagged = false;   // the human's clock hit zero on this page (not yet confirmed server-side)
 let boardThinking = false;  // /move request in flight
 let engineToMove = false;   // derived from the last fen
 let gameStarted = false;
@@ -581,7 +582,13 @@ async function refreshState() {
     if (s.game_over) {
       gameOver = true;
       gameResult = s.result || "";
+      clientFlagged = false;
       if (!$("resultOverlay").classList.contains("show")) showResult();
+    } else if (gameOver && !clientFlagged) {
+      // the mover started a fresh game; drop a stale spectator game-over
+      gameOver = false;
+      gameResult = "";
+      $("resultOverlay").classList.remove("show");
     }
     render();
     return s;
@@ -610,6 +617,7 @@ function showResult() {
 
 function humanFlag() {
   gameOver = true;
+  clientFlagged = true;
   gameResult = myColor === "white" ? "black_wins" : "white_wins";
   $("resultTitle").textContent = "Out of time";
   $("resultSub").textContent = "Your clock hit zero.";
@@ -621,6 +629,7 @@ async function startGame() {
   $("startOverlay").classList.remove("show");
   gameOver = false;
   gameResult = "";
+  clientFlagged = false;
   moves = [];
   lastMove = null;
   sel = null;
