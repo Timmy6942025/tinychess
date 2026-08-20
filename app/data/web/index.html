@@ -205,6 +205,7 @@ let clocks = { white: 600000, black: 600000 };
 let clockSyncAt = Date.now();
 let moveSentAt = 0;
 let replyAt = Date.now();   // when the engine last replied (human clock base)
+let seq = 1;                // per-submission tag; the server books clocks once per seq
 
 let fen = null;
 let legal = [];
@@ -230,7 +231,7 @@ function fenToSquares(f) {
       if (ch >= "1" && ch <= "8") { file += +ch; }
       else {
         const color = ch === ch.toUpperCase() ? "w" : "b";
-        s[file + (7 - r) * 8] = { color, type: ch.toLowerCase() };
+        s[file + r * 8] = { color, type: ch.toLowerCase() };
         file++;
       }
     }
@@ -247,11 +248,80 @@ function sqName(idx) {
   return String.fromCharCode(97 + f) + (r + 1);
 }
 
+function squaresToFen(squares, stm, castling, ep, halfmove, fullmove) {
+  const rows = [];
+  for (let r = 0; r < 8; r++) {
+    let row = "", empty = 0;
+    for (let f = 0; f < 8; f++) {
+      const p = squares[f + r * 8];
+      if (!p) { empty++; continue; }
+      if (empty) { row += empty; empty = 0; }
+      row += p.color === "w" ? p.type.toUpperCase() : p.type;
+    }
+    if (empty) row += empty;
+    rows.push(row);
+  }
+  return rows.join("/") + " " + stm + " " + castling + " " + ep + " " +
+         halfmove + " " + fullmove;
+}
+
+// Display-only: applies the human's move to the local fen so the board
+// updates instantly (and the ticking side flips to the engine) while the
+// /move search runs. The server fen is pre-move until the response lands.
+function applyLocalMove(fenStr, moveStr) {
+  const parts = fenStr.split(" ");
+  const squares = fenToSquares(fenStr).squares;
+  const from = idxOf(moveStr.slice(0, 2)), to = idxOf(moveStr.slice(2, 4));
+  const promo = moveStr[4] || null;
+  const piece = squares[from];
+  if (!piece) return fenStr;
+  const target = squares[to];
+  const captured = target !== null;
+  const capRook = captured && target.type === "r";
+  const epCapture = piece.type === "p" &&
+    (Math.abs(to - from) === 7 || Math.abs(to - from) === 9) && !captured;
+  if (epCapture) squares[to + 8] = null;
+  squares[to] = promo ? { color: piece.color, type: promo } : piece;
+  if (piece.type === "k" && Math.abs(to - from) === 2) {
+    if (to > from) { squares[from + 1] = squares[from + 3]; squares[from + 3] = null; }
+    else { squares[from - 1] = squares[from - 4]; squares[from - 4] = null; }
+  }
+  squares[from] = null;
+  let castling = parts[2];
+  const clearRight = ch => {
+    castling = castling.replace(ch, "");
+    if (!castling) castling = "-";
+  };
+  if (piece.type === "k") {
+    if (piece.color === "w") { clearRight("K"); clearRight("Q"); }
+    else { clearRight("k"); clearRight("q"); }
+  } else if (piece.type === "r") {
+    if (from === 63) clearRight("K");
+    if (from === 56) clearRight("Q");
+    if (from === 7) clearRight("k");
+    if (from === 0) clearRight("q");
+  }
+  if (capRook) {
+    if (to === 63) clearRight("K");
+    if (to === 56) clearRight("Q");
+    if (to === 7) clearRight("k");
+    if (to === 0) clearRight("q");
+  }
+  const ep = piece.type === "p" && Math.abs(to - from) === 16
+    ? sqName((from + to) / 2) : "-";
+  let halfmove = parseInt(parts[4] || "0", 10);
+  halfmove = (piece.type === "p" || captured || epCapture) ? 0 : halfmove + 1;
+  let fullmove = parseInt(parts[5] || "1", 10);
+  if (piece.color === "b") fullmove++;
+  return squaresToFen(squares, parts[1] === "w" ? "b" : "w", castling, ep,
+                      halfmove, fullmove);
+}
+
 function render() {
   if (!fen) return;
   const model = fenToSquares(fen);
   const flipped = myColor === "black";
-  engineToMove = model.stm !== myColor;
+  engineToMove = model.stm !== (myColor === "white" ? "w" : "b");
   for (let i = 0; i < 64; i++) {
     const el = sqEls[i];
     const sq = model.squares[i];
@@ -334,7 +404,7 @@ function updateClocks() {
   $("clockTop").classList.toggle("low", top < 60000 && topName !== stmName);
   $("clockBottom").classList.toggle("low", bot < 60000 && myColor !== stmName);
 
-  const humanActive = !gameOver && !boardThinking && myColor === stmName;
+  const humanActive = !gameOver && !boardThinking && myColor === stmName.toLowerCase();
   if (humanActive && bot <= 0) humanFlag();
 }
 
@@ -417,6 +487,7 @@ function handleMove(from, to) {
 function submitMove(moveStr, humanMs) {
   moves.push(moveStr);
   lastMove = [idxOf(moveStr.slice(0, 2)), idxOf(moveStr.slice(2, 4))];
+  if (fen) fen = applyLocalMove(fen, moveStr);
   postMove(humanMs);
 }
 
@@ -458,7 +529,7 @@ async function postMove(humanMs) {
       const r = await fetchJson("/move", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ moves: moves.join(" "), human_ms: humanMs })
+        body: JSON.stringify({ moves: moves.join(" "), human_ms: humanMs, seq: seq++ })
       }, MOVE_FETCH_TIMEOUT_MS);
       boardThinking = false;
       clockSyncAt = Date.now();
@@ -491,6 +562,7 @@ async function refreshState() {
   try {
     const s = await fetchJson("/state", {}, POLL_TIMEOUT_MS);
     $("dot").className = "dot";
+    if (boardThinking) return s; // server fen/moves/clocks are pre-move until the /move response lands
     fen = s.fen;
     legal = s.legal || [];
     legalMap = {};
@@ -553,6 +625,7 @@ async function startGame() {
   lastMove = null;
   sel = null;
   fen = null;
+  engineToMove = false;
   try {
     const r = await fetchJson("/new", {
       method: "POST",
@@ -561,6 +634,7 @@ async function startGame() {
     }, 30000);
     if (r.clock) clocks = { white: r.clock.white, black: r.clock.black };
     clockSyncAt = Date.now();
+    replyAt = Date.now();
   } catch (err) {
     $("statusline").textContent = "could not start the game";
     $("startOverlay").classList.add("show");

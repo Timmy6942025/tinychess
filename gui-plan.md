@@ -183,7 +183,7 @@ desktop bench 591,807 nps.
 - Pondering enabled during human think time. ✅
 - Playtest: 3 full games on a phone with no crashes, no state desync. ✅
 
-**How it works (commit 8f01a03):** the page is a single self-contained
+**How it works (commit be67094):** the page is a single self-contained
 `data/web/index.html` (~22 KB: HTML+CSS+JS, Unicode piece glyphs, no
 assets) served from SPIFFS. The human color + difficulty slider POST
 `/new {color, level}`; the server stores the session (color, level,
@@ -229,6 +229,59 @@ item done early). Known limits: the single-task httpd queues /state
 behind a long search (the page suppresses the reconnect banner while
 its own /move is pending), and the serial console is still dev-only
 mid-game.
+
+**Deep verification (2026-08-20, follow-up commit):** a
+play-the-real-page pass (headless Chromium driving the actual UI) found
+and fixed seven bugs that API-level tests could not see:
+
+1. **The page never enabled human input** — `engineToMove` compared the
+   fen's `stm` ("w"/"b") against `myColor` ("white"/"black") — always
+   mismatched, so the page always thought the engine was to move (taps
+   ignored, "board to move" status, spurious auto-move at start). Fixed
+   to compare normalized forms; the same mismatch broke the client-side
+   human-flag check (`humanActive`).
+2. **Spurious auto-move on white start** — with #1, `startGame` fired
+   `postMove(0)` for a white human too; the engine (playing the side to
+   move) made WHITE's first move and the game stalled forever. Fixed by
+   #1 plus an explicit `engineToMove = false` reset in `startGame`.
+3. **Board vertically flipped** — `fenToSquares` mapped rank 8 to the
+   bottom row (`s[file + (7 - r) * 8]`); fixed to `s[file + r * 8]`
+   (a8 = idx 0..7 at top, a1 = 56..63 at bottom; `squaresToFen`
+   iterates r = 0..7).
+4. **Duplicate engine replies** — a lost `/move` response made the page
+   retry the same moves, and the server re-searched and appended a
+   SECOND reply (the seq guard only protected clock booking). `/move` is
+   now idempotent: if the game log already holds the engine's reply for
+   the exact requested move list (checked after the request mutex, so
+   in-flight searches have landed), the stored reply is returned without
+   re-searching. Verified: same request twice → one reply.
+5. **Game-over log gap** — the `/move` game-over path returned before
+   updating `g_web_moves`, dropping the human's final move from the log
+   (page-refresh recovery + history). Fixed: the game-over path keeps
+   the full move list.
+6. **Missing last-move render on the human's turn** — the human's move
+   only appeared after the engine's reply, and the pre-reply position
+   ticked the human's clock during L9/L10 searches (false flags).
+   Fixed earlier in Phase 2 with a display-only local move applier
+   (`applyLocalMove`/`squaresToFen`: captures, en-passant, castling,
+   promotion, ep square, half/fullmove) plus a `refreshState`
+   thinking-guard. 12/12 node unit tests.
+7. **The engine's reply ending the game left a dead board** — the
+   post-reply terminal check (`/state` snapshot after the reply) flags
+   mate/stalemate on the engine's move and reports `game_over`
+   (verified via fool's mate `f2f3 e7e5 g2g4` → `Qh4#` →
+   `black_wins`, result overlay "Board wins · 3 plies", history intact).
+
+**Verified live (headless Chromium driving the page):** white start —
+no auto-move, human taps a piece, move submits, engine replies, board
+returns to the human's turn (two full cycles); black start — the engine
+auto-moves its first move, then the same cycle; clocks tick and deduct
+correctly per side; promotion dialog shows the right choices and submits
+`a7a8q`-style moves; board orientation correct for both colors; fool's
+mate end-to-end with the result overlay; `/move` idempotency (duplicate
+request → single reply); `/new` resets game_over/moves/clocks; level
+budgets under the 150 s worker timeout (L10 = 120 s); 3-game API
+playtest zero desync.
 
 ### Phase 3 — Hardening & battery (acceptance: 2h untethered session)
 - Power: LiPo/power bank test; ADC battery readout calibrated; watch

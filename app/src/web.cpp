@@ -52,6 +52,7 @@ int64_t     g_clock_black_ms    = BASE_CLOCK_MS;
 std::vector<std::string> g_web_moves; // full move list of the web game
 bool        g_web_game_over     = false;
 std::string g_web_game_result;        // white_wins / black_wins / draw / human flag
+int64_t     g_web_last_seq      = 0;  // last booked /move seq (retry guard)
 
 // Difficulty -> per-move budget. The page's slider sends the level; the
 // mapping lives here (server-authoritative) and always goes through the
@@ -307,9 +308,53 @@ esp_err_t handle_move(httpd_req_t *req)
 	if (human_ms > BASE_CLOCK_MS)
 		human_ms = BASE_CLOCK_MS;
 
+	// The page tags each submission with a monotonically increasing seq so a
+	// retry of the SAME request (response lost on the wire) books the clocks
+	// only once. A different page/session has a different seq, so spectator
+	// moves still book normally.
+	int64_t seq = 0;
+	cJSON *seq_json = cJSON_GetObjectItem(json, "seq");
+	if (seq_json && cJSON_IsNumber(seq_json) && seq_json->valuedouble > 0)
+		seq = (int64_t)seq_json->valuedouble;
+
 	cJSON_Delete(json);
 
 	std::lock_guard<std::mutex> req_lock(g_web_req_mutex);
+
+	// Idempotency: if the engine already answered this exact request (the
+	// page's fetch failed and retried, or a reloaded page re-sent the same
+	// moves), the game log holds the human's moves plus the engine's reply.
+	// Return the stored reply instead of re-searching, so one human move
+	// never produces two engine moves. Runs after the mutex, so an
+	// in-flight search has already landed its reply in g_web_moves.
+	if (!g_web_moves.empty() && g_web_moves.size() == moves.size() + 1) {
+		bool prefix = true;
+		for (size_t i = 0; i < moves.size(); i++) {
+			if (g_web_moves[i] != moves[i]) { prefix = false; break; }
+		}
+		if (prefix) {
+			const web_search_result_t last = web_engine_last_result();
+			if (last.valid && !last.best_move.empty() && !last.game_over) {
+				std::string pv;
+				for (size_t i = 0; i < last.pv.size(); i++) {
+					if (i)
+						pv += " ";
+					pv += last.pv[i];
+				}
+				char resp[640];
+				snprintf(resp, sizeof(resp),
+					"{\"bestmove\":\"%s\",\"score\":%d,\"depth\":%d,\"pv\":\"%s\","
+					"\"clock\":{\"white\":%lld,\"black\":%lld,\"inc\":%d}}",
+					last.best_move.c_str(), last.score, last.depth, pv.c_str(),
+					(long long)g_clock_white_ms, (long long)g_clock_black_ms,
+					level_inc_ms(g_web_level));
+				printf("[web] /move: idempotent reply for %s (already answered)\n",
+				       moves.empty() ? "startpos" : moves.back().c_str());
+				httpd_resp_set_type(req, "application/json");
+				return httpd_resp_sendstr(req, resp);
+			}
+		}
+	}
 
 	if (!run_web_search(moves, movetime)) {
 		printf("[web] /move: search timed out\n");
@@ -325,8 +370,13 @@ esp_err_t handle_move(httpd_req_t *req)
 	int64_t & human_clock  = g_web_human_color == "white" ? g_clock_white_ms : g_clock_black_ms;
 	int64_t & engine_clock = g_web_human_color == "white" ? g_clock_black_ms : g_clock_white_ms;
 	const int inc = level_inc_ms(g_web_level);
+	// Book the clocks only for a NEW submission. A retry of the same seq
+	// (lost response) must not deduct twice.
+	const bool book = (seq != g_web_last_seq);
+	if (book)
+		g_web_last_seq = seq;
 	bool human_flags = false;
-	if (human_ms > 0) {
+	if (book && human_ms > 0) {
 		human_clock = human_clock - human_ms + inc;
 		if (human_clock <= 0) {
 			human_clock = 0;
@@ -334,7 +384,7 @@ esp_err_t handle_move(httpd_req_t *req)
 		}
 	}
 	bool engine_flags = false;
-	if (last.valid) {
+	if (book && last.valid) {
 		engine_clock = engine_clock - last.elapsed_ms + inc;
 		if (engine_clock <= 0) {
 			engine_clock = 0;
@@ -354,6 +404,8 @@ esp_err_t handle_move(httpd_req_t *req)
 	if (game_result) {
 		g_web_game_over   = true;
 		g_web_game_result = game_result;
+		// keep the human's last move in the game log (page refresh + history)
+		g_web_moves = moves;
 		char resp[160];
 		snprintf(resp, sizeof(resp),
 			"{\"game_over\":true,\"result\":\"%s\",\"score\":%d,"
@@ -435,6 +487,7 @@ esp_err_t handle_new(httpd_req_t *req)
 	g_web_moves.clear();
 	g_web_game_over   = false;
 	g_web_game_result.clear();
+	g_web_last_seq    = 0;
 
 	char resp[256];
 	snprintf(resp, sizeof(resp),

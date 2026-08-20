@@ -1285,6 +1285,39 @@ void main_task()
 						g_web_result.pv.push_back(pv_move.to_str());
 				}
 				g_web_result.elapsed_ms = (esp_timer_get_time() - start_ts) / 1000;
+
+				// Snapshot the position AFTER the engine's reply (the human's
+				// next turn), not the pre-search root the position handler
+				// stored. /state serves this, so the page gets the human's
+				// legal moves and can re-enable input; otherwise it would sit
+				// on "engine to move" forever. Done before the ponder starts
+				// (the ponder mutates sp.at(0)->pos in place).
+				if (!g_web_result.game_over && !g_web_result.best_move.empty()) {
+					libchess::Position post = sp.at(0)->pos;
+					post.make_move(best_move);
+					// The engine's reply can itself end the game (mate or
+					// stalemate). The pre-search terminal check above can't
+					// see this, so the page would hang on a dead board with no
+					// result -- flag it here.
+					auto post_state = post.game_state();
+					if (post_state != libchess::Position::GameState::IN_PROGRESS) {
+						g_web_result.game_over  = true;
+						g_web_result.game_state =
+							post_state == libchess::Position::GameState::CHECKMATE
+							? (post.side_to_move() == libchess::constants::WHITE ? "black_wins" : "white_wins")
+							: "draw";
+						g_web_result.best_move.clear();
+						g_web_result.score = best_score;
+						g_web_result.depth = 0;
+						g_web_result.pv.clear();
+					}
+					g_web_position_fen = post.fen();
+					g_web_legal_moves.clear();
+					auto legal = post.legal_move_list();
+					g_web_legal_moves.reserve(legal.size());
+					for (auto & m : legal)
+						g_web_legal_moves.push_back(m.to_str());
+				}
 			}
 #endif
 			libchess::UCIService::bestmove(best_move.to_str());
