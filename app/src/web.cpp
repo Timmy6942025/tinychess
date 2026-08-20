@@ -40,6 +40,37 @@ constexpr int               AP_MAX_CONN = 4;
 
 char ap_ip[16] = "0.0.0.0";
 
+// ---- Phase 2: game session state. Owned exclusively by the single httpd
+// task (handlers run on it and /move blocks it for the search), so no lock
+// is needed -- the engine bridge has its own locks in main.cpp. ----
+constexpr int64_t BASE_CLOCK_MS = 10 * 60 * 1000; // 10:00 per side
+
+int         g_web_level         = 4;
+std::string g_web_human_color   = "white";
+int64_t     g_clock_white_ms    = BASE_CLOCK_MS;
+int64_t     g_clock_black_ms    = BASE_CLOCK_MS;
+std::vector<std::string> g_web_moves; // full move list of the web game
+bool        g_web_game_over     = false;
+std::string g_web_game_result;        // white_wins / black_wins / draw / human flag
+
+// Difficulty -> per-move budget. The page's slider sends the level; the
+// mapping lives here (server-authoritative) and always goes through the
+// same go handler as serial UCI, so the ESP32 time-budget fix governs the
+// board's spending at every level.
+int level_movetime_ms(int level)
+{
+	static const int table[] = { 300, 500, 1000, 2000, 4000,
+	                             8000, 15000, 30000, 60000, 120000 };
+	return table[level - 1];
+}
+
+int level_inc_ms(int level)
+{
+	static const int table[] = { 500, 750, 1000, 1500, 2000,
+	                             3000, 5000, 7500, 10000, 15000 };
+	return table[level - 1];
+}
+
 int count_ap_clients()
 {
 	// Phase 0: best-effort count from the wifi AP station list.
@@ -77,6 +108,7 @@ esp_err_t handle_root(httpd_req_t *req)
 
 esp_err_t handle_state(httpd_req_t *req)
 {
+	std::string body;
 	char buf[512];
 	snprintf(buf, sizeof(buf),
 		"{\"ssid\":\"%s\",\"ip\":\"%s\",\"uptime\":%lu,"
@@ -85,20 +117,65 @@ esp_err_t handle_state(httpd_req_t *req)
 		heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
 		heap_caps_get_free_size(MALLOC_CAP_SPIRAM),
 		count_ap_clients());
+	body += buf;
 
-	const web_search_result_t & last = web_engine_last_result();
+	// The engine snapshot is a copy (main.cpp state mutex), so no lock is
+	// needed here; the session fields are owned by the httpd task.
+	const web_search_result_t last = web_engine_last_result();
 	if (last.valid) {
-		snprintf(buf + strlen(buf), sizeof(buf) - strlen(buf),
+		snprintf(buf, sizeof(buf),
 			",\"last\":{\"bestmove\":\"%s\",\"score\":%d,\"depth\":%d}",
 			last.best_move.c_str(), last.score, last.depth);
+		body += buf;
 	}
 
 	std::string fen = web_engine_fen();
-	snprintf(buf + strlen(buf), sizeof(buf) - strlen(buf), ",\"fen\":\"%s\"}",
-		fen.c_str());
+	snprintf(buf, sizeof(buf), ",\"fen\":\"%s\"", fen.c_str());
+	body += buf;
+
+	// legal moves for the position (server-provided: the page highlights
+	// tap targets from this list and never generates moves itself)
+	std::vector<std::string> legal = web_engine_legal_moves();
+	body += ",\"legal\":[";
+	for (size_t i = 0; i < legal.size(); i++) {
+		if (i)
+			body += ",";
+		body += "\"";
+		body += legal[i];
+		body += "\"";
+	}
+	body += "]";
+
+	// session: level, human color, clocks, full move list (page refresh
+	// recovery), game over
+	snprintf(buf, sizeof(buf),
+		",\"level\":%d,\"color\":\"%s\","
+		"\"clock\":{\"white\":%lld,\"black\":%lld,\"inc\":%d}",
+		g_web_level, g_web_human_color.c_str(),
+		(long long)g_clock_white_ms, (long long)g_clock_black_ms,
+		level_inc_ms(g_web_level));
+	body += buf;
+
+	body += ",\"moves\":[";
+	for (size_t i = 0; i < g_web_moves.size(); i++) {
+		if (i)
+			body += ",";
+		body += "\"";
+		body += g_web_moves[i];
+		body += "\"";
+	}
+	body += "]";
+
+	if (g_web_game_over) {
+		snprintf(buf, sizeof(buf), ",\"game_over\":true,\"result\":\"%s\"",
+			g_web_game_result.c_str());
+		body += buf;
+	}
+
+	body += "}";
 
 	httpd_resp_set_type(req, "application/json");
-	return httpd_resp_sendstr(req, buf);
+	return httpd_resp_sendstr(req, body.c_str());
 }
 
 // Read the request body into a fixed buffer (move lists are small).
@@ -171,7 +248,7 @@ bool run_web_task(std::function<void()> task)
 	esp_pthread_set_cfg(&default_cfg);
 
 	std::unique_lock<std::mutex> lk(g_web_done_mutex);
-	bool done = g_web_done_cv.wait_for(lk, std::chrono::seconds(90),
+	bool done = g_web_done_cv.wait_for(lk, std::chrono::seconds(150),
 	                                   [] { return g_web_done; });
 	lk.unlock();
 
@@ -214,11 +291,21 @@ esp_err_t handle_move(httpd_req_t *req)
 	}
 
 	std::vector<std::string> moves = split_moves(moves_json->valuestring);
-	int movetime = 1000;
+	// Phase 2: the page sends the move list + human_ms only; the per-move
+	// budget comes from the stored level. An explicit movetime stays as the
+	// dev/console override (and is what the automated gates use).
+	int movetime = level_movetime_ms(g_web_level);
 	if (mt_json && cJSON_IsNumber(mt_json) && mt_json->valuedouble >= 1)
 		movetime = (int)mt_json->valuedouble;
-	if (movetime > 60000)
-		movetime = 60000;
+	if (movetime > 120000)
+		movetime = 120000;
+
+	int64_t human_ms = 0;
+	cJSON *hm_json = cJSON_GetObjectItem(json, "human_ms");
+	if (hm_json && cJSON_IsNumber(hm_json) && hm_json->valuedouble > 0)
+		human_ms = (int64_t)hm_json->valuedouble;
+	if (human_ms > BASE_CLOCK_MS)
+		human_ms = BASE_CLOCK_MS;
 
 	cJSON_Delete(json);
 
@@ -229,13 +316,51 @@ esp_err_t handle_move(httpd_req_t *req)
 		return httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "search timeout");
 	}
 
-	const web_search_result_t & last = web_engine_last_result();
-	if (last.game_over) {
-		char resp[128];
+	const web_search_result_t last = web_engine_last_result();
+
+	// Phase 2 clocks. The engine's spent time comes from the go handler's
+	// own measurement; the human's from the page (reply -> move tap). The
+	// increment goes to the side that just moved. A side that hits zero
+	// flags and loses (clamped so the response is always consistent).
+	int64_t & human_clock  = g_web_human_color == "white" ? g_clock_white_ms : g_clock_black_ms;
+	int64_t & engine_clock = g_web_human_color == "white" ? g_clock_black_ms : g_clock_white_ms;
+	const int inc = level_inc_ms(g_web_level);
+	bool human_flags = false;
+	if (human_ms > 0) {
+		human_clock = human_clock - human_ms + inc;
+		if (human_clock <= 0) {
+			human_clock = 0;
+			human_flags = true;
+		}
+	}
+	bool engine_flags = false;
+	if (last.valid) {
+		engine_clock = engine_clock - last.elapsed_ms + inc;
+		if (engine_clock <= 0) {
+			engine_clock = 0;
+			engine_flags = true;
+		}
+	}
+
+	// game-over resolution: terminal position first, then clock flags
+	const char *game_result = nullptr;
+	if (last.game_over)
+		game_result = last.game_state.c_str();
+	else if (human_flags)
+		game_result = g_web_human_color == "white" ? "black_wins" : "white_wins";
+	else if (engine_flags)
+		game_result = g_web_human_color == "white" ? "white_wins" : "black_wins";
+
+	if (game_result) {
+		g_web_game_over   = true;
+		g_web_game_result = game_result;
+		char resp[160];
 		snprintf(resp, sizeof(resp),
-			"{\"game_over\":true,\"result\":\"%s\",\"score\":%d}",
-			last.game_state.c_str(), last.score);
-		printf("[web] /move: game over (%s)\n", last.game_state.c_str());
+			"{\"game_over\":true,\"result\":\"%s\",\"score\":%d,"
+			"\"clock\":{\"white\":%lld,\"black\":%lld,\"inc\":%d}}",
+			game_result, last.score,
+			(long long)g_clock_white_ms, (long long)g_clock_black_ms, inc);
+		printf("[web] /move: game over (%s)\n", game_result);
 		httpd_resp_set_type(req, "application/json");
 		return httpd_resp_sendstr(req, resp);
 	}
@@ -244,6 +369,10 @@ esp_err_t handle_move(httpd_req_t *req)
 		return httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "no move");
 	}
 
+	// the web game's move log (page refresh recovery + self-healing resend)
+	g_web_moves = moves;
+	g_web_moves.push_back(last.best_move);
+
 	std::string pv;
 	for (size_t i = 0; i < last.pv.size(); i++) {
 		if (i)
@@ -251,14 +380,17 @@ esp_err_t handle_move(httpd_req_t *req)
 		pv += last.pv[i];
 	}
 
-	char resp[512];
+	char resp[640];
 	snprintf(resp, sizeof(resp),
-		"{\"bestmove\":\"%s\",\"score\":%d,\"depth\":%d,\"pv\":\"%s\"}",
-		last.best_move.c_str(), last.score, last.depth, pv.c_str());
+		"{\"bestmove\":\"%s\",\"score\":%d,\"depth\":%d,\"pv\":\"%s\","
+		"\"clock\":{\"white\":%lld,\"black\":%lld,\"inc\":%d}}",
+		last.best_move.c_str(), last.score, last.depth, pv.c_str(),
+		(long long)g_clock_white_ms, (long long)g_clock_black_ms, inc);
 
-	printf("[web] /move: %s -> %s (score %d, depth %d)\n",
+	printf("[web] /move: %s -> %s (score %d, depth %d, clocks %lld/%lld)\n",
 	       moves.empty() ? "startpos" : moves.back().c_str(),
-	       last.best_move.c_str(), last.score, last.depth);
+	       last.best_move.c_str(), last.score, last.depth,
+	       (long long)g_clock_white_ms, (long long)g_clock_black_ms);
 
 	httpd_resp_set_type(req, "application/json");
 	return httpd_resp_sendstr(req, resp);
@@ -285,14 +417,32 @@ esp_err_t handle_new(httpd_req_t *req)
 		level = (int)c->valuedouble;
 	cJSON_Delete(json);
 
-	if (!run_web_task([&] { web_engine_set_position({}); })) {
+	if (color != "white" && color != "black")
+		color = "white";
+	if (level < 1 || level > 10)
+		level = 4;
+
+	if (!run_web_task([] { web_engine_set_position({}); })) {
 		printf("[web] /new: engine busy\n");
 		return httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "engine busy");
 	}
 
-	char resp[128];
-	snprintf(resp, sizeof(resp), "{\"ok\":true,\"color\":\"%s\",\"level\":%d}",
-	         color.c_str(), level);
+	// fresh session: position reset (above), clocks at base, move log empty
+	g_web_human_color = color;
+	g_web_level       = level;
+	g_clock_white_ms  = BASE_CLOCK_MS;
+	g_clock_black_ms  = BASE_CLOCK_MS;
+	g_web_moves.clear();
+	g_web_game_over   = false;
+	g_web_game_result.clear();
+
+	char resp[256];
+	snprintf(resp, sizeof(resp),
+		"{\"ok\":true,\"color\":\"%s\",\"level\":%d,"
+		"\"clock\":{\"white\":%lld,\"black\":%lld,\"inc\":%d}}",
+		color.c_str(), level,
+		(long long)g_clock_white_ms, (long long)g_clock_black_ms,
+		level_inc_ms(level));
 	printf("[web] /new: %s, level %d\n", color.c_str(), level);
 
 	httpd_resp_set_type(req, "application/json");

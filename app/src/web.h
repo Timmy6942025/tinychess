@@ -2,6 +2,7 @@
 
 #pragma once
 
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -14,7 +15,8 @@ struct web_search_result_t {
 	std::string best_move;
 	int score = 0;
 	int depth = 0;
-	std::string fen; // position the search ran on (for /state during searches)
+	int64_t elapsed_ms = 0; // wall time the go handler spent producing the move
+	std::string fen;        // position the search ran on
 	std::vector<std::string> pv;
 };
 
@@ -24,7 +26,10 @@ struct web_search_result_t {
 // pondering bit-identically with serial UCI mode.
 bool web_engine_set_position(const std::vector<std::string> & moves);
 bool web_engine_go_movetime(int movetime_ms);
-const web_search_result_t & web_engine_last_result();
+const web_search_result_t web_engine_last_result();
 std::string web_engine_fen();
+// Legal moves for the position the engine was last told (snapshot taken by
+// the position handler; race-free against searches/pondering).
+std::vector<std::string> web_engine_legal_moves();
 
 #endif

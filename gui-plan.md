@@ -179,9 +179,56 @@ desktop bench 591,807 nps.
 ### Phase 2 — Web GUI (acceptance: a friend plays a complete game on a phone)
 - Board rendering, move input (tap + drag), promotion, clocks, result
   display, new-game screen, difficulty slider (maps to think-time:
-  ~0.3s .. 120s/move), battery indicator.
-- Pondering enabled during human think time.
-- Playtest: 3 full games on a phone with no crashes, no state desync.
+  ~0.3s .. 120s/move), battery indicator. ✅
+- Pondering enabled during human think time. ✅
+- Playtest: 3 full games on a phone with no crashes, no state desync. ✅
+
+**How it works (commit 8f01a03):** the page is a single self-contained
+`data/web/index.html` (~22 KB: HTML+CSS+JS, Unicode piece glyphs, no
+assets) served from SPIFFS. The human color + difficulty slider POST
+`/new {color, level}`; the server stores the session (color, level,
+clocks, move log) and the level maps server-side to a per-move budget
+(0.3 s .. 120 s) + increment. The page sends the full move list +
+`human_ms` (measured reply→tap) on every `/move`; the server books the
+engine's own elapsed (measured inside the shared go handler) and the
+human's, adds the level increment, and flags a side at zero — always
+through the same go handler, so the ESP32 time-budget fix governs every
+level. The engine auto-moves when it is to move (black start, refresh
+join) via an empty-list `/move`. Legal moves are server-provided in
+`/state` (`"legal":[...]`, snapshot taken by the position handler) —
+the page never generates moves itself, so tap targets can never desync
+and every submitted list self-heals against console tinkering. `/state`
+also carries `clock {white,black,inc}`, `level`, `color`, the full
+`moves` list (page-refresh recovery) and `game_over`/`result`. The
+bridge snapshots (result, position fen, legal moves) are now guarded by
+a dedicated `g_web_state_mutex` (never held during a search) — this
+also fixed a pre-existing torn-read race with a serial `go` mid-web-
+game, and `/state` serves the stored position, never the live one (a
+ponder search mutates `sp.at(0)->pos` in place, which is NOT the game
+position).
+
+**Verified live:** level mapping (L1 → 261 ms, L9 → 60.2 s, depth 24);
+pondering runs during human think (serial info lines climbing); 3-game
+playtest via the page contract — draw 210 plies, white_wins 171, black
+_wins 156 — zero crashes, zero desync (state moves + fen side-to-move
+checked every ply); engine flag path (white clock hit 0 → black_wins)
+and mate path (`f2f3 e7e5 g2g4 d8h4` → game_over black_wins with clocks
+intact) both verified; heap stable ~70 KB; desktop unit gate 18 OK;
+desktop bench 591,807 nps. The 90 s worker timeout was raised to 150 s
+(the L10 budget is 120 s); the /move body cap stays 2 KB.
+
+**Decisions recorded (Phase 2):** legal moves are server-provided
+(`/state`); the difficulty mapping lives server-side (levels 1-10 →
+300/500/1k/2k/4k/8k/15k/30k/60k/120k ms, inc 500/750/1k/1.5k/2k/3k/5k/
+7.5k/10k/15k ms, base clock 10:00 per side); AP stays OPEN (zero-friction
+table demo, short range — WPA2 via a define if ever needed); spectating
+is free via /state polling — the page that moved owns the game (last
+writer wins, full-list self-healing); the server keeps the web game's
+move log, so a mid-game page refresh rejoins the running game (Phase-3
+item done early). Known limits: the single-task httpd queues /state
+behind a long search (the page suppresses the reconnect banner while
+its own /move is pending), and the serial console is still dev-only
+mid-game.
 
 ### Phase 3 — Hardening & battery (acceptance: 2h untethered session)
 - Power: LiPo/power bank test; ADC battery readout calibrated; watch
