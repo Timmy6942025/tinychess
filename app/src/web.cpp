@@ -44,7 +44,7 @@ char ap_ip[16] = "0.0.0.0";
 // ---- Phase 2: game session state. Owned exclusively by the single httpd
 // task (handlers run on it and /move blocks it for the search), so no lock
 // is needed -- the engine bridge has its own locks in main.cpp. ----
-constexpr int64_t BASE_CLOCK_MS = 10 * 60 * 1000; // 10:00 per side
+constexpr int64_t BASE_CLOCK_MS = 30 * 60 * 1000; // 30:00 per side (casual)
 
 int         g_web_level         = 4;
 std::string g_web_human_color   = "white";
