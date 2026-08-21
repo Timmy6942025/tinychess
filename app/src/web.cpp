@@ -53,6 +53,10 @@ std::vector<std::string> g_web_moves; // full move list of the web game
 bool        g_web_game_over     = false;
 std::string g_web_game_result;        // white_wins / black_wins / draw / human flag
 int64_t     g_web_last_seq      = 0;  // last booked /move seq (retry guard)
+// When the side to move began thinking (esp_timer ms). Anchored by /new and
+// after every booked move; the continuous clock model deducts real time
+// between anchors so the server's clocks match what every page displays.
+int64_t     g_turn_started_ms   = 0;
 
 // Difficulty -> per-move budget. The page's slider sends the level; the
 // mapping lives here (server-authoritative) and always goes through the
@@ -120,9 +124,12 @@ esp_err_t handle_state(httpd_req_t *req)
 		count_ap_clients());
 	body += buf;
 
-	// The engine snapshot is a copy (main.cpp state mutex), so no lock is
-	// needed here; the session fields are owned by the httpd task.
-	const web_search_result_t last = web_engine_last_result();
+	// One consistent engine snapshot (single state-lock acquisition in
+	// main.cpp), so fen/legal/last can never be a torn pre/post-reply mix.
+	std::string fen;
+	std::vector<std::string> legal;
+	web_search_result_t last;
+	web_engine_snapshot(fen, legal, last);
 	if (last.valid) {
 		snprintf(buf, sizeof(buf),
 			",\"last\":{\"bestmove\":\"%s\",\"score\":%d,\"depth\":%d}",
@@ -130,13 +137,11 @@ esp_err_t handle_state(httpd_req_t *req)
 		body += buf;
 	}
 
-	std::string fen = web_engine_fen();
 	snprintf(buf, sizeof(buf), ",\"fen\":\"%s\"", fen.c_str());
 	body += buf;
 
 	// legal moves for the position (server-provided: the page highlights
 	// tap targets from this list and never generates moves itself)
-	std::vector<std::string> legal = web_engine_legal_moves();
 	body += ",\"legal\":[";
 	for (size_t i = 0; i < legal.size(); i++) {
 		if (i)
@@ -148,12 +153,29 @@ esp_err_t handle_state(httpd_req_t *req)
 	body += "]";
 
 	// session: level, human color, clocks, full move list (page refresh
-	// recovery), game over
+	// recovery), game over. The clocks are continuous: the side to move
+	// drains in real time from the turn anchor, and a player who lets the
+	// clock run out is flagged HERE even if they never submit another move
+	// (the old model only deducted on /move, so such a game hung forever).
+	int64_t w = g_clock_white_ms, b = g_clock_black_ms;
+	if (!g_web_game_over && g_turn_started_ms) {
+		const bool white_to_move = (g_web_moves.size() % 2 == 0);
+		int64_t & stm_clock = white_to_move ? w : b;
+		stm_clock -= esp_timer_get_time() / 1000 - g_turn_started_ms;
+		if (stm_clock <= 0) {
+			stm_clock         = 0;
+			g_web_game_over   = true;
+			g_web_game_result = white_to_move ? "black_wins" : "white_wins";
+			printf("[web] /state: flag fall (%s)\n", g_web_game_result.c_str());
+		}
+		g_clock_white_ms = w;
+		g_clock_black_ms = b;
+	}
 	snprintf(buf, sizeof(buf),
 		",\"level\":%d,\"color\":\"%s\","
 		"\"clock\":{\"white\":%lld,\"black\":%lld,\"inc\":%d}",
 		g_web_level, g_web_human_color.c_str(),
-		(long long)g_clock_white_ms, (long long)g_clock_black_ms,
+		(long long)w, (long long)b,
 		level_inc_ms(g_web_level));
 	body += buf;
 
@@ -301,13 +323,6 @@ esp_err_t handle_move(httpd_req_t *req)
 	if (movetime > 120000)
 		movetime = 120000;
 
-	int64_t human_ms = 0;
-	cJSON *hm_json = cJSON_GetObjectItem(json, "human_ms");
-	if (hm_json && cJSON_IsNumber(hm_json) && hm_json->valuedouble > 0)
-		human_ms = (int64_t)hm_json->valuedouble;
-	if (human_ms > BASE_CLOCK_MS)
-		human_ms = BASE_CLOCK_MS;
-
 	// The page tags each submission with a monotonically increasing seq so a
 	// retry of the SAME request (response lost on the wire) books the clocks
 	// only once. A different page/session has a different seq, so spectator
@@ -316,6 +331,10 @@ esp_err_t handle_move(httpd_req_t *req)
 	cJSON *seq_json = cJSON_GetObjectItem(json, "seq");
 	if (seq_json && cJSON_IsNumber(seq_json) && seq_json->valuedouble > 0)
 		seq = (int64_t)seq_json->valuedouble;
+
+	// Continuous chess-clock model: the server owns the clocks. The page's
+	// legacy human_ms field is accepted but ignored -- real time is deducted
+	// from the turn anchor instead, so every client and the server agree.
 
 	cJSON_Delete(json);
 
@@ -356,40 +375,50 @@ esp_err_t handle_move(httpd_req_t *req)
 		}
 	}
 
-	if (!run_web_search(moves, movetime)) {
-		printf("[web] /move: search timed out\n");
-		return httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "search timeout");
-	}
-
-	const web_search_result_t last = web_engine_last_result();
-
-	// Phase 2 clocks. The engine's spent time comes from the go handler's
-	// own measurement; the human's from the page (reply -> move tap). The
-	// increment goes to the side that just moved. A side that hits zero
-	// flags and loses (clamped so the response is always consistent).
+	// Continuous chess-clock model, server-authoritative. The human's think
+	// ends when this request arrives (deducted from the turn anchor); the
+	// engine's ends when the reply has landed. Deducting at those boundaries
+	// (once per booked seq) keeps every client and the server on one clock,
+	// and lets /state flag a player who never moves again.
 	int64_t & human_clock  = g_web_human_color == "white" ? g_clock_white_ms : g_clock_black_ms;
 	int64_t & engine_clock = g_web_human_color == "white" ? g_clock_black_ms : g_clock_white_ms;
 	const int inc = level_inc_ms(g_web_level);
-	// Book the clocks only for a NEW submission. A retry of the same seq
-	// (lost response) must not deduct twice.
 	const bool book = (seq != g_web_last_seq);
 	if (book)
 		g_web_last_seq = seq;
+	const int64_t arrived_ms = esp_timer_get_time() / 1000;
 	bool human_flags = false;
-	if (book && human_ms > 0) {
-		human_clock = human_clock - human_ms + inc;
+	if (book && !g_web_game_over && !moves.empty()) {
+		// moves.empty() is the engine's auto-move as white: no human think.
+		human_clock -= arrived_ms - g_turn_started_ms;
 		if (human_clock <= 0) {
 			human_clock = 0;
 			human_flags = true;
 		}
 	}
+
+	if (!run_web_search(moves, movetime)) {
+		printf("[web] /move: search timed out\n");
+		// Re-anchor so a retry does not charge the human for the stuck
+		// engine window.
+		g_turn_started_ms = esp_timer_get_time() / 1000;
+		return httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "search timeout");
+	}
+
+	const web_search_result_t last = web_engine_last_result();
+
 	bool engine_flags = false;
-	if (book && last.valid) {
-		engine_clock = engine_clock - last.elapsed_ms + inc;
-		if (engine_clock <= 0) {
-			engine_clock = 0;
-			engine_flags = true;
+	if (book && !g_web_game_over) {
+		if (last.valid && !last.game_over) {
+			engine_clock -= esp_timer_get_time() / 1000 - arrived_ms;
+			if (engine_clock <= 0) {
+				engine_clock = 0;
+				engine_flags = true;
+			}
 		}
+		human_clock += inc;
+		engine_clock += inc;
+		g_turn_started_ms = esp_timer_get_time() / 1000;
 	}
 
 	// game-over resolution: terminal position first, then clock flags
@@ -460,6 +489,7 @@ esp_err_t handle_new(httpd_req_t *req)
 
 	std::string color = "white";
 	int level = 1;
+	int64_t base_ms = BASE_CLOCK_MS;
 	// copy out of the cJSON tree before it is freed below
 	cJSON *c = cJSON_GetObjectItem(json, "color");
 	if (c && cJSON_IsString(c))
@@ -467,6 +497,12 @@ esp_err_t handle_new(httpd_req_t *req)
 	c = cJSON_GetObjectItem(json, "level");
 	if (c && cJSON_IsNumber(c))
 		level = (int)c->valuedouble;
+	// dev/test override for the time control (clamped to 5s..10m)
+	c = cJSON_GetObjectItem(json, "base_ms");
+	if (c && cJSON_IsNumber(c) && c->valuedouble >= 5000)
+		base_ms = (int64_t)c->valuedouble;
+	if (base_ms > BASE_CLOCK_MS)
+		base_ms = BASE_CLOCK_MS;
 	cJSON_Delete(json);
 
 	if (color != "white" && color != "black")
@@ -482,12 +518,13 @@ esp_err_t handle_new(httpd_req_t *req)
 	// fresh session: position reset (above), clocks at base, move log empty
 	g_web_human_color = color;
 	g_web_level       = level;
-	g_clock_white_ms  = BASE_CLOCK_MS;
-	g_clock_black_ms  = BASE_CLOCK_MS;
+	g_clock_white_ms  = base_ms;
+	g_clock_black_ms  = base_ms;
 	g_web_moves.clear();
 	g_web_game_over   = false;
 	g_web_game_result.clear();
 	g_web_last_seq    = 0;
+	g_turn_started_ms = esp_timer_get_time() / 1000;
 
 	char resp[256];
 	snprintf(resp, sizeof(resp),

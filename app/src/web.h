@@ -31,5 +31,9 @@ std::string web_engine_fen();
 // Legal moves for the position the engine was last told (snapshot taken by
 // the position handler; race-free against searches/pondering).
 std::vector<std::string> web_engine_legal_moves();
+// fen + legal + last result under ONE state-lock acquisition, so /state
+// can never serve a torn mix of pre- and post-reply fields.
+void web_engine_snapshot(std::string & fen_out, std::vector<std::string> & legal_out,
+                         web_search_result_t & last_out);
 
 #endif

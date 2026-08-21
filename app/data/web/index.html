@@ -695,6 +695,9 @@ $("newGameBtn").onclick = () => {
 $("closeResultBtn").onclick = () => $("resultOverlay").classList.remove("show");
 
 setInterval(() => refreshState(), POLL_MS);
+// smooth clock display between polls and during the engine's think
+// (refreshState skips rendering while a /move is in flight)
+setInterval(() => { if (fen && gameStarted) updateClocks(); }, 500);
 setInterval(refreshBattery, 30000);
 refreshBattery();
 refreshState().then(s => {

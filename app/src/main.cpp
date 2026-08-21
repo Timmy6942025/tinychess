@@ -1498,6 +1498,24 @@ std::vector<std::string> web_engine_legal_moves()
 	std::lock_guard<std::mutex> state_lock(g_web_state_mutex);
 	return g_web_legal_moves;
 }
+
+// One consistent snapshot of all three served fields: reading them via the
+// individual getters takes the state mutex three times, so a /state that
+// races a landing reply could mix a pre-reply fen with post-reply legal
+// moves. /state uses this instead.
+void web_engine_snapshot(std::string & fen_out, std::vector<std::string> & legal_out,
+                         web_search_result_t & last_out)
+{
+	std::lock_guard<std::mutex> state_lock(g_web_state_mutex);
+	if (!g_web_position_fen.empty())
+		fen_out = g_web_position_fen;
+	else if (!g_web_result.fen.empty())
+		fen_out = g_web_result.fen;
+	else
+		fen_out = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+	legal_out = g_web_legal_moves;
+	last_out  = g_web_result;
+}
 #endif
 
 void run_bench_single(const bool long_bench, const bool via_usb)
