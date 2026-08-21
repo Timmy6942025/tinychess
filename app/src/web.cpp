@@ -151,6 +151,14 @@ esp_err_t handle_root(httpd_req_t *req)
 	return serve_file(req, "/spiffs/web/index.html");
 }
 
+// Captive-portal landing: instructions + info only (the game itself lives
+// at /). Phones land here via the catch-all redirect below.
+esp_err_t handle_welcome(httpd_req_t *req)
+{
+	httpd_resp_set_type(req, "text/html");
+	return serve_file(req, "/spiffs/web/portal.html");
+}
+
 // ---- Captive portal ----
 //
 // Minimal DNS responder: answers EVERY query with an A record pointing at
@@ -221,9 +229,10 @@ esp_err_t handle_catchall(httpd_req_t *req)
 		httpd_req_get_hdr_value_str(req, "Host", host, sizeof(host));
 
 	if (strstr(host, ap_ip) != host) {
-		// foreign host = OS connectivity probe -> bounce into the game
+		// foreign host = OS connectivity probe -> bounce to the
+		// instructions page (the game is one tap away from there)
 		httpd_resp_set_status(req, "302 Found");
-		httpd_resp_set_hdr(req, "Location", "http://192.168.4.1/");
+		httpd_resp_set_hdr(req, "Location", "http://192.168.4.1/welcome");
 		return httpd_resp_sendstr(req, "");
 	}
 	// our own origin but an unknown path: nothing there
@@ -865,6 +874,7 @@ httpd_handle_t start_httpd()
 	}
 
 	httpd_uri_t root = { .uri = "/", .method = HTTP_GET, .handler = handle_root, .user_ctx = nullptr };
+	httpd_uri_t welcome = { .uri = "/welcome", .method = HTTP_GET, .handler = handle_welcome, .user_ctx = nullptr };
 	httpd_uri_t state = { .uri = "/state", .method = HTTP_GET, .handler = handle_state, .user_ctx = nullptr };
 	httpd_uri_t move = { .uri = "/move", .method = HTTP_POST, .handler = handle_move, .user_ctx = nullptr };
 	httpd_uri_t newgame = { .uri = "/new", .method = HTTP_POST, .handler = handle_new, .user_ctx = nullptr };
@@ -873,6 +883,7 @@ httpd_handle_t start_httpd()
 	httpd_uri_t unqueue = { .uri = "/unqueue", .method = HTTP_POST, .handler = handle_unqueue, .user_ctx = nullptr };
 	httpd_uri_t yield_seat = { .uri = "/yield", .method = HTTP_POST, .handler = handle_yield, .user_ctx = nullptr };
 	httpd_register_uri_handler(server, &root);
+	httpd_register_uri_handler(server, &welcome);
 	httpd_register_uri_handler(server, &state);
 	httpd_register_uri_handler(server, &move);
 	httpd_register_uri_handler(server, &newgame);

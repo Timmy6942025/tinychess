@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DOG-CHESS</title>
+<style>
+  body {
+    margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center;
+    background: #16181d; color: #e8e6e1;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    padding: 16px; box-sizing: border-box;
+  }
+  .card { max-width: 420px; width: 100%; }
+  h1 { font-size: 26px; margin: 0 0 4px; letter-spacing: .5px; }
+  h1 span { color: #6ecb63; }
+  .sub { color: #7c8790; font-size: 14px; margin-bottom: 18px; }
+  .play {
+    display: block; text-align: center; text-decoration: none;
+    background: #6ecb63; color: #16181d; font-weight: 700; font-size: 17px;
+    padding: 14px; border-radius: 10px; margin-bottom: 8px;
+  }
+  .url { text-align: center; color: #7c8790; font-size: 13px; margin-bottom: 22px; }
+  .url b { color: #e8e6e1; }
+  .info { background: #1d2027; border: 1px solid #2c313a; border-radius: 10px; padding: 14px 16px; margin-bottom: 12px; }
+  .info h3 { margin: 0 0 6px; font-size: 14px; color: #d9a13b; }
+  .info p { margin: 0; font-size: 13px; line-height: 1.55; color: #b8bec4; }
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>DOG<span>-</span>CHESS</h1>
+  <div class="sub">A chess board you play from your phone.</div>
+
+  <a class="play" href="/">Open the chess board ›</a>
+  <div class="url">or type <b>192.168.4.1</b> in your browser</div>
+
+  <div class="info">
+    <h3>How to play</h3>
+    <p>Pick your color and difficulty, then tap a piece and tap a target square
+       (dragging works too). The board plays the bot's moves and both clocks
+       run in real time — 10 minutes each plus an increment.</p>
+  </div>
+
+  <div class="info">
+    <h3>Playing with friends</h3>
+    <p>One game runs at a time. If someone is already playing you'll see their
+       name and can join the waitlist — you're up as soon as they finish or
+       give up the board. Everyone else watches live.</p>
+  </div>
+
+  <div class="info">
+    <h3>Good to know</h3>
+    <p>This network has no internet — your phone may complain, that's normal.
+       To stop your phone auto-joining later, choose "forget this network"
+       after playing.</p>
+  </div>
+</div>
+</body>
+</html>
