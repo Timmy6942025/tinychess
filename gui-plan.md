@@ -364,6 +364,26 @@ dev-env quirk, serial output is readable).
   `/move` (8 s client polls time out during a 120 s move; the page's 15 s
   poll and 160 s move timeouts absorb it by design).
 
+**Phases 1-3 full audit (2026-08-21):**
+- **Clocks made server-authoritative (HIGH fix)** — time was only deducted
+  when a `/move` landed: a page refresh restored drained time, and a player
+  whose clock ran out without moving was never flagged (the game hung
+  server-side while the page showed "Out of time"). New continuous model:
+  turn-anchored real-time deduction in `/move` + flag detection in
+  `/state`; `base_ms` dev param on `/new` (5 s..10 m) for testing.
+  Verified: ~4 s drained over ~4 s wall, flag fall without moving →
+  result at clock 0, engine think deducted, idempotent retry books nothing.
+- **`/state` torn reads fixed (LOW)** — fen/legal/last were read via three
+  separate lock acquisitions; `web_engine_snapshot()` now serves all three
+  under one.
+- **Page clocks froze during the engine's think (LOW)** — no render while
+  `boardThinking`; a 500 ms display ticker added.
+- Audited sound: cJSON discipline (no leaks), `read_body` bounds, httpd
+  single-task serialization (`/new` vs `/move` can't interleave), seq
+  semantics (`/new` resets the booking guard), input clamps everywhere,
+  no XSS (textContent only), spectator-join races covered by idempotency,
+  promotion flow server-driven.
+
 ### Phase 4 — Playtest with friends + release
 - 2-3 friends, real devices (Android + iOS), no setup beyond joining the
   AP and opening the IP.
