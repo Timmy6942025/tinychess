@@ -755,6 +755,9 @@ async function giveUpBoard() {
   } catch (err) { /* keep watching; the seat stays until takeover */ }
   gameStarted = false;
   await refreshState();
+  // the seat is free again — offer the start screen so this player can
+  // re-take it (or watch) instead of stranding them on a dead board
+  $("startOverlay").classList.add("show");
 }
 
 async function startGame() {
@@ -857,7 +860,13 @@ refreshState().then(s => {
     if (s.game_over) showResult();
     else if (engineToMove && !gameOver && isOwner()) postMove(0);
   } else {
-    $("startOverlay").classList.add("show");
+    // no moves yet: a free seat shows the start screen, but someone
+    // else's fresh game makes this page a spectator
+    if (!isOwner()) {
+      gameStarted = true;
+    } else {
+      $("startOverlay").classList.add("show");
+    }
   }
 });
 </script>
