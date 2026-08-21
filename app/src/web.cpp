@@ -29,6 +29,7 @@
 #include "esp_timer.h"
 #include "lwip/sockets.h"
 #include "nvs_flash.h"
+#include "lwip/udp.h"
 
 #include "web.h"
 
@@ -168,65 +169,52 @@ esp_err_t handle_welcome(httpd_req_t *req)
 // / msftconnecttest.com all land on the httpd, where the catch-all handler
 // 302s them to the game page -- which is what makes the OS pop its
 // "sign in to network" sheet straight onto DOG-CHESS.
-static void dns_task_fn(void *)
+// Raw-UDP DNS responder: every A query gets one answer record pointing at
+// the board. Runs on the tcpip thread via udp_recv -- no task, no fd.
+static udp_pcb *dns_pcb = nullptr;
+
+static void dns_recv_cb(void *, udp_pcb *pcb, pbuf *p, const ip_addr_t *addr, u16_t port)
 {
-	int sock = socket(AF_INET, SOCK_DGRAM, 0);
-	if (sock < 0)
-		return;
-	sockaddr_in addr = {};
-	addr.sin_family      = AF_INET;
-	addr.sin_port        = htons(53);
-	addr.sin_addr.s_addr = htonl(INADDR_ANY);
-	if (bind(sock, (sockaddr *)&addr, sizeof(addr)) < 0) {
-		close(sock);
+	if (!p || p->len < 12) {
+		if (p) pbuf_free(p);
 		return;
 	}
+	uint8_t *q = (uint8_t *)p->payload;
+	const uint16_t qd = (uint16_t)((q[4] << 8) | q[5]);
+	if (qd < 1) { pbuf_free(p); return; }
 
-	// answer record: name pointer | type A | class IN | ttl 60 | rdlen 4 | ip
+	// walk the question section: QNAME labels then QTYPE+QCLASS
+	size_t i = 12;
+	while (i + 1 < p->len && q[i]) i += q[i] + 1;
+	i++;
+	if (i + 4 > p->len) { pbuf_free(p); return; }
+	i += 4;
+
+	// response: header (echoed id/flags/qd + ANCOUNT=1), question, answer
 	static const uint8_t answer[] = {
 		0xC0, 0x0C, 0x00, 0x01, 0x00, 0x01,
 		0x00, 0x00, 0x00, 0x3C, 0x00, 0x04,
 		192, 168, 4, 1
 	};
-
-	uint8_t buf[512], out[600];
-	for (;;) {
-		sockaddr_in src = {};
-		socklen_t srclen = sizeof(src);
-		ssize_t n = recvfrom(sock, buf, sizeof(buf), 0, (sockaddr *)&src, &srclen);
-		if (n < 12)
-			continue;
-		const uint16_t qd = (uint16_t)((buf[4] << 8) | buf[5]);
-		if (qd < 1)
-			continue;
-		// skip the question section: QNAME labels, then QTYPE+QCLASS
-		size_t i = 12;
-		while (i + 1 < (size_t)n && buf[i])
-			i += buf[i] + 1;
-		i++;
-		if (i + 4 > (size_t)n)
-			continue;
-		i += 4;
-
-		buf[2] = 0x81; buf[3] = 0x80;   // response | recursion available
-		buf[6] = 0;    buf[7] = 1;      // ANCOUNT = 1
-		buf[8] = 0;    buf[9] = 0;      // NSCOUNT = 0
-		buf[10] = 0;   buf[11] = 0;     // ARCOUNT = 0
-
-		size_t len = i;
-		memcpy(out, buf, i);
-		memcpy(out + len, answer, sizeof(answer));
-		len += sizeof(answer);
-		sendto(sock, out, len, 0, (sockaddr *)&src, srclen);
-	}
+	pbuf *resp = pbuf_alloc(PBUF_TRANSPORT, i + sizeof(answer), PBUF_RAM);
+	if (!resp) { pbuf_free(p); return; }
+	uint8_t *r = (uint8_t *)resp->payload;
+	memcpy(r, q, i);
+	r[2] = 0x81; r[3] = 0x80;          // response | recursion available
+	r[6] = 0;    r[7] = 1;             // ANCOUNT = 1
+	r[8] = 0;    r[9] = 0;             // NSCOUNT = 0
+	r[10] = 0;   r[11] = 0;            // ARCOUNT = 0
+	memcpy(r + i, answer, sizeof(answer));
+	udp_sendto(pcb, resp, addr, port);
+	pbuf_free(resp);
+	pbuf_free(p);
 }
 
-// Catch-all for probe requests that arrive under a foreign host name.
-// Registered LAST so every real endpoint matches first.
 esp_err_t handle_catchall(httpd_req_t *req)
 {
 	char host[64] = { 0 };
 	const size_t host_len = httpd_req_get_hdr_value_len(req, "Host");
+	printf("[catchall] uri=%s hostlen=%d\n", req->uri, (int)host_len);
 	if (host_len > 0 && host_len < sizeof(host))
 		httpd_req_get_hdr_value_str(req, "Host", host, sizeof(host));
 
@@ -285,21 +273,24 @@ esp_err_t handle_state(httpd_req_t *req)
 	// session: level, human color, clocks, full move list (page refresh
 	// recovery), game over. The clocks are continuous: the side to move
 	// drains in real time from the turn anchor, and a player who lets the
-	// clock run out is flagged HERE even if they never submit another move
-	// (the old model only deducted on /move, so such a game hung forever).
+	// clock run out is flagged HERE even if they never submit another move.
+	// DISPLAY ONLY -- the drained value must NOT be written back (the turn
+	// anchor stays fixed until the next move, so storing it made every poll
+	// deduct the full elapsed-since-anchor again: an accelerating drain
+	// that flagged players within minutes regardless of play).
 	int64_t w = g_clock_white_ms, b = g_clock_black_ms;
 	if (!g_web_game_over && g_turn_started_ms) {
 		const bool white_to_move = (g_web_moves.size() % 2 == 0);
-		int64_t & stm_clock = white_to_move ? w : b;
-		stm_clock -= esp_timer_get_time() / 1000 - g_turn_started_ms;
-		if (stm_clock <= 0) {
-			stm_clock         = 0;
+		const int64_t eff = (white_to_move ? w : b) -
+		                    (esp_timer_get_time() / 1000 - g_turn_started_ms);
+		if (eff <= 0) {
 			g_web_game_over   = true;
 			g_web_game_result = white_to_move ? "black_wins" : "white_wins";
+			if (white_to_move) w = 0; else b = 0;
+			g_clock_white_ms = w;
+			g_clock_black_ms = b;
 			printf("[web] /state: flag fall (%s)\n", g_web_game_result.c_str());
 		}
-		g_clock_white_ms = w;
-		g_clock_black_ms = b;
 	}
 	snprintf(buf, sizeof(buf),
 		",\"level\":%d,\"color\":\"%s\","
@@ -577,7 +568,10 @@ esp_err_t handle_move(httpd_req_t *req)
 	bool engine_flags = false;
 	if (book && !g_web_game_over) {
 		if (last.valid && !last.game_over) {
-			engine_clock -= esp_timer_get_time() / 1000 - arrived_ms;
+			// the go handler's own measurement of the search -- immune to
+			// any queuing/ponder delay between the reply landing and this
+			// booking code running
+			engine_clock -= (int64_t)last.elapsed_ms;
 			if (engine_clock <= 0) {
 				engine_clock = 0;
 				engine_flags = true;
@@ -824,6 +818,40 @@ esp_err_t handle_yield(httpd_req_t *req)
 	return httpd_resp_sendstr(req, "{\"ok\":true}");
 }
 
+esp_err_t handle_resign(httpd_req_t *req)
+{
+	std::string pid, name;
+	if (!parse_pid_name(req, pid, name))
+		return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "need pid");
+
+	// only the seat holder can resign (missing pid = legacy/dev path)
+	if (!pid.empty() && !g_owner_pid.empty() && pid != g_owner_pid) {
+		char resp[192];
+		snprintf(resp, sizeof(resp),
+			"{\"error\":\"not_owner\",\"owner\":\"%s\"}", g_owner_name.c_str());
+		httpd_resp_set_type(req, "application/json");
+		httpd_resp_set_status(req, "409 Conflict");
+		return httpd_resp_sendstr(req, resp);
+	}
+	if (g_web_game_over || g_web_moves.empty()) {
+		// nothing to resign from
+		httpd_resp_set_type(req, "application/json");
+		return httpd_resp_sendstr(req, "{\"ok\":true}");
+	}
+	g_web_game_over   = true;
+	g_web_game_result = g_web_human_color == "white" ? "black_wins" : "white_wins";
+	printf("[web] resign -> %s\n", g_web_game_result.c_str());
+	char resp[192];
+	snprintf(resp, sizeof(resp),
+		"{\"ok\":true,\"game_over\":true,\"result\":\"%s\","
+		"\"clock\":{\"white\":%lld,\"black\":%lld,\"inc\":%d}}",
+		g_web_game_result.c_str(),
+		(long long)g_clock_white_ms, (long long)g_clock_black_ms,
+		level_inc_ms(g_web_level));
+	httpd_resp_set_type(req, "application/json");
+	return httpd_resp_sendstr(req, resp);
+}
+
 esp_err_t handle_battery(httpd_req_t *req)
 {
 	// XIAO ESP32S3 battery sense: ADC1_CH2 (GPIO2), 2:1 divider. The raw
@@ -884,6 +912,7 @@ httpd_handle_t start_httpd()
 	httpd_uri_t queue = { .uri = "/queue", .method = HTTP_POST, .handler = handle_queue, .user_ctx = nullptr };
 	httpd_uri_t unqueue = { .uri = "/unqueue", .method = HTTP_POST, .handler = handle_unqueue, .user_ctx = nullptr };
 	httpd_uri_t yield_seat = { .uri = "/yield", .method = HTTP_POST, .handler = handle_yield, .user_ctx = nullptr };
+	httpd_uri_t resign = { .uri = "/resign", .method = HTTP_POST, .handler = handle_resign, .user_ctx = nullptr };
 	httpd_register_uri_handler(server, &root);
 	httpd_register_uri_handler(server, &welcome);
 	httpd_register_uri_handler(server, &state);
@@ -893,6 +922,7 @@ httpd_handle_t start_httpd()
 	httpd_register_uri_handler(server, &queue);
 	httpd_register_uri_handler(server, &unqueue);
 	httpd_register_uri_handler(server, &yield_seat);
+	httpd_register_uri_handler(server, &resign);
 	// LAST: the captive-portal catch-all for foreign-host probes
 	httpd_uri_t fallback = { .uri = "/*", .method = HTTP_GET, .handler = handle_catchall, .user_ctx = nullptr };
 	httpd_register_uri_handler(server, &fallback);
@@ -934,8 +964,13 @@ void init_web()
 	snprintf(ap_ip, sizeof(ap_ip), IPSTR, IP2STR(&ip.ip));
 	printf("[web] AP up: %s, ip %s\n", AP_SSID, ap_ip);
 
-	// captive-portal DNS: every query resolves to the board
-	xTaskCreate(dns_task_fn, "dns", 4096, nullptr, 5, nullptr);
+	// captive-portal DNS: every query resolves to the board. Raw UDP API --
+	// runs as a callback on the tcpip thread, no task, no VFS fd.
+	dns_pcb = udp_new();
+	if (dns_pcb) {
+		udp_bind(dns_pcb, IP_ANY_TYPE, 53);
+		udp_recv(dns_pcb, dns_recv_cb, nullptr);
+	}
 
 	if (start_httpd())
 		printf("[web] httpd up: http://%s/\n", ap_ip);

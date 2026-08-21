@@ -56,16 +56,27 @@
   .piece {
     font-size: clamp(22px, 11.5vw, 52px); line-height: 1;
     z-index: 1; pointer-events: none;
+    will-change: transform;
   }
-  .piece.w { color: #f6f4ee; text-shadow: 0 0 1px #000, 0 1px 2px rgba(0,0,0,.55), 0 0 3px rgba(0,0,0,.35); }
-  .piece.b { color: #232323; text-shadow: 0 0 1px #000, 0 1px 2px rgba(0,0,0,.45), 0 0 3px rgba(0,0,0,.2); }
+  /* white = outlined glyph filled near-white with a dark edge; black =
+     filled dark glyph with a faint light edge -- reads on both squares */
+  .piece.w { color: #fafafa; -webkit-text-stroke: 1.1px #3a3a3a; paint-order: stroke fill;
+             text-shadow: 0 2px 2px rgba(0,0,0,.35); }
+  .piece.b { color: #262626; -webkit-text-stroke: 1.1px #0c0c0c; paint-order: stroke fill;
+             text-shadow: 0 2px 2px rgba(0,0,0,.25); }
+  .sq.check::after {
+    content: ""; position: absolute; inset: 0; z-index: 0;
+    background: radial-gradient(circle, rgba(224,60,50,.55) 20%, rgba(224,60,50,.18) 70%);
+  }
   .sq.ghost .piece { opacity: .35; }
-  .dot {
+  /* scoped to squares: an unscoped .dot rule used to restyle the header
+     status LED into a giant translucent blob over the board */
+  .sq .dot {
     position: absolute; left: 50%; top: 50%; width: 26%; height: 26%;
     transform: translate(-50%, -50%); border-radius: 50%;
     background: rgba(20, 30, 20, .38); z-index: 2; pointer-events: none;
   }
-  .ring {
+  .sq .ring {
     position: absolute; left: 50%; top: 50%; width: 78%; height: 78%;
     transform: translate(-50%, -50%); border-radius: 50%;
     border: 4px solid rgba(20, 30, 20, .38); z-index: 2; pointer-events: none;
@@ -76,6 +87,23 @@
   }
   .coord.fl { left: 3px; top: 2px; }
   .coord.rk { right: 3px; bottom: 2px; }
+
+  /* ---- game controls ---- */
+  #controls { display: flex; gap: 8px; }
+  #controls button {
+    flex: 1; padding: 9px 0; border-radius: 10px; cursor: pointer;
+    background: #1d252c; border: 1px solid #2a343e; color: #d8dde2;
+    font-size: 13px;
+  }
+  #controls button.danger { color: #e06c5a; border-color: #4a2f2c; }
+  #controls button:active { background: #232b33; }
+
+  /* ---- captured pieces / material ---- */
+  .capbar {
+    min-height: 16px; font-size: 15px; line-height: 1; letter-spacing: -1px;
+    color: #7c8790; padding: 0 4px; display: flex; align-items: center; gap: 6px;
+  }
+  .capbar .lead { font-size: 12px; color: #aeb7c0; font-variant-numeric: tabular-nums; }
 
   /* ---- status / history ---- */
   #statusline { text-align: center; font-size: 13px; color: #7c8790; min-height: 20px; }
@@ -146,6 +174,7 @@
     <span id="battery">—</span>
   </header>
 
+  <div class="capbar" id="capTop"></div>
   <div class="clock" id="clockTop">
     <span class="name" id="clockTopName">Opponent</span>
     <span class="time" id="clockTopTime">10:00</span>
@@ -156,6 +185,12 @@
   <div class="clock" id="clockBottom">
     <span class="name" id="clockBottomName">You</span>
     <span class="time" id="clockBottomTime">10:00</span>
+  </div>
+  <div class="capbar" id="capBottom"></div>
+
+  <div id="controls">
+    <button id="resignBtn" class="danger">Resign</button>
+    <button id="flipBtn">Flip board</button>
   </div>
 
   <div id="statusline">connecting…</div>
@@ -203,7 +238,12 @@
 "use strict";
 
 /* ================= constants ================= */
-const PIECE_GLYPHS = { k: "♚", q: "♛", r: "♜", b: "♝", n: "♞", p: "♟" };
+// white uses the OUTLINED glyphs, black the FILLED ones -- the standard
+// way to keep both colors readable on light and dark squares alike
+const GLYPH_W = { k: "♔", q: "♕", r: "♖", b: "♗", n: "♘", p: "♙" };
+const GLYPH_B = { k: "♚", q: "♛", r: "♜", b: "♝", n: "♞", p: "♟" };
+const PIECE_GLYPHS = GLYPH_B; // filled set (promotion dialog etc.)
+const PIECE_VALUES = { p: 1, n: 3, b: 3, r: 5, q: 9, k: 0 };
 const LEVEL_TIMES = ["0.3s", "0.5s", "1s", "2s", "3s", "5s", "8s", "12s", "20s", "30s"];
 const MOVE_FETCH_TIMEOUT_MS = 160000;
 const POLL_MS = 2000;
@@ -233,6 +273,7 @@ let lastMove = null;        // [fromIdx, toIdx] highlight
 let sel = null;
 let dragging = false;
 let dragFrom = -1;
+let flipOverride = null;    // null = auto (bottom = my color)
 
 /* ================= identity & seat (multi-player) ================= */
 // A random per-browser pid so the board knows who holds the seat.
@@ -372,8 +413,9 @@ function applyLocalMove(fenStr, moveStr) {
 function render() {
   if (!fen) return;
   const model = fenToSquares(fen);
-  const flipped = myColor === "black";
+  const flipped = flipOverride !== null ? flipOverride : myColor === "black";
   engineToMove = model.stm !== (myColor === "white" ? "w" : "b");
+  const checkSq = findCheckSquare(model);
   for (let i = 0; i < 64; i++) {
     const el = sqEls[i];
     const sq = model.squares[i];
@@ -381,12 +423,13 @@ function render() {
     el.className = "sq " + ((file + rank) % 2 === 0 ? "light" : "dark");
     if (sel === i) el.classList.add("sel");
     if (lastMove && (lastMove[0] === i || lastMove[1] === i)) el.classList.add("last");
+    if (checkSq === i) el.classList.add("check");
 
     let piece = el.querySelector(".piece");
     if (sq) {
       if (!piece) { piece = document.createElement("span"); el.appendChild(piece); }
       piece.className = "piece " + sq.color;
-      piece.textContent = PIECE_GLYPHS[sq.type];
+      piece.textContent = sq.color === "w" ? GLYPH_W[sq.type] : GLYPH_B[sq.type];
     } else if (piece) { piece.remove(); }
 
     const dot = el.querySelector(".dot"), ring = el.querySelector(".ring");
@@ -409,10 +452,133 @@ function render() {
       el.querySelector(".coord.rk").textContent = String.fromCharCode(97 + (flipped ? 7 - file : file));
     }
   }
+  animateLastMove();
+  renderCaptured(model);
+  playMoveFeedback(model, checkSq);
   updateClocks();
   updateStatus();
   updateHistory();
 }
+
+/* ---- move animation (FLIP: piece jumps from its previous square) ---- */
+let animatedKey = "";
+function animateLastMove() {
+  if (!lastMove) return;
+  const key = moves.length + ":" + lastMove[1];
+  if (key === animatedKey) return; // each move animates once
+  animatedKey = key;
+  const dest = sqEls[lastMove[1]] && sqEls[lastMove[1]].querySelector(".piece");
+  const src = sqEls[lastMove[0]];
+  if (!dest || !src) return;
+  const a = src.getBoundingClientRect(), b = dest.getBoundingClientRect();
+  const dx = a.left - b.left, dy = a.top - b.top;
+  if (!dx && !dy) return;
+  dest.style.transition = "none";
+  dest.style.transform = `translate(${dx}px, ${dy}px)`;
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    dest.style.transition = "transform .16s ease-out";
+    dest.style.transform = "";
+    setTimeout(() => { dest.style.transition = ""; }, 220);
+  }));
+}
+
+/* ---- check detection (pseudo-attacks are exactly what check means) ---- */
+function isAttacked(sq, target, by) {
+  const tf = target % 8, tr = (target / 8) | 0;
+  for (let i = 0; i < 64; i++) {
+    const p = sq[i];
+    if (!p || p.color !== by) continue;
+    const f = i % 8, r = (i / 8) | 0;
+    const df = f - tf, dr = r - tr, adf = Math.abs(df), adr = Math.abs(dr);
+    if (p.type === "p") {
+      if ((by === "w" && dr === 1 && adf === 1) || (by === "b" && dr === -1 && adf === 1)) return true;
+    } else if (p.type === "n") {
+      if ((adf === 2 && adr === 1) || (adf === 1 && adr === 2)) return true;
+    } else if (p.type === "k") {
+      if (adf <= 1 && adr <= 1) return true;
+    } else {
+      const straight = df === 0 || dr === 0, diag = adf === adr;
+      if ((p.type === "r" && straight) || (p.type === "b" && diag) ||
+          (p.type === "q" && (straight || diag))) {
+        const sf = Math.sign(df), sr = Math.sign(dr);
+        let cf = tf + sf, cr = tr + sr, clear = true;
+        while (cf !== f || cr !== r) {
+          if (sq[cf + cr * 8]) { clear = false; break; }
+          cf += sf; cr += sr;
+        }
+        if (clear) return true;
+      }
+    }
+  }
+  return false;
+}
+
+function findCheckSquare(model) {
+  const stm = model.stm;
+  for (let i = 0; i < 64; i++) {
+    const p = model.squares[i];
+    if (p && p.type === "k" && p.color === stm)
+      return isAttacked(model.squares, i, stm === "w" ? "b" : "w") ? i : -1;
+  }
+  return -1;
+}
+
+/* ---- captured pieces / material lead ---- */
+const START_COUNTS = { p: 8, n: 2, b: 2, r: 2, q: 1 };
+function renderCaptured(model) {
+  const cnt = { w: { }, b: { } };
+  for (const p of model.squares)
+    if (p && p.type !== "k") cnt[p.color][p.type] = (cnt[p.color][p.type] || 0) + 1;
+  const lostBy = c => {
+    const out = [];
+    for (const t of ["q", "r", "b", "n", "p"]) {
+      const miss = Math.max(0, START_COUNTS[t] - (cnt[c][t] || 0));
+      for (let k = 0; k < miss; k++) out.push(t);
+    }
+    return out;
+  };
+  const myTaken = myColor === "white" ? lostBy("b") : lostBy("w");
+  const opTaken = myColor === "white" ? lostBy("w") : lostBy("b");
+  const val = a => a.reduce((s, t) => s + PIECE_VALUES[t], 0);
+  const lead = val(myTaken) - val(opTaken);
+  const fmt = a => a.map(t => GLYPH_B[t]).join("");
+  $("capBottom").innerHTML = "<span>" + fmt(myTaken) + "</span>" +
+    (lead > 0 ? `<span class="lead">+${lead}</span>` : "");
+  $("capTop").innerHTML = "<span>" + fmt(opTaken) + "</span>" +
+    (lead < 0 ? `<span class="lead">+${-lead}</span>` : "");
+}
+
+/* ---- sounds & haptics ---- */
+let audioCtx = null;
+function beep(freq, dur, type, gain, delay) {
+  try {
+    audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    const t0 = audioCtx.currentTime + (delay || 0);
+    const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+    o.type = type || "sine"; o.frequency.value = freq;
+    g.gain.setValueAtTime(gain || .07, t0);
+    g.gain.exponentialRampToValueAtTime(.0001, t0 + dur);
+    o.connect(g); g.connect(audioCtx.destination);
+    o.start(t0); o.stop(t0 + dur);
+  } catch (err) { }
+}
+let prevMovesLen = 0, prevPc = null;
+function playMoveFeedback(model, checkSq) {
+  const pc = model.squares.filter(Boolean).length;
+  if (moves.length > prevMovesLen && prevPc !== null) {
+    if (gameOver) soundEnd();
+    else if (checkSq >= 0) soundCheck();
+    else if (pc < prevPc) soundCapture();
+    else soundMove();
+    try { navigator.vibrate && navigator.vibrate(12); } catch (err) { }
+  }
+  prevMovesLen = moves.length;
+  prevPc = pc;
+}
+function soundMove()   { beep(340, .07, "sine",   .06); }
+function soundCapture(){ beep(170, .1,  "square", .05); }
+function soundCheck()  { beep(660, .09, "sine",   .07); beep(880, .12, "sine", .07, .1); }
+function soundEnd()    { beep(392, .18, "sine",   .08); beep(494, .22, "sine", .08, .15); beep(587, .3, "sine", .08, .3); }
 
 function buildBoard() {
   boardEl.innerHTML = "";
@@ -462,6 +628,7 @@ function updateClocks() {
 
 /* ================= status / history ================= */
 function updateStatus() {
+  $("resignBtn").style.display = gameStarted && !gameOver && isOwner() ? "" : "none";
   if (boardThinking) { $("statusline").textContent = "board is thinking…"; $("statusline").className = "thinking"; return; }
   if (gameOver) { $("statusline").textContent = "game over"; $("statusline").className = ""; return; }
   if (!isOwner()) { $("statusline").textContent = ownerName ? ownerName + " is playing" : "waiting for a player"; $("statusline").className = ""; return; }
@@ -470,10 +637,30 @@ function updateStatus() {
   $("statusline").className = "";
 }
 
+// replay the game formatting each move: captures as ×, promotions as =
+function formattedMoves() {
+  const out = [];
+  let f = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+  for (const mv of moves) {
+    const squares = fenToSquares(f).squares;
+    const from = idxOf(mv.slice(0, 2)), to = idxOf(mv.slice(2, 4));
+    const mover = squares[from];
+    if (!mover) { out.push(mv); continue; }
+    const ep = mover.type === "p" && !squares[to] &&
+               (Math.abs(to - from) === 7 || Math.abs(to - from) === 9);
+    let txt = sqName(from) + (squares[to] || ep ? "×" : "–") + sqName(to);
+    if (mv[4]) txt += "=" + (GLYPH_W[mv[4]] || mv[4].toUpperCase());
+    out.push(txt);
+    f = applyLocalMove(f, mv);
+  }
+  return out;
+}
+
 function updateHistory() {
+  const fm = formattedMoves();
   const rows = [];
-  for (let i = 0; i < moves.length; i += 2) {
-    rows.push((i / 2 + 1) + ". " + moves[i] + (moves[i + 1] ? " " + moves[i + 1] : ""));
+  for (let i = 0; i < fm.length; i += 2) {
+    rows.push((i / 2 + 1) + ". " + fm[i] + (fm[i + 1] ? " " + fm[i + 1] : ""));
   }
   $("history").textContent = rows.join("  ");
   $("history").scrollTop = $("history").scrollHeight;
@@ -850,6 +1037,22 @@ $("lvl").oninput = () => {
   $("lvlLabel").textContent = LEVEL_TIMES[level - 1] + " / move";
 };
 $("startBtn").onclick = startGame;
+$("resignBtn").onclick = async () => {
+  if (!gameStarted || gameOver || !isOwner()) return;
+  if (!confirm("Resign the game?")) return;
+  try {
+    await fetchJson("/resign", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ pid: PID })
+    }, 10000);
+    soundEnd();
+  } catch (err) { /* next poll shows the truth */ }
+  await refreshState(true);
+};
+$("flipBtn").onclick = () => {
+  flipOverride = flipOverride === null ? !(myColor === "black") : !flipOverride;
+  render();
+};
 $("rematchBtn").onclick = () => {
   // the seat holder keeps the board for a rematch
   $("resultOverlay").classList.remove("show");

@@ -603,6 +603,7 @@ auto hash_size_handler = [](const int value)  {
 };
 
 bool allow_ponder         = false;
+bool g_web_suppress_ponder = false;   // set by the web bridge around its searches
 auto allow_ponder_handler = [](const bool value) {
 	allow_ponder = value;
 	printf("# Ponder %s\n", value ? "enabled" : "disabled");
@@ -1332,7 +1333,13 @@ void main_task()
 
 			global_cs.add(calculate_search_statistics());
 
-			if (allow_ponder)
+			// The web bridge skips pondering: the go handler runs the HTTP
+			// response's search synchronously, and an unbounded ponder here
+			// would delay run_web_task's return (and with it the /move clock
+			// booking) until some later command stops the ponder -- charging
+			// the engine for the human's think time. The web game re-searches
+			// every position anyway, so the ponder buys nothing.
+			if (allow_ponder && !g_web_suppress_ponder)
 				start_ponder(ponder_line);
 		}
 		catch(const std::exception& e) {
@@ -1463,6 +1470,9 @@ bool web_engine_go_movetime(int movetime_ms)
 	if (!g_web_go_handler)
 		return false;
 
+	// no pondering on the web path: it would delay this handler's return
+	// (and the /move clock booking) until a later command stops it
+	g_web_suppress_ponder = true;
 	g_web_go_handler(libchess::UCIGoParameters(
 		std::nullopt,                          // nodes
 		movetime_ms,                           // movetime (absolute time)
@@ -1471,6 +1481,7 @@ bool web_engine_go_movetime(int movetime_ms)
 		std::nullopt, std::nullopt,            // btime, binc
 		std::nullopt,                          // movestogo
 		false, false, std::nullopt));          // infinite, ponder, searchmoves
+	g_web_suppress_ponder = false;
 	return true;
 }
 
