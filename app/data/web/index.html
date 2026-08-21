@@ -80,6 +80,20 @@
   /* ---- status / history ---- */
   #statusline { text-align: center; font-size: 13px; color: #7c8790; min-height: 20px; }
   #statusline.thinking { color: #6ecb63; }
+  #seatBar {
+    display: flex; align-items: center; justify-content: center; gap: 10px;
+    font-size: 13px; color: #d9a13b; min-height: 24px; padding: 2px 0;
+  }
+  #seatBar button {
+    background: #2c313a; color: #e8e6e1; border: 1px solid #3a4048;
+    border-radius: 6px; padding: 4px 12px; font-size: 12px; cursor: pointer;
+  }
+  #nameInput {
+    width: 100%; box-sizing: border-box; margin: 6px 0 2px;
+    background: #23272e; color: #e8e6e1; border: 1px solid #3a4048;
+    border-radius: 8px; padding: 9px 12px; font-size: 14px;
+  }
+  .tip { font-size: 11px; color: #7c8790; margin-top: 10px; line-height: 1.5; }
   #history {
     margin: 0; padding: 8px 12px; background: #171d23; border: 1px solid #242c34;
     border-radius: 10px; font: 13px/1.7 ui-monospace, "SF Mono", monospace;
@@ -145,6 +159,7 @@
   </div>
 
   <div id="statusline">connecting…</div>
+  <div id="seatBar" hidden></div>
   <div id="history"></div>
 </div>
 
@@ -152,6 +167,7 @@
   <div class="card">
     <h2>Play chess</h2>
     <div class="sub">Join <b>DOG-CHESS</b>, tap a piece, then a target. Drag also works.</div>
+    <input id="nameInput" maxlength="16" placeholder="Your name (optional)" autocomplete="off">
     <div class="pick" id="colorPick">
       <button data-color="white">Play White</button>
       <button data-color="black">Play Black</button>
@@ -161,6 +177,7 @@
       <input type="range" id="lvl" min="1" max="10" value="4">
     </div>
     <button class="big" id="startBtn">Start game</button>
+    <div class="tip">One game at a time — others can watch or join the waitlist.<br>Tip: phones remember this network; "forget" it to stop auto-connecting.</div>
   </div>
 </div>
 
@@ -176,7 +193,8 @@
   <div class="card">
     <div id="resultTitle">—</div>
     <div id="resultSub"></div>
-    <button class="big" id="newGameBtn">New game</button>
+    <button class="big" id="rematchBtn">Rematch</button>
+    <button class="big alt" id="giveUpBtn">Give up the board</button>
     <button class="big alt" id="closeResultBtn">Keep watching</button>
   </div>
 </div>
@@ -215,6 +233,39 @@ let lastMove = null;        // [fromIdx, toIdx] highlight
 let sel = null;
 let dragging = false;
 let dragFrom = -1;
+
+/* ================= identity & seat (multi-player) ================= */
+// A random per-browser pid so the board knows who holds the seat.
+const PID = (() => {
+  let p = localStorage.getItem("dog_pid");
+  if (!p) {
+    const a = new Uint8Array(8);
+    crypto.getRandomValues(a);
+    p = [...a].map(b => b.toString(16).padStart(2, "0")).join("");
+    localStorage.setItem("dog_pid", p);
+  }
+  return p;
+})();
+let myName = localStorage.getItem("dog_name") || "";
+
+let ownerId = "";           // seat holder pid ("" = free board)
+let ownerName = "";
+let queueList = [];         // [{pid,name}]
+let idleMs = -1;
+let inQueue = false;
+
+function isOwner() { return !ownerId || ownerId === PID; }
+function queuePos() {
+  for (let i = 0; i < queueList.length; i++)
+    if (queueList[i].pid === PID) return i + 1;
+  return 0;
+}
+// head of the waitlist and the seat is free to take (game over / holder idle)
+function canTake() {
+  if (isOwner()) return false;
+  const over = gameOver || (idleMs >= 0 && idleMs > 180000);
+  return queuePos() === 1 && over;
+}
 
 /* ================= dom ================= */
 const $ = (id) => document.getElementById(id);
@@ -413,6 +464,7 @@ function updateClocks() {
 function updateStatus() {
   if (boardThinking) { $("statusline").textContent = "board is thinking…"; $("statusline").className = "thinking"; return; }
   if (gameOver) { $("statusline").textContent = "game over"; $("statusline").className = ""; return; }
+  if (!isOwner()) { $("statusline").textContent = ownerName ? ownerName + " is playing" : "waiting for a player"; $("statusline").className = ""; return; }
   if (engineToMove) { $("statusline").textContent = "board to move"; $("statusline").className = ""; return; }
   $("statusline").textContent = sel !== null ? "your move — tap a target" : "your move";
   $("statusline").className = "";
@@ -436,6 +488,7 @@ function sqIndexFromEvent(e) {
 
 function onPointerDown(e) {
   if (!gameStarted || gameOver || boardThinking || engineToMove || !fen) return;
+  if (!isOwner()) return; // spectators don't move
   const idx = sqIndexFromEvent(e);
   if (idx < 0) return;
   const sq = fenToSquares(fen).squares[idx];
@@ -515,12 +568,17 @@ async function fetchJson(path, opts, timeoutMs) {
   const t = setTimeout(() => ctl.abort(), timeoutMs);
   try {
     const r = await fetch(path, { ...opts, signal: ctl.signal });
-    if (!r.ok) throw new Error("HTTP " + r.status);
+    if (!r.ok) {
+      const e = new Error("HTTP " + r.status);
+      e.status = r.status;
+      throw e;
+    }
     return await r.json();
   } finally { clearTimeout(t); }
 }
 
 async function postMove(humanMs) {
+  if (!isOwner()) return; // spectators never drive the game
   boardThinking = true;
   moveSentAt = Date.now();
   updateStatus();
@@ -530,7 +588,7 @@ async function postMove(humanMs) {
       const r = await fetchJson("/move", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ moves: moves.join(" "), human_ms: humanMs, seq: seq++ })
+        body: JSON.stringify({ moves: moves.join(" "), human_ms: humanMs, seq: seq++, pid: PID })
       }, MOVE_FETCH_TIMEOUT_MS);
       boardThinking = false;
       clockSyncAt = Date.now();
@@ -547,6 +605,12 @@ async function postMove(humanMs) {
       await refreshState(true);
       return;
     } catch (err) {
+      if (err.status === 409) {
+        // the seat was taken mid-game (idle takeover): drop to spectator
+        boardThinking = false;
+        await refreshState(true);
+        return;
+      }
       tries++;
       if (tries >= 3) {
         boardThinking = false;
@@ -590,6 +654,13 @@ async function refreshState() {
       gameResult = "";
       $("resultOverlay").classList.remove("show");
     }
+    // seat / waitlist
+    ownerId = (s.owner && s.owner.pid) || "";
+    ownerName = (s.owner && s.owner.name) || "";
+    queueList = s.queue || [];
+    idleMs = (typeof s.idle_ms === "number") ? s.idle_ms : -1;
+    inQueue = queuePos() > 0;
+    updateSeatBar();
     render();
     return s;
   } catch (err) {
@@ -612,6 +683,9 @@ function showResult() {
   }
   $("resultTitle").textContent = title;
   $("resultSub").textContent = sub;
+  // seat actions belong to the holder only
+  $("rematchBtn").style.display = isOwner() ? "" : "none";
+  $("giveUpBtn").style.display = isOwner() ? "" : "none";
   $("resultOverlay").classList.add("show");
 }
 
@@ -622,6 +696,65 @@ function humanFlag() {
   $("resultTitle").textContent = "Out of time";
   $("resultSub").textContent = "Your clock hit zero.";
   $("resultOverlay").classList.add("show");
+}
+
+/* ================= seat / waitlist ================= */
+function updateSeatBar() {
+  const bar = $("seatBar");
+  if (!gameStarted || isOwner()) { bar.hidden = true; return; }
+  const pos = queuePos();
+  let html = "";
+  if (canTake()) {
+    html = "You're up! " +
+      "<button id=\"takeSeatBtn\">Take the board</button>";
+  } else if (pos > 0) {
+    html = ownerName + " is playing · you're #" + pos + " in line " +
+      "<button id=\"leaveQueueBtn\">Leave</button>";
+  } else {
+    html = ownerName + " is playing " +
+      "<button id=\"joinQueueBtn\">Join waitlist</button>";
+  }
+  bar.innerHTML = html;
+  bar.hidden = false;
+  const take = $("takeSeatBtn");
+  if (take) take.onclick = () => {
+    bar.hidden = true;
+    $("startOverlay").classList.add("show");
+  };
+  const join = $("joinQueueBtn");
+  if (join) join.onclick = joinQueue;
+  const leave = $("leaveQueueBtn");
+  if (leave) leave.onclick = async () => {
+    try {
+      await fetchJson("/unqueue", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pid: PID })
+      }, 10000);
+    } catch (err) { /* next poll corrects the view */ }
+    await refreshState();
+  };
+}
+
+async function joinQueue() {
+  try {
+    await fetchJson("/queue", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ pid: PID, name: myName })
+    }, 10000);
+  } catch (err) { /* next poll shows the truth */ }
+  await refreshState();
+}
+
+async function giveUpBoard() {
+  $("resultOverlay").classList.remove("show");
+  try {
+    await fetchJson("/yield", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ pid: PID })
+    }, 10000);
+  } catch (err) { /* keep watching; the seat stays until takeover */ }
+  gameStarted = false;
+  await refreshState();
 }
 
 async function startGame() {
@@ -635,16 +768,24 @@ async function startGame() {
   sel = null;
   fen = null;
   engineToMove = false;
+  myName = ($("nameInput").value || "").trim().slice(0, 16);
+  localStorage.setItem("dog_name", myName);
   try {
     const r = await fetchJson("/new", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ color: myColor, level })
+      body: JSON.stringify({ color: myColor, level, pid: PID, name: myName })
     }, 30000);
     if (r.clock) clocks = { white: r.clock.white, black: r.clock.black };
     clockSyncAt = Date.now();
     replyAt = Date.now();
   } catch (err) {
+    if (err.status === 409) {
+      // someone else holds the seat — join the waitlist instead
+      $("statusline").textContent = "seat busy";
+      await joinQueue();
+      return;
+    }
     $("statusline").textContent = "could not start the game";
     $("startOverlay").classList.add("show");
     return;
@@ -688,10 +829,12 @@ $("lvl").oninput = () => {
   $("lvlLabel").textContent = LEVEL_TIMES[level - 1] + " / move";
 };
 $("startBtn").onclick = startGame;
-$("newGameBtn").onclick = () => {
+$("rematchBtn").onclick = () => {
+  // the seat holder keeps the board for a rematch
   $("resultOverlay").classList.remove("show");
-  $("startOverlay").classList.add("show");
+  startGame();
 };
+$("giveUpBtn").onclick = giveUpBoard;
 $("closeResultBtn").onclick = () => $("resultOverlay").classList.remove("show");
 
 setInterval(() => refreshState(), POLL_MS);
@@ -700,6 +843,7 @@ setInterval(() => refreshState(), POLL_MS);
 setInterval(() => { if (fen && gameStarted) updateClocks(); }, 500);
 setInterval(refreshBattery, 30000);
 refreshBattery();
+$("nameInput").value = myName;
 refreshState().then(s => {
   if (s && s.moves && s.moves.length) {
     // mid-game page load: join the running game with the server's session
@@ -711,7 +855,7 @@ refreshState().then(s => {
     $("lvl").value = level;
     $("lvlLabel").textContent = LEVEL_TIMES[level - 1] + " / move";
     if (s.game_over) showResult();
-    else if (engineToMove && !gameOver) postMove(0);
+    else if (engineToMove && !gameOver && isOwner()) postMove(0);
   } else {
     $("startOverlay").classList.add("show");
   }

@@ -390,6 +390,30 @@ input wedge is a dev-env quirk, serial output is readable).
 - 2-3 friends, real devices (Android + iOS), no setup beyond joining the
   AP and opening the IP.
 - Polish: SSID/password, page tweaks, maybe a "battery to go" hint.
+
+**Implemented ahead of playtest (2026-08-21):**
+- **Captive portal** — a minimal DNS responder answers every query with the
+  board's IP, and an httpd catch-all (`/*`, wildcard matcher, registered
+  last) 302s foreign-host probes (captive.apple.com,
+  connectivitycheck.gstatic.com, msftconnecttest.com) to `http://192.168.4.1/`.
+  Joining phones pop their OS "sign in to network" sheet straight onto the
+  game page. Verified: all three probe domains resolve + redirect; our own
+  endpoints unaffected.
+- **Multi-player: one seat + waitlist** — two simultaneous games are not
+  feasible (one engine instance; every think uses both cores and the shared
+  TT). Instead each browser gets a random pid (localStorage); `/state`
+  serves `owner`/`queue`/`idle_ms`; only the seat holder may `/move` or
+  `/new` (409 otherwise; missing pid = legacy/dev bypass). Non-holders see
+  "<name> is playing", can join the waitlist (`/queue`, dedupe, positions),
+  leave it (`/unqueue`), and take the seat when it's free or the holder is
+  idle >3 min (abandoned seats self-heal; the continuous clock flags a
+  walked-off player within the base time anyway). The holder sees Rematch /
+  Give up the board on the result overlay. Names are sanitized server-side
+  before JSON. Verified end-to-end via API: take/reject/busy/yield/promote/
+  unqueue + full game with pids.
+- **Autoconnect** — an AP cannot forbid client auto-rejoin (client-side
+  behavior); the start overlay carries a "forget this network" tip, and the
+  open network + failed-portal marking keeps phones from preferring it.
 - Flash the final image, document the usage one-liner in README.
 
 ## Risks & mitigations

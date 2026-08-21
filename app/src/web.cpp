@@ -27,6 +27,7 @@
 #include "esp_pthread.h"
 #include "esp_spiffs.h"
 #include "esp_timer.h"
+#include "lwip/sockets.h"
 #include "nvs_flash.h"
 
 #include "web.h"
@@ -57,6 +58,45 @@ int64_t     g_web_last_seq      = 0;  // last booked /move seq (retry guard)
 // after every booked move; the continuous clock model deducts real time
 // between anchors so the server's clocks match what every page displays.
 int64_t     g_turn_started_ms   = 0;
+
+// ---- Multi-player: one game at a time, everyone else watches or queues.
+// A page identifies itself with a random pid (localStorage); the seat
+// holder plays, the rest see a waitlist. A missing pid is the legacy/dev
+// path and bypasses arbitration.
+std::string g_owner_pid;            // current seat holder ("" = free board)
+std::string g_owner_name;
+std::vector<std::pair<std::string, std::string>> g_queue; // {pid, name}
+int64_t     g_last_activity_ms  = 0;  // last booked move or /new
+
+constexpr int64_t SEAT_IDLE_TAKEOVER_MS = 3 * 60 * 1000; // abandoned-seat takeover
+
+// Names end up in JSON served to every client: keep them boring.
+static std::string sanitize_name(const std::string & in)
+{
+	std::string out;
+	for (char ch : in) {
+		if ((unsigned char)ch >= 0x20 && ch != '"' && ch != '\\' &&
+		    ch != '<' && ch != '>' && out.size() < 16)
+			out += ch;
+	}
+	return out.empty() ? "Guest" : out;
+}
+
+static void touch_activity()
+{
+	g_last_activity_ms = esp_timer_get_time() / 1000;
+}
+
+// The seat is considered free for takeover when no game is running, or the
+// seat holder has been inactive for a while (closed the tab and walked off).
+static bool seat_takeable()
+{
+	if (g_web_game_over)
+		return true;
+	if (!g_last_activity_ms)
+		return true;
+	return esp_timer_get_time() / 1000 - g_last_activity_ms > SEAT_IDLE_TAKEOVER_MS;
+}
 
 // Difficulty -> per-move budget. The page's slider sends the level; the
 // mapping lives here (server-authoritative) and always goes through the
@@ -109,6 +149,85 @@ esp_err_t handle_root(httpd_req_t *req)
 {
 	httpd_resp_set_type(req, "text/html");
 	return serve_file(req, "/spiffs/web/index.html");
+}
+
+// ---- Captive portal ----
+//
+// Minimal DNS responder: answers EVERY query with an A record pointing at
+// the board. Phones probing captive.apple.com / connectivitycheck.gstatic.com
+// / msftconnecttest.com all land on the httpd, where the catch-all handler
+// 302s them to the game page -- which is what makes the OS pop its
+// "sign in to network" sheet straight onto DOG-CHESS.
+static void dns_task_fn(void *)
+{
+	int sock = socket(AF_INET, SOCK_DGRAM, 0);
+	if (sock < 0)
+		return;
+	sockaddr_in addr = {};
+	addr.sin_family      = AF_INET;
+	addr.sin_port        = htons(53);
+	addr.sin_addr.s_addr = htonl(INADDR_ANY);
+	if (bind(sock, (sockaddr *)&addr, sizeof(addr)) < 0) {
+		close(sock);
+		return;
+	}
+
+	// answer record: name pointer | type A | class IN | ttl 60 | rdlen 4 | ip
+	static const uint8_t answer[] = {
+		0xC0, 0x0C, 0x00, 0x01, 0x00, 0x01,
+		0x00, 0x00, 0x00, 0x3C, 0x00, 0x04,
+		192, 168, 4, 1
+	};
+
+	uint8_t buf[512], out[600];
+	for (;;) {
+		sockaddr_in src = {};
+		socklen_t srclen = sizeof(src);
+		ssize_t n = recvfrom(sock, buf, sizeof(buf), 0, (sockaddr *)&src, &srclen);
+		if (n < 12)
+			continue;
+		const uint16_t qd = (uint16_t)((buf[4] << 8) | buf[5]);
+		if (qd < 1)
+			continue;
+		// skip the question section: QNAME labels, then QTYPE+QCLASS
+		size_t i = 12;
+		while (i + 1 < (size_t)n && buf[i])
+			i += buf[i] + 1;
+		i++;
+		if (i + 4 > (size_t)n)
+			continue;
+		i += 4;
+
+		buf[2] = 0x81; buf[3] = 0x80;   // response | recursion available
+		buf[6] = 0;    buf[7] = 1;      // ANCOUNT = 1
+		buf[8] = 0;    buf[9] = 0;      // NSCOUNT = 0
+		buf[10] = 0;   buf[11] = 0;     // ARCOUNT = 0
+
+		size_t len = i;
+		memcpy(out, buf, i);
+		memcpy(out + len, answer, sizeof(answer));
+		len += sizeof(answer);
+		sendto(sock, out, len, 0, (sockaddr *)&src, srclen);
+	}
+}
+
+// Catch-all for probe requests that arrive under a foreign host name.
+// Registered LAST so every real endpoint matches first.
+esp_err_t handle_catchall(httpd_req_t *req)
+{
+	char host[64] = { 0 };
+	const size_t host_len = httpd_req_get_hdr_value_len(req, "Host");
+	if (host_len > 0 && host_len < sizeof(host))
+		httpd_req_get_hdr_value_str(req, "Host", host, sizeof(host));
+
+	if (strstr(host, ap_ip) != host) {
+		// foreign host = OS connectivity probe -> bounce into the game
+		httpd_resp_set_status(req, "302 Found");
+		httpd_resp_set_hdr(req, "Location", "http://192.168.4.1/");
+		return httpd_resp_sendstr(req, "");
+	}
+	// our own origin but an unknown path: nothing there
+	return httpd_resp_send_err(req, HTTPD_404_NOT_FOUND, "not found");
 }
 
 esp_err_t handle_state(httpd_req_t *req)
@@ -177,6 +296,25 @@ esp_err_t handle_state(httpd_req_t *req)
 		g_web_level, g_web_human_color.c_str(),
 		(long long)w, (long long)b,
 		level_inc_ms(g_web_level));
+	body += buf;
+
+	// multi-player: seat holder + waitlist + holder idle time
+	body += ",\"owner\":{\"pid\":\"" + g_owner_pid + "\",\"name\":\"" + g_owner_name + "\"}";
+	body += ",\"queue\":[";
+	for (size_t i = 0; i < g_queue.size(); i++) {
+		if (i)
+			body += ",";
+		body += "{\"pid\":\"";
+		body += g_queue[i].first;
+		body += "\",\"name\":\"";
+		body += g_queue[i].second;
+		body += "\"}";
+	}
+	body += "]";
+	snprintf(buf, sizeof(buf), ",\"idle_ms\":%lld",
+	         g_last_activity_ms
+	             ? (long long)(esp_timer_get_time() / 1000 - g_last_activity_ms)
+	             : -1LL);
 	body += buf;
 
 	body += ",\"moves\":[";
@@ -332,6 +470,24 @@ esp_err_t handle_move(httpd_req_t *req)
 	if (seq_json && cJSON_IsNumber(seq_json) && seq_json->valuedouble > 0)
 		seq = (int64_t)seq_json->valuedouble;
 
+	// seat enforcement: only the current player may move. A missing pid is
+	// the legacy/dev path and stays allowed.
+	std::string pid;
+	cJSON *pid_json = cJSON_GetObjectItem(json, "pid");
+	if (pid_json && cJSON_IsString(pid_json))
+		pid = pid_json->valuestring;
+	if (!pid.empty() && !g_owner_pid.empty() && pid != g_owner_pid) {
+		char resp[192];
+		snprintf(resp, sizeof(resp),
+			"{\"error\":\"not_owner\",\"owner\":\"%s\"}", g_owner_name.c_str());
+		cJSON_Delete(json);
+		printf("[web] /move: rejected %s (seat held by %s)\n",
+		       pid.substr(0, 8).c_str(), g_owner_name.c_str());
+		httpd_resp_set_type(req, "application/json");
+		httpd_resp_set_status(req, "409 Conflict");
+		return httpd_resp_sendstr(req, resp);
+	}
+
 	// Continuous chess-clock model: the server owns the clocks. The page's
 	// legacy human_ms field is accepted but ignored -- real time is deducted
 	// from the turn anchor instead, so every client and the server agree.
@@ -419,6 +575,7 @@ esp_err_t handle_move(httpd_req_t *req)
 		human_clock += inc;
 		engine_clock += inc;
 		g_turn_started_ms = esp_timer_get_time() / 1000;
+		touch_activity();
 	}
 
 	// game-over resolution: terminal position first, then clock flags
@@ -490,6 +647,7 @@ esp_err_t handle_new(httpd_req_t *req)
 	std::string color = "white";
 	int level = 1;
 	int64_t base_ms = BASE_CLOCK_MS;
+	std::string pid, name;
 	// copy out of the cJSON tree before it is freed below
 	cJSON *c = cJSON_GetObjectItem(json, "color");
 	if (c && cJSON_IsString(c))
@@ -503,12 +661,40 @@ esp_err_t handle_new(httpd_req_t *req)
 		base_ms = (int64_t)c->valuedouble;
 	if (base_ms > BASE_CLOCK_MS)
 		base_ms = BASE_CLOCK_MS;
+	c = cJSON_GetObjectItem(json, "pid");
+	if (c && cJSON_IsString(c))
+		pid = c->valuestring;
+	c = cJSON_GetObjectItem(json, "name");
+	if (c && cJSON_IsString(c))
+		name = sanitize_name(c->valuestring);
 	cJSON_Delete(json);
 
 	if (color != "white" && color != "black")
 		color = "white";
 	if (level < 1 || level > 10)
 		level = 4;
+
+	// Seat arbitration: one game at a time. A different pid may take the
+	// seat only when it is free, or when the requester heads the waitlist
+	// and the game is over / the holder went idle. A missing pid is the
+	// legacy/dev path and always passes.
+	if (!pid.empty() && !g_owner_pid.empty() && pid != g_owner_pid) {
+		int pos = 0;
+		for (size_t k = 0; k < g_queue.size(); k++)
+			if (g_queue[k].first == pid) { pos = (int)k + 1; break; }
+		const bool head = pos == 1;
+		if (!head || !seat_takeable()) {
+			char resp[256];
+			snprintf(resp, sizeof(resp),
+				"{\"error\":\"busy\",\"owner\":\"%s\",\"queue_pos\":%d}",
+				g_owner_name.c_str(), pos);
+			printf("[web] /new: %s is busy (seat held by %s)\n",
+			       pid.substr(0, 8).c_str(), g_owner_name.c_str());
+			httpd_resp_set_type(req, "application/json");
+			httpd_resp_set_status(req, "409 Conflict");
+			return httpd_resp_sendstr(req, resp);
+		}
+	}
 
 	if (!run_web_task([] { web_engine_set_position({}); })) {
 		printf("[web] /new: engine busy\n");
@@ -526,6 +712,22 @@ esp_err_t handle_new(httpd_req_t *req)
 	g_web_last_seq    = 0;
 	g_turn_started_ms = esp_timer_get_time() / 1000;
 
+	// seat bookkeeping
+	if (!pid.empty()) {
+		g_owner_pid  = pid;
+		if (!name.empty())
+			g_owner_name = name;
+		else if (g_owner_name.empty())
+			g_owner_name = "Guest";
+		for (auto it = g_queue.begin(); it != g_queue.end(); ++it)
+			if (it->first == pid) { g_queue.erase(it); break; }
+	} else {
+		// legacy/dev client: clean slate, free seat afterwards
+		g_owner_pid.clear();
+		g_owner_name.clear();
+	}
+	touch_activity();
+
 	char resp[256];
 	snprintf(resp, sizeof(resp),
 		"{\"ok\":true,\"color\":\"%s\",\"level\":%d,"
@@ -537,6 +739,78 @@ esp_err_t handle_new(httpd_req_t *req)
 
 	httpd_resp_set_type(req, "application/json");
 	return httpd_resp_sendstr(req, resp);
+}
+
+// ---- waitlist ----
+static bool parse_pid_name(httpd_req_t *req, std::string & pid, std::string & name)
+{
+	char body[256];
+	if (!read_body(req, body, sizeof(body)))
+		return false;
+	cJSON *json = cJSON_Parse(body);
+	if (!json)
+		return false;
+	cJSON *c = cJSON_GetObjectItem(json, "pid");
+	if (c && cJSON_IsString(c))
+		pid = c->valuestring;
+	c = cJSON_GetObjectItem(json, "name");
+	if (c && cJSON_IsString(c))
+		name = sanitize_name(c->valuestring);
+	cJSON_Delete(json);
+	return !pid.empty();
+}
+
+esp_err_t handle_queue(httpd_req_t *req)
+{
+	std::string pid, name;
+	if (!parse_pid_name(req, pid, name))
+		return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "need pid");
+
+	// dedupe: re-joining moves you to the back
+	for (auto it = g_queue.begin(); it != g_queue.end(); ++it)
+		if (it->first == pid) { g_queue.erase(it); break; }
+	g_queue.push_back({ pid, name });
+
+	char resp[128];
+	snprintf(resp, sizeof(resp), "{\"ok\":true,\"pos\":%zu}", g_queue.size());
+	printf("[web] queue: %s joined (pos %zu)\n", name.c_str(), g_queue.size());
+	httpd_resp_set_type(req, "application/json");
+	return httpd_resp_sendstr(req, resp);
+}
+
+esp_err_t handle_unqueue(httpd_req_t *req)
+{
+	std::string pid, name;
+	if (!parse_pid_name(req, pid, name))
+		return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "need pid");
+	for (auto it = g_queue.begin(); it != g_queue.end(); ++it)
+		if (it->first == pid) { g_queue.erase(it); break; }
+	httpd_resp_set_type(req, "application/json");
+	return httpd_resp_sendstr(req, "{\"ok\":true}");
+}
+
+esp_err_t handle_yield(httpd_req_t *req)
+{
+	std::string pid, name;
+	if (!parse_pid_name(req, pid, name))
+		return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "need pid");
+
+	// the holder may always yield; anyone else only when the game is over
+	// or the holder went idle (walked off), so a seat is never stuck
+	const bool allowed = pid == g_owner_pid || seat_takeable();
+	if (!allowed) {
+		char resp[192];
+		snprintf(resp, sizeof(resp),
+			"{\"error\":\"active\",\"owner\":\"%s\"}", g_owner_name.c_str());
+		httpd_resp_set_type(req, "application/json");
+		httpd_resp_set_status(req, "409 Conflict");
+		return httpd_resp_sendstr(req, resp);
+	}
+	printf("[web] yield: %s releases the seat\n", g_owner_name.c_str());
+	g_owner_pid.clear();
+	g_owner_name.clear();
+	httpd_resp_set_type(req, "application/json");
+	return httpd_resp_sendstr(req, "{\"ok\":true}");
 }
 
 esp_err_t handle_battery(httpd_req_t *req)
@@ -578,8 +852,11 @@ httpd_handle_t start_httpd()
 	// 8 KB: the Phase-1 /move handler parses JSON + spawns the search
 	// worker here; 4 KB overflowed and corrupted the adjacent heap.
 	cfg.stack_size = 8192;
-	cfg.max_uri_handlers = 8;
+	cfg.max_uri_handlers = 12;
 	cfg.lru_purge_enable = true;
+	// wildcard matcher for the captive-portal catch-all ("/*"); exact
+	// registered URIs still match exactly, in registration order
+	cfg.uri_match_fn = httpd_uri_match_wildcard;
 
 	httpd_handle_t server = nullptr;
 	if (httpd_start(&server, &cfg) != ESP_OK) {
@@ -592,11 +869,20 @@ httpd_handle_t start_httpd()
 	httpd_uri_t move = { .uri = "/move", .method = HTTP_POST, .handler = handle_move, .user_ctx = nullptr };
 	httpd_uri_t newgame = { .uri = "/new", .method = HTTP_POST, .handler = handle_new, .user_ctx = nullptr };
 	httpd_uri_t battery = { .uri = "/battery", .method = HTTP_GET, .handler = handle_battery, .user_ctx = nullptr };
+	httpd_uri_t queue = { .uri = "/queue", .method = HTTP_POST, .handler = handle_queue, .user_ctx = nullptr };
+	httpd_uri_t unqueue = { .uri = "/unqueue", .method = HTTP_POST, .handler = handle_unqueue, .user_ctx = nullptr };
+	httpd_uri_t yield_seat = { .uri = "/yield", .method = HTTP_POST, .handler = handle_yield, .user_ctx = nullptr };
 	httpd_register_uri_handler(server, &root);
 	httpd_register_uri_handler(server, &state);
 	httpd_register_uri_handler(server, &move);
 	httpd_register_uri_handler(server, &newgame);
 	httpd_register_uri_handler(server, &battery);
+	httpd_register_uri_handler(server, &queue);
+	httpd_register_uri_handler(server, &unqueue);
+	httpd_register_uri_handler(server, &yield_seat);
+	// LAST: the captive-portal catch-all for foreign-host probes
+	httpd_uri_t fallback = { .uri = "/*", .method = HTTP_GET, .handler = handle_catchall, .user_ctx = nullptr };
+	httpd_register_uri_handler(server, &fallback);
 	return server;
 }
 
@@ -634,6 +920,9 @@ void init_web()
 	esp_netif_get_ip_info(ap_netif, &ip);
 	snprintf(ap_ip, sizeof(ap_ip), IPSTR, IP2STR(&ip.ip));
 	printf("[web] AP up: %s, ip %s\n", AP_SSID, ap_ip);
+
+	// captive-portal DNS: every query resolves to the board
+	xTaskCreate(dns_task_fn, "dns", 4096, nullptr, 5, nullptr);
 
 	if (start_httpd())
 		printf("[web] httpd up: http://%s/\n", ap_ip);
