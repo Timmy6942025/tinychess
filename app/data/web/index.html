@@ -491,12 +491,17 @@ function onPointerDown(e) {
   if (!isOwner()) return; // spectators don't move
   const idx = sqIndexFromEvent(e);
   if (idx < 0) return;
+  // second tap on a legal target completes the move (tap-to-move)
+  if (sel !== null && sel !== idx && tryMove(sel, idx)) return;
   const sq = fenToSquares(fen).squares[idx];
-  if (sq && sq.color === myColor) {
+  // fenToSquares colors are "w"/"b"; myColor is "white"/"black"
+  const mine = sq && sq.color === (myColor === "white" ? "w" : "b");
+  if (mine) {
     sel = idx;
     dragging = true;
     dragFrom = idx;
-    boardEl.setPointerCapture(e.pointerId);
+    // synthetic pointers (automation) have no active pointer id
+    try { boardEl.setPointerCapture(e.pointerId); } catch (err) { }
     e.preventDefault();
   } else {
     sel = null;
@@ -518,17 +523,20 @@ function onPointerMove(e) {
 function onPointerUp(e) {
   if (!dragging) return;
   dragging = false;
-  dragFrom = -1;
   sqEls.forEach(el => el.classList.remove("ghost"));
   const idx = sqIndexFromEvent(e);
-  if (idx >= 0) handleMove(sel, idx);
+  // a plain tap (release on the same square) keeps the selection so the
+  // next tap can complete the move; only a real drag releases here
+  if (idx >= 0 && idx !== dragFrom) handleMove(dragFrom, idx);
 }
 
-function handleMove(from, to) {
-  if (from === null) return;
+function tryMove(from, to) {
+  // shared by drag-release and tap-to-move; returns false when from->to
+  // is not a legal move (the caller then treats the tap as a re-select)
+  if (from === null || from === to) { sel = null; render(); return false; }
   const opts = (legalMap[from] || []).filter(t => t.to === to);
   sel = null;
-  if (!opts.length) { render(); return; }
+  if (!opts.length) { render(); return false; }
   const humanMs = Math.max(0, Date.now() - replyAt);
   if (opts.some(t => t.promo)) {
     showPromo(from, to, opts, humanMs);
@@ -536,6 +544,11 @@ function handleMove(from, to) {
     submitMove(sqName(from) + sqName(to), humanMs);
   }
   render();
+  return true;
+}
+
+function handleMove(from, to) {
+  tryMove(from, to);
 }
 
 function submitMove(moveStr, humanMs) {
@@ -819,6 +832,11 @@ buildBoard();
 boardEl.addEventListener("pointerdown", onPointerDown);
 boardEl.addEventListener("pointermove", onPointerMove);
 boardEl.addEventListener("pointerup", onPointerUp);
+boardEl.addEventListener("pointercancel", () => {
+  dragging = false;
+  dragFrom = -1;
+  sqEls.forEach(el => el.classList.remove("ghost"));
+});
 boardEl.addEventListener("contextmenu", e => e.preventDefault());
 
 document.querySelectorAll("#colorPick button").forEach(b => {
