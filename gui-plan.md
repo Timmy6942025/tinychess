@@ -317,12 +317,14 @@ playtest zero desync.
   shows "USB"; the 3300-4200 mV → 0-100% mapping and the scale constant
   still need a real battery + multimeter (user item below).
 
-**Remaining (physical / device, needs the user):** battery calibration
-(multimeter vs `v_mv_est*2`, set the scale + flip `calibrated`); a 2 h
-untethered battery session (brownout/WDT under sustained search + WiFi TX);
-a real-phone playtest (join the AP + touch UX on an actual Android/iOS
-phone); optional: serial console mid-game (USB-JTAG input wedge is a
-dev-env quirk, serial output is readable).
+**Remaining (physical / device):** ~~battery calibration~~ **N/A by user
+decision (2026-08-21)** — the board is powered exclusively from a USB
+power bank (no LiPo on the BAT pins, no meter), so `/battery` always
+reads USB power and the page's "USB" chip is the correct permanent
+display; the 2 h untethered session was already passed on that same power
+bank. Remaining: a real-phone playtest (join the AP + touch UX on an
+actual Android/iOS phone); optional: serial console mid-game (USB-JTAG
+input wedge is a dev-env quirk, serial output is readable).
 
 **Phase 3 deep verification (2026-08-20, post-soak):**
 - **Task WDT made real (sdkconfig)** — `CONFIG_ESP_TASK_WDT_PANIC` was off:
