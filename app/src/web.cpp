@@ -105,17 +105,17 @@ static bool seat_takeable()
 // board's spending at every level.
 int level_movetime_ms(int level)
 {
-	// casual ladder: near-instant (weak) up to a serious-but-playable
-	// 30 s think; anything beyond that makes a phone game crawl
-	static const int table[] = { 300, 500, 1000, 2000, 3000,
-	                             5000, 8000, 12000, 20000, 30000 };
+	// 0.3s .. 120s per move - wide enough for bullet up to deep analysis;
+	// beyond 120s a phone game stalls, so clamp there
+	static const int table[] = { 300, 500, 1000, 2000, 4000,
+	                             8000, 15000, 30000, 60000, 120000 };
 	return table[level - 1];
 }
 
 int level_inc_ms(int level)
 {
-	static const int table[] = { 250, 500, 750, 1000, 1500,
-	                             2000, 2500, 3000, 4000, 5000 };
+	static const int table[] = { 500, 750, 1000, 1500, 2000,
+	                             3000, 5000, 7500, 10000, 15000 };
 	return table[level - 1];
 }
 
