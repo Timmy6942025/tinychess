@@ -14,8 +14,9 @@
     display: flex; justify-content: center;
   }
   #app {
-    width: min(100vw, 480px); min-height: 100%; padding: 10px 12px 24px;
+    width: 100%; max-width: 480px; min-height: 100%; padding: 10px 12px 24px;
     display: flex; flex-direction: column; gap: 8px;
+    min-width: 0;
   }
 
   /* ---- header ---- */
@@ -43,20 +44,26 @@
 
   /* ---- board ---- */
   #board {
-    width: 100%; aspect-ratio: 1/1; display: grid;
-    grid-template-columns: repeat(8, 1fr); grid-template-rows: repeat(8, 1fr);
+    width: 100%; max-width: 100%; aspect-ratio: 1 / 1; display: grid;
+    grid-template-columns: repeat(8, minmax(0, 1fr)); grid-template-rows: repeat(8, minmax(0, 1fr));
     border-radius: 12px; overflow: hidden; border: 1px solid #242c34;
     box-shadow: 0 12px 40px rgba(0,0,0,.45); user-select: none; touch-action: none;
+    min-width: 0; min-height: 0;
   }
-  .sq { position: relative; display: flex; align-items: center; justify-content: center; }
+  .sq { position: relative; display: flex; align-items: center; justify-content: center; min-width: 0; min-height: 0; overflow: hidden; }
   .sq.light { background: #ece6d8; }
   .sq.dark  { background: #b3a98e; }
   .sq.sel { background: #f2e078; }
   .sq.last { background: #e3c76e; }
   .piece {
-    font-size: clamp(22px, 11.5vw, 52px); line-height: 1;
+    font-size: clamp(22px, 9vw, 42px); line-height: 1;
     z-index: 1; pointer-events: none;
     will-change: transform;
+    min-width: 0; min-height: 0; max-width: 100%; max-height: 100%;
+    display: flex; align-items: center; justify-content: center;
+    font-family: "Apple Symbols", "Segoe UI Symbol", "Noto Sans Symbols2", "DejaVu Sans", sans-serif;
+    font-variant-emoji: text; -webkit-font-variant-emoji: text;
+    text-rendering: geometricPrecision;
   }
   /* white = outlined glyph filled near-white with a dark edge; black =
      filled dark glyph with a faint light edge -- reads on both squares */
@@ -64,6 +71,8 @@
              text-shadow: 0 2px 2px rgba(0,0,0,.35); }
   .piece.b { color: #262626; -webkit-text-stroke: 1.1px #0c0c0c; paint-order: stroke fill;
              text-shadow: 0 2px 2px rgba(0,0,0,.25); }
+  /* pawns are intrinsically smaller in most chess fonts – nudge them to match other pieces */
+  .piece[data-type="p"] { font-size: clamp(24px, 9.8vw, 46px); }
   .sq.check::after {
     content: ""; position: absolute; inset: 0; z-index: 0;
     background: radial-gradient(circle, rgba(224,60,50,.55) 20%, rgba(224,60,50,.18) 70%);
@@ -161,6 +170,8 @@
   #promoGrid button {
     flex: 1; font-size: 34px; padding: 10px 0; border-radius: 12px;
     border: 1px solid #2a343e; background: #1d252c; cursor: pointer;
+    font-family: "Apple Symbols", "Segoe UI Symbol", "Noto Sans Symbols2", "DejaVu Sans", sans-serif;
+    font-variant-emoji: text; -webkit-font-variant-emoji: text;
   }
   #resultTitle { font-size: 24px; font-weight: 700; margin: 0 0 4px; }
   #resultSub { color: #7c8790; font-size: 14px; margin-bottom: 18px; }
@@ -196,6 +207,10 @@
   <div id="statusline">connecting…</div>
   <div id="seatBar" hidden></div>
   <div id="history"></div>
+  <div id="postGameBar" hidden style="display:none; gap:8px; margin-top:4px;">
+    <button id="backToResultBtn" style="flex:1; padding:11px 0; border-radius:10px; background:#2a343e; color:#d8dde2; border:1px solid #2a343e; cursor:pointer; font-size:14px; font-weight:600;">Back to result</button>
+    <button id="exitPostBtn" style="flex:1; padding:11px 0; border-radius:10px; background:#1d252c; color:#d8dde2; border:1px solid #2a343e; cursor:pointer; font-size:14px; font-weight:600;">Exit</button>
+  </div>
 </div>
 
 <div class="overlay" id="startOverlay">
@@ -230,7 +245,7 @@
     <div id="resultSub"></div>
     <button class="big" id="rematchBtn">Rematch</button>
     <button class="big alt" id="giveUpBtn">Give up the board</button>
-    <button class="big alt" id="closeResultBtn">Keep watching</button>
+    <button class="big alt" id="viewBoardBtn">View board</button>
   </div>
 </div>
 
@@ -240,8 +255,11 @@
 /* ================= constants ================= */
 // white uses the OUTLINED glyphs, black the FILLED ones -- the standard
 // way to keep both colors readable on light and dark squares alike
-const GLYPH_W = { k: "♔", q: "♕", r: "♖", b: "♗", n: "♘", p: "♙" };
-const GLYPH_B = { k: "♚", q: "♛", r: "♜", b: "♝", n: "♞", p: "♟" };
+// U+FE0E forces text presentation on iOS (prevents the black pawn ♟
+// turning into a mismatched color-emoji while other pieces stay text)
+const VS_TXT = "\uFE0E";
+const GLYPH_W = { k: "♔"+VS_TXT, q: "♕"+VS_TXT, r: "♖"+VS_TXT, b: "♗"+VS_TXT, n: "♘"+VS_TXT, p: "♙"+VS_TXT };
+const GLYPH_B = { k: "♚"+VS_TXT, q: "♛"+VS_TXT, r: "♜"+VS_TXT, b: "♝"+VS_TXT, n: "♞"+VS_TXT, p: "♟"+VS_TXT };
 const PIECE_GLYPHS = GLYPH_B; // filled set (promotion dialog etc.)
 const PIECE_VALUES = { p: 1, n: 3, b: 3, r: 5, q: 9, k: 0 };
 const LEVEL_TIMES = ["0.3s", "0.5s", "1s", "2s", "3s", "5s", "8s", "12s", "20s", "30s"];
@@ -429,6 +447,7 @@ function render() {
     if (sq) {
       if (!piece) { piece = document.createElement("span"); el.appendChild(piece); }
       piece.className = "piece " + sq.color;
+      piece.dataset.type = sq.type;
       piece.textContent = sq.color === "w" ? GLYPH_W[sq.type] : GLYPH_B[sq.type];
     } else if (piece) { piece.remove(); }
 
@@ -847,12 +866,14 @@ async function refreshState() {
       gameOver = true;
       gameResult = s.result || "";
       clientFlagged = false;
-      if (!$("resultOverlay").classList.contains("show")) showResult();
+      const viewing = !$("postGameBar").hidden;
+      if (!$("resultOverlay").classList.contains("show") && !viewing) showResult();
     } else if (gameOver && !clientFlagged) {
       // the mover started a fresh game; drop a stale spectator game-over
       gameOver = false;
       gameResult = "";
       $("resultOverlay").classList.remove("show");
+      hidePostGameBar();
     }
     // seat / waitlist
     ownerId = (s.owner && s.owner.pid) || "";
@@ -870,6 +891,14 @@ async function refreshState() {
 }
 
 /* ================= game flow ================= */
+function hidePostGameBar() {
+  const bar = $("postGameBar");
+  if (bar) { bar.hidden = true; bar.style.display = "none"; }
+}
+function showPostGameBar() {
+  const bar = $("postGameBar");
+  if (bar) { bar.hidden = false; bar.style.display = "flex"; }
+}
 function showResult() {
   let title, sub;
   if (gameResult === "draw") {
@@ -886,6 +915,9 @@ function showResult() {
   // seat actions belong to the holder only
   $("rematchBtn").style.display = isOwner() ? "" : "none";
   $("giveUpBtn").style.display = isOwner() ? "" : "none";
+  // View board is always available – lets anyone inspect the final position
+  $("viewBoardBtn").style.display = "";
+  hidePostGameBar();
   $("resultOverlay").classList.add("show");
 }
 
@@ -895,6 +927,8 @@ function humanFlag() {
   gameResult = myColor === "white" ? "black_wins" : "white_wins";
   $("resultTitle").textContent = "Out of time";
   $("resultSub").textContent = "Your clock hit zero.";
+  $("viewBoardBtn").style.display = "";
+  hidePostGameBar();
   $("resultOverlay").classList.add("show");
 }
 
@@ -947,6 +981,7 @@ async function joinQueue() {
 
 async function giveUpBoard() {
   $("resultOverlay").classList.remove("show");
+  hidePostGameBar();
   try {
     await fetchJson("/yield", {
       method: "POST", headers: { "Content-Type": "application/json" },
@@ -963,6 +998,8 @@ async function giveUpBoard() {
 async function startGame() {
   gameStarted = false;
   $("startOverlay").classList.remove("show");
+  hidePostGameBar();
+  $("resultOverlay").classList.remove("show");
   gameOver = false;
   gameResult = "";
   clientFlagged = false;
@@ -1056,10 +1093,22 @@ $("flipBtn").onclick = () => {
 $("rematchBtn").onclick = () => {
   // the seat holder keeps the board for a rematch
   $("resultOverlay").classList.remove("show");
+  hidePostGameBar();
   startGame();
 };
 $("giveUpBtn").onclick = giveUpBoard;
-$("closeResultBtn").onclick = () => $("resultOverlay").classList.remove("show");
+$("viewBoardBtn").onclick = () => {
+  $("resultOverlay").classList.remove("show");
+  showPostGameBar();
+};
+$("backToResultBtn").onclick = () => {
+  hidePostGameBar();
+  $("resultOverlay").classList.add("show");
+};
+$("exitPostBtn").onclick = () => {
+  hidePostGameBar();
+  giveUpBoard();
+};
 
 setInterval(() => refreshState(), POLL_MS);
 // smooth clock display between polls and during the engine's think
