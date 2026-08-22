@@ -2,53 +2,92 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#101418">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>DOG-CHESS</title>
 <style>
   :root { color-scheme: dark; }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; overscroll-behavior: none; }
   body {
     margin: 0; background: #101418; color: #d8dde2;
-    font: 16px/1.4 -apple-system, "Segoe UI", Roboto, sans-serif;
+    font: 15px/1.4 -apple-system, "Segoe UI", Roboto, sans-serif;
     display: flex; justify-content: center;
+    overflow: hidden;
+    touch-action: manipulation;
+    -webkit-user-select: none; user-select: none;
+    -webkit-touch-callout: none;
   }
+  input { -webkit-user-select: text; user-select: text; }
   #app {
-    width: 100%; max-width: 480px; min-height: 100%; padding: 10px 12px 24px;
-    display: flex; flex-direction: column; gap: 8px;
-    min-width: 0;
+    width: 100%; max-width: 520px;
+    height: 100vh; height: 100dvh;
+    padding: calc(6px + env(safe-area-inset-top)) 10px
+             calc(10px + env(safe-area-inset-bottom));
+    display: flex; flex-direction: column; gap: 7px;
+    min-width: 0; min-height: 0;
   }
 
   /* ---- header ---- */
-  header { display: flex; align-items: center; gap: 8px; padding: 4px 2px; }
-  header h1 { margin: 0; font-size: 18px; letter-spacing: .5px; }
-  .dot { width: 10px; height: 10px; border-radius: 50%; background: #6ecb63; flex: none; }
+  header { display: flex; align-items: center; gap: 8px; padding: 2px; flex: none; }
+  header h1 { margin: 0; font-size: 16px; letter-spacing: .5px; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: #6ecb63; flex: none; }
   .dot.off { background: #d9a13b; }
   #battery {
-    margin-left: auto; font-size: 12px; color: #aeb7c0; font-variant-numeric: tabular-nums;
+    margin-left: auto; font-size: 11px; color: #aeb7c0; font-variant-numeric: tabular-nums;
     background: #1a2128; border: 1px solid #263039; border-radius: 8px; padding: 3px 8px;
   }
   #battery.low { color: #e06c5a; }
 
-  /* ---- clocks ---- */
-  .clock {
-    display: flex; justify-content: space-between; align-items: center;
-    padding: 7px 12px; border-radius: 10px; background: #171d23;
-    border: 1px solid #242c34; font-variant-numeric: tabular-nums;
+  /* ---- player rows: clock + captured pieces on one line ---- */
+  .playerRow {
+    display: flex; align-items: center; gap: 10px; flex: none;
+    padding: 5px 12px; border-radius: 10px; background: #171d23;
+    border: 1px solid #242c34;
   }
-  .clock .name { font-size: 12px; color: #7c8790; text-transform: uppercase; letter-spacing: 1px; }
-  .clock .time { font-size: 21px; font-weight: 600; }
-  .clock.active { border-color: #3d6b54; background: #1c2429; }
-  .clock.active .time { color: #6ecb63; }
-  .clock.low .time { color: #e06c5a; }
+  .pcell { display: flex; align-items: baseline; gap: 8px; flex: none; min-width: 0; }
+  .pcell .name {
+    font-size: 11px; color: #7c8790; text-transform: uppercase; letter-spacing: 1px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 32vw;
+  }
+  .pcell .time { font-size: 19px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .playerRow.active { border-color: #3d6b54; background: #1c2429; }
+  .playerRow.active .time { color: #6ecb63; }
+  .playerRow.low .time { color: #e06c5a; }
+  .capbar {
+    margin-left: auto; min-width: 0; overflow: hidden; white-space: nowrap;
+    display: flex; align-items: center; font-size: 0;
+  }
+  .capbar img {
+    width: 19px; height: 19px; object-fit: contain; margin-left: -6px;
+    filter: drop-shadow(0 1px 1px rgba(0,0,0,.25));
+  }
+  .capbar img:first-child { margin-left: 0; }
+  .capbar .lead { font-size: 12px; color: #aeb7c0; font-variant-numeric: tabular-nums; margin-left: 5px; }
 
   /* ---- board ---- */
+  /* boardWrap owns all spare height; cqmin sizes the board to the largest
+     square that fits, so nothing ever needs to scroll on a phone */
+  #boardWrap {
+    flex: 1 1 auto; min-height: 0; min-width: 0;
+    display: flex; align-items: center; justify-content: center;
+    container-type: size;
+  }
   #board {
-    width: 100%; max-width: 100%; aspect-ratio: 1 / 1; display: grid;
+    width: 100cqmin; aspect-ratio: 1 / 1; display: grid;
     grid-template-columns: repeat(8, minmax(0, 1fr)); grid-template-rows: repeat(8, minmax(0, 1fr));
     border-radius: 12px; overflow: hidden; border: 1px solid #242c34;
     box-shadow: 0 12px 40px rgba(0,0,0,.45); user-select: none; touch-action: none;
     min-width: 0; min-height: 0;
+  }
+  @supports not (width: 1cqmin) {
+    html, body { overflow: auto; }
+    #app { height: auto; min-height: 100vh; }
+    #boardWrap { container-type: normal; flex: none; }
+    #board { width: 100%; max-width: 460px; }
   }
   .sq { position: relative; display: flex; align-items: center; justify-content: center; min-width: 0; min-height: 0; overflow: hidden; }
   .sq.light { background: #ece6d8; }
@@ -67,7 +106,7 @@
     content: ""; position: absolute; inset: 0; z-index: 0;
     background: radial-gradient(circle, rgba(224,60,50,.55) 20%, rgba(224,60,50,.18) 70%);
   }
-  .sq.ghost .piece { opacity: .35; }
+  .sq.dragSrc .piece { opacity: .35; }
   /* scoped to squares: an unscoped .dot rule used to restyle the header
      status LED into a giant translucent blob over the board */
   .sq .dot {
@@ -81,81 +120,86 @@
     border: 4px solid rgba(20, 30, 20, .38); z-index: 2; pointer-events: none;
   }
   .coord {
-    position: absolute; font-size: 9px; font-weight: 600; opacity: .55;
+    position: absolute; font-size: 10px; font-weight: 600; opacity: .55;
     font-variant-numeric: tabular-nums; pointer-events: none;
   }
   .coord.fl { left: 3px; top: 2px; }
   .coord.rk { right: 3px; bottom: 2px; }
 
+  /* floating clone that follows the finger while dragging */
+  #dragGhost {
+    position: fixed; left: 0; top: 0; z-index: 60; display: none;
+    transform: translate(-50%, -62%);
+    pointer-events: none; will-change: left, top;
+    filter: drop-shadow(0 8px 12px rgba(0,0,0,.5));
+  }
+  #dragGhost img { width: 100%; height: 100%; object-fit: contain; display: block; }
+
   /* ---- game controls ---- */
-  #controls { display: flex; gap: 8px; }
+  #controls { display: flex; gap: 8px; flex: none; }
   #controls button {
-    flex: 1; padding: 9px 0; border-radius: 10px; cursor: pointer;
+    flex: 1; padding: 13px 0; border-radius: 11px; cursor: pointer;
     background: #1d252c; border: 1px solid #2a343e; color: #d8dde2;
-    font-size: 13px;
+    font-size: 14px; font-family: inherit;
   }
   #controls button.danger { color: #e06c5a; border-color: #4a2f2c; }
   #controls button:active { background: #232b33; }
 
-  /* ---- captured pieces / material ---- */
-  .capbar {
-    min-height: 22px; font-size: 15px; line-height: 1; letter-spacing: -1px;
-    color: #7c8790; padding: 0 4px; display: flex; align-items: center; gap: 6px;
-    flex-wrap: wrap;
-  }
-  .capbar img { width: 20px; height: 20px; object-fit: contain; margin-left: -4px; vertical-align: middle; filter: drop-shadow(0 1px 1px rgba(0,0,0,.25)); }
-  .capbar img:first-child { margin-left: 0; }
-  .capbar .lead { font-size: 12px; color: #aeb7c0; font-variant-numeric: tabular-nums; margin-left: 2px; }
-
   /* ---- status / history ---- */
-  #statusline { text-align: center; font-size: 13px; color: #7c8790; min-height: 20px; }
+  #statusline { text-align: center; font-size: 12px; color: #7c8790; min-height: 18px; flex: none; }
   #statusline.thinking { color: #6ecb63; }
+  #seatBar[hidden], #postGameBar[hidden] { display: none; }
   #seatBar {
-    display: flex; align-items: center; justify-content: center; gap: 10px;
-    font-size: 13px; color: #d9a13b; min-height: 24px; padding: 2px 0;
+    display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 10px;
+    font-size: 13px; color: #d9a13b; min-height: 24px; padding: 2px 0; flex: none;
   }
   #seatBar button {
     background: #2c313a; color: #e8e6e1; border: 1px solid #3a4048;
-    border-radius: 6px; padding: 4px 12px; font-size: 12px; cursor: pointer;
+    border-radius: 8px; padding: 9px 14px; font-size: 13px; cursor: pointer; font-family: inherit;
   }
   #nameInput {
     width: 100%; box-sizing: border-box; margin: 6px 0 2px;
     background: #23272e; color: #e8e6e1; border: 1px solid #3a4048;
-    border-radius: 8px; padding: 9px 12px; font-size: 14px;
+    border-radius: 8px; padding: 10px 12px;
+    font-size: 16px; /* below 16 iOS Safari zooms the page on focus */
   }
   .tip { font-size: 11px; color: #7c8790; margin-top: 10px; line-height: 1.5; }
   #history {
-    margin: 0; padding: 8px 12px; background: #171d23; border: 1px solid #242c34;
-    border-radius: 10px; font: 13px/1.7 ui-monospace, "SF Mono", monospace;
-    color: #aeb7c0; height: 84px; overflow-y: auto; white-space: pre-wrap;
+    margin: 0; padding: 7px 11px; background: #171d23; border: 1px solid #242c34;
+    border-radius: 10px; font: 12px/1.65 ui-monospace, "SF Mono", monospace;
+    color: #aeb7c0; max-height: 64px; overflow-y: auto; white-space: pre-wrap; flex: none;
   }
 
   /* ---- overlays ---- */
   .overlay {
     position: fixed; inset: 0; z-index: 50; display: none;
-    align-items: center; justify-content: center; padding: 20px;
+    align-items: center; justify-content: center;
+    padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right))
+             max(16px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
     background: rgba(10, 13, 16, .72); backdrop-filter: blur(4px);
+    overflow-y: auto; -webkit-overflow-scrolling: touch;
   }
   .overlay.show { display: flex; }
   .card {
-    width: min(92vw, 400px); padding: 24px; border-radius: 16px;
+    width: min(92vw, 400px); margin: auto; padding: 20px; border-radius: 16px;
     background: #171d23; border: 1px solid #2a343e;
     box-shadow: 0 18px 60px rgba(0,0,0,.6);
   }
-  .card h2 { margin: 0 0 6px; font-size: 20px; }
-  .card .sub { color: #7c8790; font-size: 13px; margin-bottom: 16px; }
-  .pick { display: flex; gap: 10px; margin-bottom: 18px; }
+  .card h2 { margin: 0 0 6px; font-size: 19px; }
+  .card .sub { color: #7c8790; font-size: 13px; margin-bottom: 14px; }
+  .pick { display: flex; gap: 10px; margin-bottom: 16px; }
   .pick button {
-    flex: 1; padding: 12px; border-radius: 10px; border: 1px solid #2a343e;
-    background: #1d252c; color: #d8dde2; font-size: 15px; cursor: pointer;
+    flex: 1; padding: 14px; border-radius: 10px; border: 1px solid #2a343e;
+    background: #1d252c; color: #d8dde2; font-size: 15px; cursor: pointer; font-family: inherit;
   }
   .pick button.on { border-color: #4d8a68; background: #22302a; color: #6ecb63; }
-  .lvl { margin-bottom: 20px; }
+  .lvl { margin-bottom: 18px; }
   .lvl .lbl { display: flex; justify-content: space-between; font-size: 13px; color: #7c8790; margin-bottom: 6px; }
   .lvl input[type=range] { width: 100%; accent-color: #4d8a68; }
   .big {
-    width: 100%; padding: 13px; border: 0; border-radius: 12px;
-    background: #2c6e4f; color: #eafff2; font-size: 16px; font-weight: 600; cursor: pointer;
+    width: 100%; padding: 14px; border: 0; border-radius: 12px;
+    background: #2c6e4f; color: #eafff2; font-size: 17px; font-weight: 600; cursor: pointer;
+    font-family: inherit;
   }
   .big:active { background: #24593f; }
   .big.alt { background: #2a343e; color: #d8dde2; margin-top: 10px; }
@@ -165,9 +209,49 @@
     border: 1px solid #2a343e; background: #1d252c; cursor: pointer;
     display: flex; align-items: center; justify-content: center;
   }
-  #promoGrid button img { width: 44px; height: 44px; object-fit: contain; pointer-events: none; }
-  #resultTitle { font-size: 24px; font-weight: 700; margin: 0 0 4px; }
+  #promoGrid button img { width: 46px; height: 46px; object-fit: contain; pointer-events: none; }
+  #resultTitle { font-size: 23px; font-weight: 700; margin: 0 0 4px; }
   #resultSub { color: #7c8790; font-size: 14px; margin-bottom: 18px; }
+
+  /* tall portrait phones: spend some of the slack under/over the board */
+  @media (orientation: portrait) and (min-height: 700px) {
+    .pcell .time { font-size: 22px; }
+    .playerRow { padding: 7px 14px; }
+    #controls button { padding: 15px 0; font-size: 15px; }
+    #history { max-height: 96px; }
+  }
+
+  /* short landscape phones: board fills the left, everything else moves right */
+  @media (orientation: landscape) and (max-height: 500px) {
+    #app {
+      height: 100vh; height: 100dvh;
+      display: grid;
+      grid-template-columns: auto minmax(170px, 300px);
+      grid-template-rows: auto auto minmax(0, 1fr) auto auto auto auto auto auto;
+      grid-template-areas:
+        "board hdr"
+        "board top"
+        "board gap"
+        "board bot"
+        "board ctl"
+        "board st"
+        "board seat"
+        "board hist"
+        "board pgb";
+      column-gap: 12px;
+      align-items: start;
+    }
+    #boardWrap { grid-area: board; align-self: stretch; container-type: normal; }
+    #board { width: auto; height: 100%; max-width: none; }
+    header { grid-area: hdr; align-self: end; }
+    #clockTop { grid-area: top; }
+    #clockBottom { grid-area: bot; }
+    #controls { grid-area: ctl; }
+    #statusline { grid-area: st; }
+    #seatBar { grid-area: seat; }
+    #history { grid-area: hist; }
+    #postGameBar { grid-area: pgb; }
+  }
 </style>
 </head>
 <body>
@@ -178,19 +262,23 @@
     <span id="battery">—</span>
   </header>
 
-  <div class="capbar" id="capTop"></div>
-  <div class="clock" id="clockTop">
-    <span class="name" id="clockTopName">Opponent</span>
-    <span class="time" id="clockTopTime">10:00</span>
+  <div class="playerRow" id="clockTop">
+    <div class="pcell">
+      <span class="name" id="clockTopName">Opponent</span>
+      <span class="time" id="clockTopTime">10:00</span>
+    </div>
+    <div class="capbar" id="capTop"></div>
   </div>
 
-  <div id="board"></div>
+  <div id="boardWrap"><div id="board"></div></div>
 
-  <div class="clock" id="clockBottom">
-    <span class="name" id="clockBottomName">You</span>
-    <span class="time" id="clockBottomTime">10:00</span>
+  <div class="playerRow" id="clockBottom">
+    <div class="pcell">
+      <span class="name" id="clockBottomName">You</span>
+      <span class="time" id="clockBottomTime">10:00</span>
+    </div>
+    <div class="capbar" id="capBottom"></div>
   </div>
-  <div class="capbar" id="capBottom"></div>
 
   <div id="controls">
     <button id="resignBtn" class="danger">Resign</button>
@@ -201,10 +289,12 @@
   <div id="seatBar" hidden></div>
   <div id="history"></div>
   <div id="postGameBar" hidden style="display:none; gap:8px; margin-top:4px;">
-    <button id="backToResultBtn" style="flex:1; padding:11px 0; border-radius:10px; background:#2a343e; color:#d8dde2; border:1px solid #2a343e; cursor:pointer; font-size:14px; font-weight:600;">Back to result</button>
-    <button id="exitPostBtn" style="flex:1; padding:11px 0; border-radius:10px; background:#1d252c; color:#d8dde2; border:1px solid #2a343e; cursor:pointer; font-size:14px; font-weight:600;">Exit</button>
+    <button id="backToResultBtn" style="flex:1; padding:13px 0; border-radius:10px; background:#2a343e; color:#d8dde2; border:1px solid #2a343e; cursor:pointer; font-size:14px; font-weight:600;">Back to result</button>
+    <button id="exitPostBtn" style="flex:1; padding:13px 0; border-radius:10px; background:#1d252c; color:#d8dde2; border:1px solid #2a343e; cursor:pointer; font-size:14px; font-weight:600;">Exit</button>
   </div>
 </div>
+
+<div id="dragGhost"><img alt="" draggable="false"></div>
 
 <div class="overlay" id="startOverlay">
   <div class="card">
@@ -458,6 +548,8 @@ function render() {
       el.querySelector(".coord.rk").textContent = String.fromCharCode(97 + (flipped ? 7 - file : file));
     }
   }
+  // render() rewrites every className; keep the dimmed origin while dragging
+  if (dragging && dragFrom >= 0) sqEls[dragFrom].classList.add("dragSrc");
   animateLastMove();
   renderCaptured(model);
   playMoveFeedback(model, checkSq);
@@ -681,6 +773,29 @@ function sqIndexFromEvent(e) {
   return sq ? +sq.dataset.idx : -1;
 }
 
+/* ---- drag visual: a clone trails the finger so you see what you hold ---- */
+const ghostEl = $("dragGhost");
+function startDrag(idx) {
+  const sq = fenToSquares(fen).squares[idx];
+  if (!sq) return;
+  const r = sqEls[idx].getBoundingClientRect();
+  ghostEl.firstChild.src = pieceSrc(sq.color, sq.type);
+  ghostEl.style.width = r.width + "px";
+  ghostEl.style.height = r.height + "px";
+  ghostEl.style.left = (r.left + r.width / 2) + "px";
+  ghostEl.style.top = (r.top + r.height / 2) + "px";
+  ghostEl.style.display = "block";
+  sqEls[idx].classList.add("dragSrc");
+}
+function moveDrag(e) {
+  ghostEl.style.left = e.clientX + "px";
+  ghostEl.style.top = e.clientY + "px";
+}
+function stopDrag() {
+  ghostEl.style.display = "none";
+  if (dragFrom >= 0 && sqEls[dragFrom]) sqEls[dragFrom].classList.remove("dragSrc");
+}
+
 function onPointerDown(e) {
   if (!gameStarted || gameOver || boardThinking || engineToMove || !fen) return;
   if (!isOwner()) return; // spectators don't move
@@ -695,6 +810,7 @@ function onPointerDown(e) {
     sel = idx;
     dragging = true;
     dragFrom = idx;
+    startDrag(idx);
     // synthetic pointers (automation) have no active pointer id
     try { boardEl.setPointerCapture(e.pointerId); } catch (err) { }
     e.preventDefault();
@@ -706,19 +822,13 @@ function onPointerDown(e) {
 
 function onPointerMove(e) {
   if (!dragging) return;
-  const squares = fenToSquares(fen).squares;
-  sqEls.forEach(el => el.classList.remove("ghost"));
-  const idx = sqIndexFromEvent(e);
-  if (idx >= 0 && idx !== dragFrom && squares[idx]) {
-    const tgt = legalMap[dragFrom] && legalMap[dragFrom].find(t => t.to === idx);
-    if (tgt) sqEls[idx].classList.add("ghost");
-  }
+  moveDrag(e);
 }
 
 function onPointerUp(e) {
   if (!dragging) return;
   dragging = false;
-  sqEls.forEach(el => el.classList.remove("ghost"));
+  stopDrag();
   const idx = sqIndexFromEvent(e);
   // a plain tap (release on the same square) keeps the selection so the
   // next tap can complete the move; only a real drag releases here
@@ -1059,9 +1169,9 @@ boardEl.addEventListener("pointerdown", onPointerDown);
 boardEl.addEventListener("pointermove", onPointerMove);
 boardEl.addEventListener("pointerup", onPointerUp);
 boardEl.addEventListener("pointercancel", () => {
+  stopDrag();
   dragging = false;
   dragFrom = -1;
-  sqEls.forEach(el => el.classList.remove("ghost"));
 });
 boardEl.addEventListener("contextmenu", e => e.preventDefault());
 
