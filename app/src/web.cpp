@@ -134,6 +134,9 @@ esp_err_t serve_file(httpd_req_t *req, const char *path)
 	if (!f)
 		return httpd_resp_send_err(req, HTTPD_404_NOT_FOUND, "not found");
 
+	// never let phones reuse a stale page after a reflash
+	httpd_resp_set_hdr(req, "Cache-Control", "no-cache");
+
 	char buf[1024];
 	size_t n;
 	while ((n = fread(buf, 1, sizeof(buf), f)) > 0) {
