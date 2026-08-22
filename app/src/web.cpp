@@ -162,6 +162,29 @@ esp_err_t handle_welcome(httpd_req_t *req)
 	return serve_file(req, "/spiffs/web/portal.html");
 }
 
+esp_err_t handle_pieces(httpd_req_t *req)
+{
+	if (strstr(req->uri, ".."))
+		return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "bad path");
+	// httpd URI can be up to 512 bytes; keep the spiffs path comfortably larger
+	char spiffs_path[600];
+	int n = snprintf(spiffs_path, sizeof(spiffs_path), "/spiffs/web%s", req->uri);
+	if (n < 0 || (size_t)n >= sizeof(spiffs_path))
+		return httpd_resp_send_err(req, HTTPD_414_URI_TOO_LONG, "uri too long");
+	const char *ctype = "application/octet-stream";
+	if (strstr(req->uri, ".png"))
+		ctype = "image/png";
+	else if (strstr(req->uri, ".svg"))
+		ctype = "image/svg+xml";
+	else if (strstr(req->uri, ".jpg") || strstr(req->uri, ".jpeg"))
+		ctype = "image/jpeg";
+	else if (strstr(req->uri, ".webp"))
+		ctype = "image/webp";
+	httpd_resp_set_type(req, ctype);
+	httpd_resp_set_hdr(req, "Cache-Control", "public, max-age=86400");
+	return serve_file(req, spiffs_path);
+}
+
 // ---- Captive portal ----
 //
 // Minimal DNS responder: answers EVERY query with an A record pointing at
@@ -891,7 +914,7 @@ httpd_handle_t start_httpd()
 	// 8 KB: the Phase-1 /move handler parses JSON + spawns the search
 	// worker here; 4 KB overflowed and corrupted the adjacent heap.
 	cfg.stack_size = 8192;
-	cfg.max_uri_handlers = 12;
+	cfg.max_uri_handlers = 14;
 	cfg.lru_purge_enable = true;
 	// wildcard matcher for the captive-portal catch-all ("/*"); exact
 	// registered URIs still match exactly, in registration order
@@ -913,6 +936,7 @@ httpd_handle_t start_httpd()
 	httpd_uri_t unqueue = { .uri = "/unqueue", .method = HTTP_POST, .handler = handle_unqueue, .user_ctx = nullptr };
 	httpd_uri_t yield_seat = { .uri = "/yield", .method = HTTP_POST, .handler = handle_yield, .user_ctx = nullptr };
 	httpd_uri_t resign = { .uri = "/resign", .method = HTTP_POST, .handler = handle_resign, .user_ctx = nullptr };
+	httpd_uri_t pieces = { .uri = "/pieces/*", .method = HTTP_GET, .handler = handle_pieces, .user_ctx = nullptr };
 	httpd_register_uri_handler(server, &root);
 	httpd_register_uri_handler(server, &welcome);
 	httpd_register_uri_handler(server, &state);
@@ -923,6 +947,7 @@ httpd_handle_t start_httpd()
 	httpd_register_uri_handler(server, &unqueue);
 	httpd_register_uri_handler(server, &yield_seat);
 	httpd_register_uri_handler(server, &resign);
+	httpd_register_uri_handler(server, &pieces);
 	// LAST: the captive-portal catch-all for foreign-host probes
 	httpd_uri_t fallback = { .uri = "/*", .method = HTTP_GET, .handler = handle_catchall, .user_ctx = nullptr };
 	httpd_register_uri_handler(server, &fallback);

@@ -56,23 +56,13 @@
   .sq.sel { background: #f2e078; }
   .sq.last { background: #e3c76e; }
   .piece {
-    font-size: clamp(22px, 9vw, 42px); line-height: 1;
+    width: 90%; height: 90%; object-fit: contain;
     z-index: 1; pointer-events: none;
     will-change: transform;
-    min-width: 0; min-height: 0; max-width: 100%; max-height: 100%;
-    display: flex; align-items: center; justify-content: center;
-    font-family: "Apple Symbols", "Segoe UI Symbol", "Noto Sans Symbols2", "DejaVu Sans", sans-serif;
-    font-variant-emoji: text; -webkit-font-variant-emoji: text;
-    text-rendering: geometricPrecision;
+    display: block;
+    filter: drop-shadow(0 1px 1px rgba(0,0,0,.35));
+    user-select: none; -webkit-user-drag: none;
   }
-  /* white = outlined glyph filled near-white with a dark edge; black =
-     filled dark glyph with a faint light edge -- reads on both squares */
-  .piece.w { color: #fafafa; -webkit-text-stroke: 1.1px #3a3a3a; paint-order: stroke fill;
-             text-shadow: 0 2px 2px rgba(0,0,0,.35); }
-  .piece.b { color: #262626; -webkit-text-stroke: 1.1px #0c0c0c; paint-order: stroke fill;
-             text-shadow: 0 2px 2px rgba(0,0,0,.25); }
-  /* pawns are intrinsically smaller in most chess fonts – nudge them to match other pieces */
-  .piece[data-type="p"] { font-size: clamp(24px, 9.8vw, 46px); }
   .sq.check::after {
     content: ""; position: absolute; inset: 0; z-index: 0;
     background: radial-gradient(circle, rgba(224,60,50,.55) 20%, rgba(224,60,50,.18) 70%);
@@ -109,10 +99,13 @@
 
   /* ---- captured pieces / material ---- */
   .capbar {
-    min-height: 16px; font-size: 15px; line-height: 1; letter-spacing: -1px;
+    min-height: 22px; font-size: 15px; line-height: 1; letter-spacing: -1px;
     color: #7c8790; padding: 0 4px; display: flex; align-items: center; gap: 6px;
+    flex-wrap: wrap;
   }
-  .capbar .lead { font-size: 12px; color: #aeb7c0; font-variant-numeric: tabular-nums; }
+  .capbar img { width: 20px; height: 20px; object-fit: contain; margin-left: -4px; vertical-align: middle; filter: drop-shadow(0 1px 1px rgba(0,0,0,.25)); }
+  .capbar img:first-child { margin-left: 0; }
+  .capbar .lead { font-size: 12px; color: #aeb7c0; font-variant-numeric: tabular-nums; margin-left: 2px; }
 
   /* ---- status / history ---- */
   #statusline { text-align: center; font-size: 13px; color: #7c8790; min-height: 20px; }
@@ -168,11 +161,11 @@
   .big.alt { background: #2a343e; color: #d8dde2; margin-top: 10px; }
   #promoGrid { display: flex; gap: 10px; }
   #promoGrid button {
-    flex: 1; font-size: 34px; padding: 10px 0; border-radius: 12px;
+    flex: 1; padding: 10px 0; border-radius: 12px;
     border: 1px solid #2a343e; background: #1d252c; cursor: pointer;
-    font-family: "Apple Symbols", "Segoe UI Symbol", "Noto Sans Symbols2", "DejaVu Sans", sans-serif;
-    font-variant-emoji: text; -webkit-font-variant-emoji: text;
+    display: flex; align-items: center; justify-content: center;
   }
+  #promoGrid button img { width: 44px; height: 44px; object-fit: contain; pointer-events: none; }
   #resultTitle { font-size: 24px; font-weight: 700; margin: 0 0 4px; }
   #resultSub { color: #7c8790; font-size: 14px; margin-bottom: 18px; }
 </style>
@@ -253,15 +246,8 @@
 "use strict";
 
 /* ================= constants ================= */
-// white uses the OUTLINED glyphs, black the FILLED ones -- the standard
-// way to keep both colors readable on light and dark squares alike
-// U+FE0E forces text presentation on iOS (prevents the black pawn ♟
-// turning into a mismatched color-emoji while other pieces stay text)
-const VS_TXT = "\uFE0E";
-const GLYPH_W = { k: "♔"+VS_TXT, q: "♕"+VS_TXT, r: "♖"+VS_TXT, b: "♗"+VS_TXT, n: "♘"+VS_TXT, p: "♙"+VS_TXT };
-const GLYPH_B = { k: "♚"+VS_TXT, q: "♛"+VS_TXT, r: "♜"+VS_TXT, b: "♝"+VS_TXT, n: "♞"+VS_TXT, p: "♟"+VS_TXT };
-const PIECE_GLYPHS = GLYPH_B; // filled set (promotion dialog etc.)
 const PIECE_VALUES = { p: 1, n: 3, b: 3, r: 5, q: 9, k: 0 };
+function pieceSrc(color, type) { return `pieces/ejgfv/${color}${type}.png`; }
 const LEVEL_TIMES = ["0.3s", "0.5s", "1s", "2s", "3s", "5s", "8s", "12s", "20s", "30s"];
 const MOVE_FETCH_TIMEOUT_MS = 160000;
 const POLL_MS = 2000;
@@ -445,10 +431,9 @@ function render() {
 
     let piece = el.querySelector(".piece");
     if (sq) {
-      if (!piece) { piece = document.createElement("span"); el.appendChild(piece); }
-      piece.className = "piece " + sq.color;
+      if (!piece || piece.tagName !== "IMG") { if (piece) piece.remove(); piece = document.createElement("img"); piece.className = "piece"; piece.alt = sq.type; piece.draggable = false; el.appendChild(piece); }
+      piece.src = pieceSrc(sq.color, sq.type);
       piece.dataset.type = sq.type;
-      piece.textContent = sq.color === "w" ? GLYPH_W[sq.type] : GLYPH_B[sq.type];
     } else if (piece) { piece.remove(); }
 
     const dot = el.querySelector(".dot"), ring = el.querySelector(".ring");
@@ -560,10 +545,12 @@ function renderCaptured(model) {
   const opTaken = myColor === "white" ? lostBy("w") : lostBy("b");
   const val = a => a.reduce((s, t) => s + PIECE_VALUES[t], 0);
   const lead = val(myTaken) - val(opTaken);
-  const fmt = a => a.map(t => GLYPH_B[t]).join("");
-  $("capBottom").innerHTML = "<span>" + fmt(myTaken) + "</span>" +
+  const myTakenColor = myColor === "white" ? "b" : "w";
+  const opTakenColor = myColor === "white" ? "w" : "b";
+  const fmt = (a, color) => a.map(t => `<img src="${pieceSrc(color, t)}" alt="${t}">`).join("");
+  $("capBottom").innerHTML = "<span>" + fmt(myTaken, myTakenColor) + "</span>" +
     (lead > 0 ? `<span class="lead">+${lead}</span>` : "");
-  $("capTop").innerHTML = "<span>" + fmt(opTaken) + "</span>" +
+  $("capTop").innerHTML = "<span>" + fmt(opTaken, opTakenColor) + "</span>" +
     (lead < 0 ? `<span class="lead">+${-lead}</span>` : "");
 }
 
@@ -668,7 +655,7 @@ function formattedMoves() {
     const ep = mover.type === "p" && !squares[to] &&
                (Math.abs(to - from) === 7 || Math.abs(to - from) === 9);
     let txt = sqName(from) + (squares[to] || ep ? "×" : "–") + sqName(to);
-    if (mv[4]) txt += "=" + (GLYPH_W[mv[4]] || mv[4].toUpperCase());
+    if (mv[4]) txt += "=" + mv[4].toUpperCase();
     out.push(txt);
     f = applyLocalMove(f, mv);
   }
@@ -770,8 +757,11 @@ function showPromo(from, to, opts, humanMs) {
   grid.innerHTML = "";
   promos.forEach(p => {
     const b = document.createElement("button");
-    b.textContent = PIECE_GLYPHS[p];
-    b.style.color = myColor === "white" ? "#f6f4ee" : "#232323";
+    const img = document.createElement("img");
+    img.src = pieceSrc(myColor[0], p);
+    img.alt = p;
+    img.draggable = false;
+    b.appendChild(img);
     b.onclick = () => {
       $("promoOverlay").classList.remove("show");
       submitMove(sqName(from) + sqName(to) + p, humanMs);
