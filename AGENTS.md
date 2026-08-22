@@ -1,5 +1,7 @@
 # Agent instructions
 
+> Always use the `unslop` skill when writing or editing any text, docs, comments, or user-facing messages. Scan for the patterns listed in the skill, rewrite to remove them, add soul, and self-audit before committing.
+
 Repository: `Timmy6942025/tinychess` (branch `main`), origin on GitHub.
 This file tells coding agents how to work in this repo.
 
