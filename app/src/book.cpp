@@ -144,7 +144,9 @@ libchess::Move convert_polyglot_move(const uint16_t & move, const libchess::Posi
 	assert(p.piece_on(sq_from).has_value());
 	bool is_capture = p.piece_on(sq_to).has_value();
 
-	int                 promotion_type = (move >> 12) & 3;
+	int                 promotion_type = (move >> 12) & 7;
+	if (promotion_type > 4)
+		promotion_type = 0;
 	libchess::PieceType promote_to { p.piece_type_on(sq_from).value() };
 	if (promotion_type == 0)
 		assert(p.piece_type_on(sq_from).value() != libchess::constants::PAWN || (to_y != 0 && to_y != 7));

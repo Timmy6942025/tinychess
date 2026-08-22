@@ -18,6 +18,7 @@
 #if defined(ESP32)
 static volatile uint32_t        es32_yield_gate = 0;
 static volatile uint64_t        es32_last_yield = 0;
+static volatile TaskHandle_t    es32_yield_waiter = NULL;
 static volatile TaskHandle_t    es32_yield_peer = NULL;
 
 void es32_set_yield_peer(TaskHandle_t th)
@@ -474,19 +475,27 @@ int IRAM_ATTR search(int depth, int alpha, const int beta, const int null_move_d
 	const uint32_t gate_val = __atomic_load_n(&es32_yield_gate, __ATOMIC_SEQ_CST);
 	if (gate_val == 1 || esp_timer_get_time() - es32_last_yield >= 1500000) {
 		if (__atomic_add_fetch(&es32_yield_gate, 1, __ATOMIC_SEQ_CST) == 1) {
-			// First searcher to arrive: stamp the window, then block until
-			// the peer follows (guaranteed: its pre-check sees the open
-			// gate), then both delay at the same time.
+			// First searcher to arrive: stamp the window, publish its
+			// handle, then block until the peer follows (guaranteed:
+			// its pre-check sees the open gate), then both delay
+			// together.
 			es32_last_yield = esp_timer_get_time();
+			es32_yield_waiter = xTaskGetCurrentTaskHandle();
 			ulTaskNotifyTake(pdTRUE, 2);
 			vTaskDelay(1);
 		}
 		else {
 			// Peer: close the gate and wake the first searcher.
 			__atomic_store_n(&es32_yield_gate, 0, __ATOMIC_SEQ_CST);
-			TaskHandle_t peer = es32_yield_peer;
-			if (peer != NULL)
-				xTaskNotifyGive(peer);
+			TaskHandle_t waiter = es32_yield_waiter;
+			es32_yield_waiter = NULL;
+			if (waiter != NULL)
+				xTaskNotifyGive(waiter);
+			else {
+				TaskHandle_t peer = es32_yield_peer;
+				if (peer != NULL)
+					xTaskNotifyGive(peer);
+			}
 			vTaskDelay(1);
 		}
 	}

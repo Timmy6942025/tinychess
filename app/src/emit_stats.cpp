@@ -23,16 +23,16 @@ void emit_statistics(state_exporter::_export_structure_ *const counts, const std
 		usleep(101000);
 	}
 
-	printf("Search nodes: %u, qs nodes: %u, ratio: %.3f\n", counts->counters.nodes, counts->counters.qnodes, double(counts->counters.qnodes)/counts->counters.nodes);
-	printf("draws: %.2f%% (%u), standing pat: %.2f%% (%u)\n", counts->counters.n_draws * 100. / counts->counters.nodes, counts->counters.n_draws, counts->counters.n_standing_pat * 100. / counts->counters.qnodes, counts->counters.n_standing_pat);
-	printf("%u tt query, %u ttstore, %.2f%% hit, query/store factor: %.2f, invalid: %.2f%% (%u), cut-off: %.2f%% (%u)\n", counts->counters.tt_query, counts->counters.tt_store, counts->counters.tt_hit * 100. / counts->counters.tt_query, counts->counters.tt_query / double(counts->counters.tt_store), counts->counters.tt_invalid * 100. / counts->counters.tt_query, counts->counters.tt_invalid, counts->counters.tt_cutoff * 100. / counts->counters.tt_query, counts->counters.tt_cutoff);
+	printf("Search nodes: %u, qs nodes: %u, ratio: %.3f\n", counts->counters.nodes, counts->counters.qnodes, counts->counters.nodes ? double(counts->counters.qnodes)/counts->counters.nodes : 0);
+	printf("draws: %.2f%% (%u), standing pat: %.2f%% (%u)\n", counts->counters.nodes ? counts->counters.n_draws * 100. / counts->counters.nodes : 0, counts->counters.n_draws, counts->counters.qnodes ? counts->counters.n_standing_pat * 100. / counts->counters.qnodes : 0, counts->counters.n_standing_pat);
+	printf("%u tt query, %u ttstore, %.2f%% hit, query/store factor: %.2f, invalid: %.2f%% (%u), cut-off: %.2f%% (%u)\n", counts->counters.tt_query, counts->counters.tt_store, counts->counters.tt_query ? counts->counters.tt_hit * 100. / counts->counters.tt_query : 0, counts->counters.tt_store ? counts->counters.tt_query / double(counts->counters.tt_store) : 0, counts->counters.tt_query ? counts->counters.tt_invalid * 100. / counts->counters.tt_query : 0, counts->counters.tt_invalid, counts->counters.tt_query ? counts->counters.tt_cutoff * 100. / counts->counters.tt_query : 0, counts->counters.tt_cutoff);
 	printf("%u qs TT stores (depth-0 entries for the main search's move ordering)\n", counts->counters.qtt_store);
-	printf("Syzygy queries: %llu, hits: %.2f%%\n", (unsigned long long)counts->counters.syzygy_queries, counts->counters.syzygy_query_hits * 100. / counts->counters.syzygy_queries);
-	printf("Average beta-cutoff index: %.2f, QS beta-cutoff index: %.2f\n", counts->counters.n_moves_cutoff / double(counts->counters.nmc_nodes), counts->counters.n_qmoves_cutoff / double(counts->counters.nmc_qnodes));
-	printf("Null move cutoff: %.2f%% (%u out of %u)\n", counts->counters.n_null_move_hit * 100. / counts->counters.n_null_move, counts->counters.n_null_move_hit, counts->counters.n_null_move);
-	printf("late-move-reduction cutoff: %.2f%% (%u out of %u)\n", counts->counters.n_lmr_hit * 100.0 / counts->counters.n_lmr, counts->counters.n_lmr_hit, counts->counters.n_lmr);
-	printf("static evaluation cutoff: %.2f%% (%u out of %u)\n", counts->counters.n_static_eval_hit * 100. / counts->counters.n_static_eval, counts->counters.n_static_eval_hit, counts->counters.n_static_eval);
-	printf("average alpha/beta aspiration window distance: %.2f/%.2f\n", counts->counters.alpha_distance / double(counts->counters.n_alpha_distances), counts->counters.beta_distance / double(counts->counters.n_beta_distances));
+	printf("Syzygy queries: %llu, hits: %.2f%%\n", (unsigned long long)counts->counters.syzygy_queries, counts->counters.syzygy_queries ? counts->counters.syzygy_query_hits * 100. / counts->counters.syzygy_queries : 0);
+	printf("Average beta-cutoff index: %.2f, QS beta-cutoff index: %.2f\n", counts->counters.nmc_nodes ? counts->counters.n_moves_cutoff / double(counts->counters.nmc_nodes) : 0, counts->counters.nmc_qnodes ? counts->counters.n_qmoves_cutoff / double(counts->counters.nmc_qnodes) : 0);
+	printf("Null move cutoff: %.2f%% (%u out of %u)\n", counts->counters.n_null_move ? counts->counters.n_null_move_hit * 100. / counts->counters.n_null_move : 0, counts->counters.n_null_move_hit, counts->counters.n_null_move);
+	printf("late-move-reduction cutoff: %.2f%% (%u out of %u)\n", counts->counters.n_lmr ? counts->counters.n_lmr_hit * 100.0 / counts->counters.n_lmr : 0, counts->counters.n_lmr_hit, counts->counters.n_lmr);
+	printf("static evaluation cutoff: %.2f%% (%u out of %u)\n", counts->counters.n_static_eval ? counts->counters.n_static_eval_hit * 100. / counts->counters.n_static_eval : 0, counts->counters.n_static_eval_hit, counts->counters.n_static_eval);
+	printf("average alpha/beta aspiration window distance: %.2f/%.2f\n", counts->counters.n_alpha_distances ? counts->counters.alpha_distance / double(counts->counters.n_alpha_distances) : 0, counts->counters.n_beta_distances ? counts->counters.beta_distance / double(counts->counters.n_beta_distances) : 0);
 
 	printf("UNLOCK %d\n", pthread_mutex_unlock(&counts->mutex));
 }

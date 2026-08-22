@@ -131,7 +131,7 @@ bool enable_wifi()
 	org_tt_size = tti.get_size();
 	tti.set_size(0);
 
-	my_printf("free heap size: %d, min_free_heap_size: %d\n", esp_get_free_heap_size(), esp_get_minimum_free_heap_size());
+	my_printf("free heap size: %u, min_free_heap_size: %u\n", (unsigned)esp_get_free_heap_size(), (unsigned)esp_get_minimum_free_heap_size());
 	my_printf("Connecting to SSID %s...\n", wifi_ssid.c_str());
 
 	s_wifi_event_group = xEventGroupCreate();
@@ -862,7 +862,7 @@ void load_settings()
 	if (!fh)
 		return;
 
-	char buffer[16] { };
+	char buffer[128] { };
 	fgets(buffer, sizeof buffer, fh);
 	t              = terminal_t(atoi(buffer));
 	fgets(buffer, sizeof buffer, fh);

@@ -149,7 +149,7 @@ void my_trace(const char *const fmt, ...)
 			uint64_t now = esp_timer_get_time();  // is gettimeofday
 			time_t   t   = now / 1000000;
 			tm      *tm  = localtime(&t);
-			fprintf(fh, "[%d] %04d-%02d-%02d %02d:%02d:%02d.%06d ", getpid(),
+			fprintf(fh, "[%d] %04d-%02d-%02d %02d:%02d:%02d.%06" PRIu64 " ", getpid(),
 					tm->tm_year + 1900, tm->tm_mon + 1, tm->tm_mday,
 					tm->tm_hour, tm->tm_min, tm->tm_sec,
 					now % 1000000);
@@ -319,7 +319,6 @@ void searcher(const int i)
 
 #if defined(ESP32)
 	sp.at(i)->th = xTaskGetCurrentTaskHandle();
-	es32_set_yield_peer(sp.at((i + 1) % sp.size())->th);
 #endif
 
 #if !defined(NDEBUG)
@@ -783,7 +782,7 @@ void main_task()
 	auto bench2_handler = [](std::istringstream & input) {
 		// TEMP eval-machinery microbench: us per make+eval+unmake op
 		auto legal = sp.at(0)->pos.legal_move_list();
-		printf("# b2 pos: %s, %zu legal moves\n", sp.at(0)->pos.fen().c_str(), legal.size());
+		printf("# b2 pos: %s, %d legal moves\n", sp.at(0)->pos.fen().c_str(), legal.size());
 		{
 			std::string types;
 			for (auto & m : legal) types += std::to_string(int(m.type())) + ",";
@@ -1653,9 +1652,9 @@ void run_bench(const bool long_bench, const bool via_usb)
 		for(size_t i=0; i<fens.size(); i++) {
 			auto & fen = fens.at(i);
 			if (via_usb)
-				printf("%s (%d left, running for %.3f seconds)\n", fen.c_str(), fens.size() - i, (esp_timer_get_time() - start_ts) / 1000000.);
+				printf("%s (%zu left, running for %.3f seconds)\n", fen.c_str(), fens.size() - i, (esp_timer_get_time() - start_ts) / 1000000.);
 			else
-				my_printf("%s (%d left, running for %.3f seconds)\n", fen.c_str(), fens.size() - i, (esp_timer_get_time() - start_ts) / 1000000.);
+				my_printf("%s (%zu left, running for %.3f seconds)\n", fen.c_str(), fens.size() - i, (esp_timer_get_time() - start_ts) / 1000000.);
 			fflush(stdout);
 			// put
 			{
@@ -1932,7 +1931,7 @@ void init_flash_filesystem()
 
 void heap_caps_alloc_failed_hook(size_t requested_size, uint32_t caps, const char *function_name)
 {
-	printf("%s was called but failed to allocate %d bytes with 0x%lx capabilities\r\n", function_name, requested_size, caps);
+	printf("%s was called but failed to allocate %zu bytes with 0x%" PRIx32 " capabilities\r\n", function_name, requested_size, caps);
 }
 
 extern "C" void app_main()

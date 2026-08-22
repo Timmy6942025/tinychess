@@ -121,6 +121,7 @@ void state_exporter::handler()
 #if defined(linux)
 		else if (rc == EOWNERDEAD) {
 			pthread_mutex_consistent(&pdata->mutex);
+			pthread_mutex_unlock(&pdata->mutex);
 		}
 #endif
 	}
