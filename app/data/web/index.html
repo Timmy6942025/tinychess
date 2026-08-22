@@ -298,6 +298,7 @@ let ownerName = "";
 let queueList = [];         // [{pid,name}]
 let idleMs = -1;
 let inQueue = false;
+let resultDismissed = false; // after Give up, don't auto-reshow result until next game
 
 function isOwner() { return !ownerId || ownerId === PID; }
 function queuePos() {
@@ -422,6 +423,7 @@ function render() {
   const checkSq = findCheckSquare(model);
   for (let i = 0; i < 64; i++) {
     const el = sqEls[i];
+    el.style.order = flipped ? 63 - i : i;
     const sq = model.squares[i];
     const file = i % 8, rank = (i - file) / 8;
     el.className = "sq " + ((file + rank) % 2 === 0 ? "light" : "dark");
@@ -853,15 +855,21 @@ async function refreshState() {
         : null;
     }
     if (s.game_over) {
-      gameOver = true;
-      gameResult = s.result || "";
-      clientFlagged = false;
-      const viewing = !$("postGameBar").hidden;
-      if (!$("resultOverlay").classList.contains("show") && !viewing) showResult();
+      if (!resultDismissed) {
+        gameOver = true;
+        gameResult = s.result || "";
+        clientFlagged = false;
+        const viewing = !$("postGameBar").hidden;
+        if (!$("resultOverlay").classList.contains("show") && !viewing) showResult();
+      } else {
+        gameOver = false;
+        gameResult = "";
+      }
     } else if (gameOver && !clientFlagged) {
       // the mover started a fresh game; drop a stale spectator game-over
       gameOver = false;
       gameResult = "";
+      resultDismissed = false;
       $("resultOverlay").classList.remove("show");
       hidePostGameBar();
     }
@@ -972,6 +980,7 @@ async function joinQueue() {
 async function giveUpBoard() {
   $("resultOverlay").classList.remove("show");
   hidePostGameBar();
+  resultDismissed = true;
   try {
     await fetchJson("/yield", {
       method: "POST", headers: { "Content-Type": "application/json" },
@@ -979,6 +988,8 @@ async function giveUpBoard() {
     }, 10000);
   } catch (err) { /* keep watching; the seat stays until takeover */ }
   gameStarted = false;
+  gameOver = false;
+  gameResult = "";
   await refreshState();
   // the seat is free again — offer the start screen so this player can
   // re-take it (or watch) instead of stranding them on a dead board
@@ -990,6 +1001,7 @@ async function startGame() {
   $("startOverlay").classList.remove("show");
   hidePostGameBar();
   $("resultOverlay").classList.remove("show");
+  resultDismissed = false;
   gameOver = false;
   gameResult = "";
   clientFlagged = false;
