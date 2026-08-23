@@ -181,8 +181,4 @@ The original goal was a chess engine on a microcontroller. Somewhere along the w
 - Housekeeping counted too: libchess vendored into the tree (three local fixes: `pseudo_legal_move_list_into`, FEN en-passant validation, `go st`), upstream cruft removed (Docker packaging, RPM spec, historic versions, a 3D-printed box), stale docs archived.
 - A prebuilt release (`v0.1-prebuilt`) ships the desktop binary and a flashable board image so a new owner needs Python and a cable, nothing else.
 
-## What we still lose to
-
-Stockfish 17, always and everywhere, and we publish the score rather than bury it. The board gives up roughly 500 Elo to the same logic on a desktop, capped by flash latency and a 240 MHz in-order core, and the profile says that cap is near its practical floor. Desktop absolute nps numbers are untrustworthy until the clock shim issue is redesigned around, though every relative comparison stands. And the first two attempts at real-human playtesting failed on details no amount of headless-browser simulation surfaced.
-
 The fork keeps the MIT license and the link back to Folkert's project. The engine name inside the code is still Dog. Most of what is good here stands on his work; what broke along the way was ours, and it is all written down above.
