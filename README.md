@@ -1,161 +1,184 @@
-# MaxDogOne
+# TinyChess
 
-A fork of [Dog](https://github.com/folkertvanheusden/Dog) (written by Folkert van
-Heusden, MIT licensed) for the XIAO ESP32-S3 Plus, with a gate-gated experiment
-pipeline for tuning the engine. Every search/eval/net change is measured before
-it is kept: 3-game board gates + 200-game desktop gates at 2+0.02 for strength
-items, a 40-game clean board match per milestone.
+MaxDogOne. A UCI chess engine that runs on a XIAO ESP32-S3 Plus and on your desktop. It is a fork of [Dog](https://github.com/folkertvanheusden/Dog) by Folkert van Heusden, MIT licensed. The board broadcasts its own WiFi network. You join it from a phone and play in the browser. No app, no internet, no cables.
+
+This repo is `Timmy6942025/tinychess` on GitHub, branch `main`. The engine name inside the code is still Dog.
+
+## What you get
+
+TinyChess is two builds from one source tree. `app/src` compiles as a native x86_64 UCI engine and as ESP32 firmware.
+
+* The native build is a strong UCI engine and the test harness for every change.
+* The ESP32 build runs the same search, eval, and NNUE on the board, plus a hotspot and web UI so you can play from a phone.
+
+Every change passes the same gates before it stays. Strength changes need a 200-game match at 2+0.02. Board changes need a 3-game board-vs-native run with no stalls, forfeits, or illegal moves.
+
+## Features
+
+Board and native share the same engine. The differences are only where the hardware forces them.
+
+* NNUE big net, 768x256x1. The active net is 394,816 bytes in `app/src/weights.cpp`. The small net stays behind `#if 0` for reference. The big net tested +25 Elo vs the 128-wide net on the desktop.
+* Search that survived measurement. Three items stuck at 2+0.02, total +116.5 Elo vs Tier-1. Razoring adds 12.2, check extension keeps depth on every in-check move adds about 75, and q-search SEE pruning adds 29.6. Nine other ideas failed and got reverted. Killers, LMR PV 3/4, aspiration 50 or 100, TT 4-way, blind singular extension, null-move R=5, razor depth 2 and razor 300+120d all lost. The numbers live in `tools/results.log`.
+* Speed that we actually measured. Native with LTO and the big net does about 340k nps on the dev box, 150 to 290k under load. The board does about 7,100 nps on the startpos bench, 6,857 at the Tier-1 state. The gain from 5,079 to 6,857 came mostly from a clean rebuild and two small fixes. C2 moved the WDT gate to 1.5 s and C5 fixed per-node allocations. C4 tried QIO flash and reverted. It hung under 2-thread load and the speed claim was a measurement error.
+* Web play from a phone. The board is an open access point called `DOG-CHESS` at `http://192.168.4.1`. You tap to move, clocks run, and the page works offline. It handles promotion, captured material, last-move and check highlights, move animation, sounds and haptics, flip board, resign, and a 10 minute clock with an increment per difficulty level. Level 1 is 5 s per move, level 10 is 120 s. One game at a time. Others see the position live and can join a waitlist. The holder can rematch or give up the board. Idle seats free after 3 minutes.
+* Captive portal. Phones that probe `captive.apple.com` or `connectivitycheck.gstatic.com` get a 302 to `192.168.4.1`, so the OS shows a sign-in sheet that lands on the game.
+* Mobile UI that fits. The board always fills the largest square that fits the screen, with safe-area insets for notches. Landscape phones get a two-pane layout with the board on the left. Inputs use 16 px to avoid iOS zoom, tap targets are 44 px, dragging shows a floating piece, and `touch-action: none` plus a `touchstart` guard stops double-tap zoom from stealing a move.
+* Vendored `app/include/libchess` with local fixes for `pseudo_legal_move_list_into`, FEN en-passant validation, and `go st` UCI support. The canonical copy is at `github.com/Timmy6942025/libchess`.
+* The adapter that makes the board a UCI engine. `tools/wrapper.py` speaks UCI over USB-JTAG, repairs the line protocol, and plugs into `cutechess-cli`. The board console needs `uci` before UCI commands.
+
+## Hardware
+
+* Seeed Studio XIAO ESP32-S3 Plus. Dual LX7 at 240 MHz, 512 KB SRAM, 8 MB octal PSRAM, 16 MB flash.
+* Flash mode is DIO at 80 MHz in `app/sdkconfig.defaults`. QIO was tried and reverted. Do not enable it. It hangs under sustained 2-thread load.
+* LED on GPIO44, WS2812, optional via Kconfig.
+* Power from USB. The `/battery` endpoint still reports raw ADC, but the UI shows USB when on a power bank. No LiPo calibration is needed for the current setup.
 
 ## Quick start
 
-**Option A - prebuilt binaries (easiest, no toolchain needed)**
+You need Python 3 and a data cable. That is it if you use the prebuilt files.
 
-Grab the latest release (`v0.1-prebuilt` = current state at commit `75e6d10`):
-https://github.com/Timmy6942025/tinychess/releases
+### Option A. Prebuilt binaries, no toolchain
 
-- **Desktop** (`Dog-native`, Linux x86_64, ~340k nps): `chmod +x Dog-native &&
-  ./Dog-native` - a UCI engine; usable directly or via cutechess-cli
-  (`cmd=./Dog-native`). Or run the 18-test unit suite with `./Dog-native test`.
-- **Board flash** (`board-flash.zip`): needs only Python 3 + esptool
-  (`pip install esptool`):
+Get the release `v0.1-prebuilt` at commit `75e6d10` from https://github.com/Timmy6942025/tinychess/releases.
 
-  ```sh
-  unzip board-flash.zip -d board-flash && cd board-flash
-  python -m esptool --port /dev/ttyACM0 write_flash "@flash_args"
-  ```
-
-  That flashes the whole current firmware (bootloader, partition table, app,
-  opening book). For matches against the board, use `tools/wrapper.py` as the
-  cutechess engine adapter: `-engine cmd=python3 arg=tools/wrapper.py
-  arg=/dev/ttyACM0`.
-
-**Option B - build from source**
-
-- Desktop: see "Build & test (Linux/native)" below (gcc/g++ 14+ only).
-- Board: install ESP-IDF with `./tools/setup_esp_idf.sh` (pins v5.3, the
-  version this project is built with), then `source "$IDF_PATH/export.sh" &&
-  cd app && idf.py build && idf.py -p /dev/ttyACM0 flash`.
-- For running matches: `cutechess-cli` (see "Experiment pipeline" below).
-
-## Highlights
-
-- **NNUE big net** (HIDDEN_SIZE=256, 395 KB blob) — SPRT-confirmed **+25 elo**
-  vs the shipped 128-wide net (`ab-bignet-20260805-000637` ACCEPT,
-  `ab-bignet2-20260805-012247` ACCEPT). Enabled in `app/src/weights.cpp`
-  (`#if 0` selects the 197440 B small blob, `#else` the active 394816 B big net).
-- **Board speed (Tier-1)** — the board bench went **5,079 → 6,857 nps**:
-  C2 WDT gate period 250 ms → 1.5 s (+3.3%), C5 per-node heap allocations
-  killed via depth-indexed per-thread scratch (+3.1%); the rest (~+30%) was a
-  clean-rebuild artifact of the harness era. C4 (QIO flash) was tried and
-  **reverted**: the runtime-quad bootloader is unstable under sustained
-  2-thread load (12-min hang) and the +32.7% it showed was the rebuild artifact.
-  A5 (split-brain TT) was dropped: the 2-thread nps gate passed (15.4k ≥ 9,800)
-  but the Elo gate failed (0-40 board match). The final 40-game board match at
-  the Tier-1 state completed **0-40-0 with zero stalls/forfeits**.
-- **Search strength (Phase B, desktop)** — three accepted items, **+116.5 Elo**
-  cumulative at 2+0.02 (200-game gates): razoring (+12.2, LOS 78.5%), check
-  extension — all in-check moves keep depth, preserved through LMR (~+75,
-  LOS 100%), qs SEE pruning (+29.6, LOS 98.0%). Nine probed variants were
-  rejected with measured evidence (killers, LMR PV `*3/4`, aspiration ±50/±100,
-  TT 4-way, blind singular extension, null-move R=5, razor depth-2, razor
-  300+120d — verdicts in `tools/results.log`). All accepted items are ported
-  to the board: **bench 7,128 nps** (+3.9%), 3-game gate clean.
-- **libchess vendored** — this is a monorepo; `app/include/libchess` is regular
-  source (with Dog-specific fixes: FEN en-passant validation, `go st` UCI
-  support). A canonical copy lives at `github.com/Timmy6942025/libchess`.
-- **Match harness** — `tools/wrapper.py` (line-based pump + bestmove repair for
-  the board's USB-JTAG console) makes the XIAO a first-class UCI engine for
-  cutechess-cli; `tools/board_session.py` runs the on-board test suite + bench
-  + UCI smoke. Every verdict is appended to `tools/results.log`. Earlier
-  SPRT-era results (LMR recalibration ACCEPT +34.6 `ab-lmr065`, -56.1 anchor vs
-  Stockfish 17) are superseded; the first clean board-vs-native anchor
-  (40 games, 2+0.02) was **0-40-0** and the -523.4 anchor is INVALID (clock
-  forfeits, see `90ef99e`). Current reference binary: `app/src/linux-windows/build/Dog-native`
-  at HEAD (md5 `1773e3c807d0752a40da2ae78ea82924`).
-- **Hardware targets** — XIAO ESP32-S3 Plus (WS2812 LED on GPIO44, PSRAM TT up
-  to 6 MB, configurable via `app/src/Kconfig`).
-
-## Repo layout
-
-```
-app/src/            engine source (search, eval, NNUE, TT, UCI) - single source tree
-app/include/libchess  vendored libchess library (board model, movegen, FEN)
-app/main/           symlink -> src/ (ESP32-IDF project, esp32s3 target)
-tools/              wrapper.py, board_session.py, fast_sprt.sh, native_check.sh, results.log
-docs/               upstream Dog reference docs, training notes, experiment queue
-README.md           this file
-```
-
-## Build & test (Linux/native)
-
-Requires gcc/g++ 14+ (or clang 14+, gcc produces faster binaries):
+Desktop engine, Linux x86_64:
 
 ```sh
-tools/native_check.sh     # builds + runs the 18/18 unit suite + bench, exit 0 = green
+chmod +x Dog-native
+./Dog-native          # UCI engine
+printf "test\n" | ./Dog-native   # 18 unit tests, all must say OK
 ```
 
-Or manually:
+Board flash, Python 3 and esptool only:
+
+```sh
+unzip board-flash.zip -d board-flash && cd board-flash
+python -m esptool --port /dev/ttyACM0 write_flash "@flash_args"
+```
+
+To run matches against the board with cutechess:
+
+```sh
+cutechess-cli -engine name=board proto=uci cmd="python3 tools/wrapper.py /dev/ttyACM0" \
+  -engine name=native proto=uci cmd=./app/src/linux-windows/build/Dog-native
+```
+
+### Option B. Build from source
+
+Native, gcc or g++ 14 or newer:
+
+```sh
+tools/native_check.sh   # builds Dog-native, runs the 18 tests, runs a bench
+```
+
+Or step by step:
 
 ```sh
 cd app/src/linux-windows
-mkdir build && cd build
-cmake ..
-make
-./Dog-native   # 'Dog-native' is fastest; fall back to Dog-avx512, Dog-avx2, Dog
+mkdir -p build && cd build
+cmake .. && cmake --build . --target Dog-native -j$(nproc)
+./Dog-native   # falls back to Dog-avx512, Dog-avx2, Dog if needed
 ```
 
-Windows (mingw-w64): `cmake -DCMAKE_TOOLCHAIN_FILE=../mingw64.cmake ..` in
-`app/src/linux-windows`.
-
-## Build & flash (ESP32-S3)
+Board, ESP-IDF 5.3:
 
 ```sh
+./tools/setup_esp_idf.sh   # installs ESP-IDF v5.3 once
+source ~/esp/esp-idf/export.sh
 cd app
-idf.py build && idf.py flash   # set IDF_PATH, e.g. source ~/esp/esp-idf/export.sh
+idf.py build
+python -m esptool --port /dev/ttyACM0 write_flash "@flash_args"   # from app/build
 ```
 
-- Board: XIAO ESP32-S3 Plus. LED feature is a Kconfig option
-  (`DOG_LED_WS2812`; disable for boards without it or for QEMU).
-- Serial tooling: `tools/board_session.py` (on-board test suite + bench + UCI
-  smoke), `tools/board_check.sh`, `tools/wrapper.py` (cutechess engine adapter;
-  requires a `uci` first when used from a plain terminal).
-- Flash with `esptool write_flash "@flash_args"` from `app/build`; boot mode
-  (dio/qio) can be verified via a serial DTR toggle.
+The firmware and the web files flash together. `spiffs_create_partition_image` packs `app/data` including `data/web/index.html`, `portal.html`, and the piece PNGs.
 
-## Experiment pipeline
+## Play from your phone
 
-- **Desktop strength gates** (search items): 200-game matches at 2+0.02 vs the
-  previous accepted state via cutechess-cli; keep on positive Elo + LOS, revert
-  otherwise. Deterministic node-count comparisons at fixed depth supplement the
-  Elo signal.
-- **Board integrity gates**: 3-game matches vs the desktop native (no stalls,
-  forfeits, or illegal moves), plus a bench on every ported state.
-- **Milestone matches**: full 40-game board-vs-native runs (2+0.02) per phase.
+This is the whole point. The board is the hotspot.
 
-Verdicts: ACCEPT (keep, exit 0) / REJECT (revert, exit 1) — all land in
-`tools/results.log`. Never run a match while building or running
-`native_check.sh` (the 7.6 GB dev box OOM-kills cutechess under a parallel
-build).
+1. Power the board from USB. Wait for the LED.
+2. On your phone, join the WiFi network `DOG-CHESS`. It is open, no password.
+3. The phone should pop a sign-in sheet. If it does not, open `http://192.168.4.1` in the browser. `portal.html` explains the same steps.
+4. Pick white or black, set difficulty, tap Start game.
+5. Tap a piece, then tap a target. Drag also works. The piece you hold follows your finger. Promotions pop a chooser.
+6. Use Flip board to view from either side, Resign to end early. After mate, stalemate, draw, or flag fall the result card offers Rematch, Give up the board, or View board.
+7. If someone else is playing, you see their name and your place in line. Tap Join waitlist. You take the seat when they finish or go idle.
 
-Submodules: `app/Dog-book` (opening book) and `app/src/fathom` (Syzygy
-tablebase probing) — clone with `--recursive`.
+Tip. Phones remember the network. Use Forget this network when you are done so it does not auto-join later. The network has no internet, that warning is normal.
+
+Multiplayer is one seat only. The engine and TT are shared, so two games would fight over both cores and the same position. The waitlist keeps it orderly.
+
+## Web UI
+
+The page is one file, `app/data/web/index.html`, about 40 KB including the PNG pieces under `pieces/ejgfv`. No CDN, no build step.
+
+* Board is a CSS grid, 8 by 8, with a container-query square that never scrolls off screen in portrait. Landscape hands the left side to the board and the right side to clocks and controls.
+* State comes from the board. `GET /state` returns FEN, legal moves, clocks, move list, and game-over flag. `POST /move` runs the search. `GET /battery` returns millivolts. Your browser stores a random pid in localStorage so the board can tell who holds the seat.
+* Clocks are server authoritative. The server deducts your think on each move plus its own, adds the level increment, and flags at zero. The page just renders the countdown.
+* Assets are served from SPIFFS. `web.cpp` sends `Cache-Control: no-cache` so a reflash is visible after one hard refresh.
+
+Pieces are the ejgfv set. The board colors are `ece6d8` and `b3a98e`, with a dark theme around them.
+
+## Repository layout
+
+```
+app/src/                engine source, single tree for desktop and ESP32
+app/include/libchess    vendored libchess, local patches kept here
+app/main                symlink to app/src, the IDF project entry
+app/data/web/           index.html, portal.html, pieces
+app/data/               opening book, SPIFFS image root
+tools/                  wrapper.py, board_session.py, fast_sprt.sh, results.log
+docs/                   upstream docs, training notes, experiment queue
+```
+
+`app/src/weights.cpp` and `quantised-big.bin` are the net. `tools/results.log` is the source of truth for every accepted or rejected experiment.
+
+## Build, test, and gates
+
+One source, two targets, same rules.
+
+Native gate:
+
+```sh
+cd app/src/linux-windows/build && cmake --build . --target Dog-native -j$(nproc)
+printf "test\n" | ./Dog-native   # 18 tests, all OK, no assert fail
+```
+
+A timeout with zero failures and tests still printing OK counts as a pass. The suite takes more than 10 minutes.
+
+Strength gate, only for search or eval changes that could affect play:
+
+```sh
+cutechess-cli -engine name=A proto=uci cmd=<new> -engine name=B proto=uci cmd=<old> \
+  option.Threads=1 option.Hash=8 \
+  -draw movenumber=40 movecount=1 score=100 -resign movecount=3 score=800 -maxmoves 200 \
+  -games 200 -rounds 1 -each tc=2+0.02
+```
+
+Keep it if Elo is positive and LOS is high, otherwise revert. Write the numbers to `tools/results.log`.
+
+Board gate:
+
+```sh
+export IDF_PATH=~/esp/esp-idf && source ~/esp/esp-idf/export.sh && idf.py build
+python -m esptool --port /dev/ttyACM0 write_flash "@flash_args"   # from app/build
+```
+
+Then 3 games board vs native, no stalls, forfeits, or illegal moves, plus a bench. A 15-minute 2-thread session must survive. QIO failed exactly here.
+
+All of this, plus the current bench numbers and the rejected list, are captured at the top of `AGENTS.md`.
 
 ## Notes
 
-- Rejected experiments are documented in `tools/results.log`; the current
-  rejected list: killers (redundant with the history mechanism), LMR PV `*2/3 →
-  *3/4`, aspiration windows ±50/±100 (75 is the optimum), TT 4-way buckets +
-  deeper-keep, blind singular extension (broke the mate-in-N sweep), null-move
-  R=5, razor depth ≤ 2 and razor 300+120d — the engine's search parameters sit
-  at a measured local optimum for all probed directions.
-- The big net is markedly slower at endgame mate detection (two-rook ladder
-  mate found at depth 19 vs 5); accounted for in `app/src/test.cpp`.
-- Native bench with the big net: ~200 kNPS on the dev box (vs ~360 kNPS for
-  the small net); the board benches ~7,100 nps (bench is position-dependent —
-  game-path positions run ~2x faster than the start position).
-- Board Elo vs the native at 2+0.02 remains far behind despite the +116.5
-  Elo: the ~20-40x speed gap (~90-110 Elo of the deficit) plus the residual
-  eval/search gap dominates; the gain shows as longer, more competitive games.
+* Use `app/src/linux-windows/Dog-native` directly. The fallback names `Dog-avx512`, `Dog-avx2`, and `Dog` exist only if your CPU lacks the top feature level.
+* The dev Pi in `REQUIREMENTS.md` is 7.6 GB RAM and was 89 percent full at last check. Do not run a match while building, the OOM killer will take cutechess.
+* Clone with `--recursive` to get `app/Dog-book` and `app/src/fathom`. The fathom pin must stay at `2251e9974d5e1c77f09e35015fc325098e586e2c`.
+* `tools/board_session.py` is the board smoke. `tools/wrapper.py` needs a fresh open or DTR toggle after a host disconnect.
+* The reference native binary at HEAD has md5 `1773e3c807d0752a40da2ae78ea82924` from the Tier-1 era. New builds will differ, hashes will change.
+* NNUE weights are source. `#if 0` in `weights.cpp` picks the small net, `#else` picks the big net that is active now.
 
-Upstream: https://github.com/folkertvanheusden/Dog
-License: MIT
+## License and upstream
+
+MIT, same as Dog. Upstream is https://github.com/folkertvanheusden/Dog.
+
+If you use this fork, keep the MIT notice and link back to Folkert's project. Issues or ideas for this fork go to https://github.com/Timmy6942025/tinychess.
