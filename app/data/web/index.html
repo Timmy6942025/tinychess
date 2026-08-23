@@ -168,7 +168,9 @@
   #history {
     margin: 0; padding: 7px 11px; background: #171d23; border: 1px solid #242c34;
     border-radius: 10px; font: 12px/1.65 ui-monospace, "SF Mono", monospace;
-    color: #aeb7c0; max-height: 64px; overflow-y: auto; white-space: pre-wrap; flex: none;
+    color: #aeb7c0; height: 64px; overflow-y: auto; white-space: pre-wrap; flex: none;
+    /* fixed height: max-height let the box grow move by move, which shrank
+       the cqmin-sized board on phones until the cap was reached */
   }
 
   /* ---- overlays ---- */
@@ -219,7 +221,7 @@
     .pcell .time { font-size: 22px; }
     .playerRow { padding: 7px 14px; }
     #controls button { padding: 15px 0; font-size: 15px; }
-    #history { max-height: 96px; }
+    #history { height: 96px; }
   }
 
   /* short landscape phones: board fills the left, everything else moves right */
