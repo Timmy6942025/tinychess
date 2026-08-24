@@ -59,10 +59,18 @@ This file tells coding agents how to work in this repo.
 
 ## State (what the numbers should look like)
 
-- Board bench: ~7,100 nps (startpos bench), 6,857 nps at Tier-1 state.
-- Desktop native bench: ~340k nps (LTO build, big net, ~150-290k under load).
-- Accepted search items (Phase B): razoring, check extension, qs SEE pruning
-  (+116.5 Elo cumulative vs Tier-1). Reference binary md5
-  `1773e3c807d0752a40da2ae78ea82924` (commit `75e6d10` era).
+- Board bench: ~14,700 nps average on the startpos console bench (paired-fused
+  era, Aug 24 2026); was ~8,300 pre-rebuild, 6,857 at Tier-1.
+- Desktop native bench: ~340k nps via the bench protocol (~600k instantaneous
+  UCI movetime on the dev Pi), LTO build, big net. The evaluator is
+  memory-latency-bound on desktop; instruction-count profiles mislead.
+- Accepted search items (Phase B): razoring, check extension, qs SEE pruning,
+  recapture extension, qsearch TT-probe removal (+209.5 Elo cumulative vs
+  Tier-1). Accepted eval-kernel item: paired-fused rebuild - bit-exact on
+  desktop (strength gate 39-42-119, -5.2 +/- 30.7 = parity), ~1.8x board node
+  throughput worth +173.9 +/- 34.3 measured Elo on-device (240-game
+  asymmetric-clock selfplay). Reference binary md5 `82b0b6c0134453ed0dba3fd50fe124a9`.
+- The long-bench INT_MIN bug (`1 << 31` as infinite time) is fixed; if the
+  long bench ever reports a few hundred nodes total again, suspect a time-budget regression first.
 - 2-thread board stability: board must survive a 15-min 2-thread session
   (a 2-thread hang is what killed QIO).

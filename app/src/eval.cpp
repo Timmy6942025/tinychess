@@ -26,23 +26,13 @@ void init_move(Eval *const e, const libchess::Position & pos)
 	e->set(pos);
 }
 
-void IRAM_ATTR remove_piece(Eval *const e, const Square & loc, const PieceType & pt, const bool is_white, std::array<undo_t, 4> *const undos, int *const n_undos)
-{
-	e->remove_piece(pt, loc, is_white);
-	undos->at((*n_undos)++) = { loc, pt, is_white, true };
-}
-
-void IRAM_ATTR add_piece(Eval *const e, const Square & loc, const PieceType & pt, const bool is_white, std::array<undo_t, 4> *const undos, int *const n_undos)
-{
-	e->add_piece(pt, loc, is_white);
-	undos->at((*n_undos)++) = { loc, pt, is_white, false };
-}
-
-void IRAM_ATTR move_piece(Eval *const e, const Square & from, const Square & to, const PieceType & pt, const bool is_white, std::array<undo_t, 4> *const undos, int *const n_undos)
-{
-	remove_piece(e, from, pt, is_white, undos, n_undos);
-	add_piece   (e, to,   pt, is_white, undos, n_undos);
-}
+// All of a move's accumulator deltas are batched into a single sweep over
+// both perspectives (see nnue_kernels.h). Each branch below records the same
+// facts the old code applied immediately - removals first, additions last -
+// into the batch plus the undo journal, so unmake_move can rebuild and apply
+// the exact inverse batch. Order inside a batch is arithmetically free
+// (addition mod 2^16 commutes); fixing it keeps the board's decomposition
+// simple.
 
 std::pair<int, std::array<undo_t, 4> > IRAM_ATTR make_move(Eval *const e, Position & pos, const Move & move)
 {
@@ -53,6 +43,9 @@ std::pair<int, std::array<undo_t, 4> > IRAM_ATTR make_move(Eval *const e, Positi
 		{ libchess::constants::A1, libchess::constants::PAWN, false, false },
 		{ libchess::constants::A1, libchess::constants::PAWN, false, false }
 	} };
+
+	nnue_k::Delta deltas[4];
+	int           n_deltas = 0;
 
 	Square from_square = move.from_square();
 	Square to_square   = move.to_square  ();
@@ -66,54 +59,79 @@ std::pair<int, std::array<undo_t, 4> > IRAM_ATTR make_move(Eval *const e, Positi
 
 	assert(move.type() != Move::Type::ENPASSANT || (is_white && move.to_square().rank() == 5) || (!is_white && move.to_square().rank() == 2));
 
+	auto remove_piece = [&](const Square & loc, const PieceType & pt, const bool was_white) {
+		e->push_delta(deltas, n_deltas, pt, loc.value(), was_white, false);
+		actions.at(n_actions++) = { loc, pt, was_white, true };   // inverse: put back
+	};
+	auto add_piece = [&](const Square & loc, const PieceType & pt, const bool now_white) {
+		e->push_delta(deltas, n_deltas, pt, loc.value(), now_white, true);
+		actions.at(n_actions++) = { loc, pt, now_white, false };  // inverse: remove
+	};
+	auto move_piece = [&](const Square & from, const Square & to, const PieceType & pt, const bool piece_is_white) {
+		remove_piece(from, pt, piece_is_white);
+		add_piece   (to,   pt, piece_is_white);
+	};
+
 	switch(move.type()) {
 		case Move::Type::NORMAL:
 		case Move::Type::DOUBLE_PUSH:
 			assert(moving_pt.has_value());
-			move_piece(e, from_square, to_square, *moving_pt, is_white, &actions, &n_actions);
+			move_piece(from_square, to_square, *moving_pt, is_white);
 			assert(*moving_pt == constants::PAWN || move.type() != Move::Type::DOUBLE_PUSH);
 			break;
 		case Move::Type::CAPTURE:
 			assert(captured_pt.has_value());
 			assert(pos.color_of(from_square) != pos.color_of(to_square));
-			remove_piece(e, to_square, *captured_pt, !is_white, &actions, &n_actions);
-			move_piece(e, from_square, to_square, *moving_pt, is_white, &actions, &n_actions);
+			remove_piece(to_square, *captured_pt, !is_white);
+			move_piece(from_square, to_square, *moving_pt, is_white);
 			break;
 		case Move::Type::ENPASSANT:
 			assert(*moving_pt == constants::PAWN);
 			assert(pos.color_of(from_square) != pos.color_of(is_white ? Square(to_square - 8) : Square(to_square + 8)));
-			move_piece(e, from_square, to_square, constants::PAWN, is_white, &actions, &n_actions);
+			remove_piece(from_square, constants::PAWN, is_white);
 			assert(pos.piece_type_on(is_white ? Square(to_square - 8) : Square(to_square + 8)) == constants::PAWN);
-			remove_piece(e, is_white ? Square(to_square - 8) : Square(to_square + 8), constants::PAWN, !is_white, &actions, &n_actions);
+			remove_piece(is_white ? Square(to_square - 8) : Square(to_square + 8), constants::PAWN, !is_white);
+			add_piece   (to_square, constants::PAWN, is_white);
 			break;
 		case Move::Type::CASTLING:
 			assert(*moving_pt == constants::KING);
 			assert(pos.color_of(from_square) == (is_white ? constants::WHITE : constants::BLACK));
-			move_piece(e, from_square, to_square, constants::KING, is_white, &actions, &n_actions);
 			switch (to_square) {
 				case constants::C1:
 					assert(is_white);
 					assert(pos.color_of(constants::A1) == constants::WHITE);
 					assert(pos.piece_type_on(constants::D1).has_value() == false);
-					move_piece(e, constants::A1, constants::D1, constants::ROOK, true, &actions, &n_actions);
+					remove_piece(constants::E1, constants::KING, true);
+					remove_piece(constants::A1, constants::ROOK, true);
+					add_piece   (constants::C1, constants::KING, true);
+					add_piece   (constants::D1, constants::ROOK, true);
 					break;
 				case constants::G1:
 					assert(is_white);
 					assert(pos.color_of(constants::H1) == constants::WHITE);
 					assert(pos.piece_type_on(constants::F1).has_value() == false);
-					move_piece(e, constants::H1, constants::F1, constants::ROOK, true, &actions, &n_actions);
+					remove_piece(constants::E1, constants::KING, true);
+					remove_piece(constants::H1, constants::ROOK, true);
+					add_piece   (constants::G1, constants::KING, true);
+					add_piece   (constants::F1, constants::ROOK, true);
 					break;
 				case constants::C8:
 					assert(!is_white);
 					assert(pos.color_of(constants::A8) == constants::BLACK);
 					assert(pos.piece_type_on(constants::D8).has_value() == false);
-					move_piece(e, constants::A8, constants::D8, constants::ROOK, false, &actions, &n_actions);
+					remove_piece(constants::E8, constants::KING, false);
+					remove_piece(constants::A8, constants::ROOK, false);
+					add_piece   (constants::C8, constants::KING, false);
+					add_piece   (constants::D8, constants::ROOK, false);
 					break;
 				case constants::G8:
 					assert(!is_white);
 					assert(pos.color_of(constants::H8) == constants::BLACK);
 					assert(pos.piece_type_on(constants::F8).has_value() == false);
-					move_piece(e, constants::H8, constants::F8, constants::ROOK, false, &actions, &n_actions);
+					remove_piece(constants::E8, constants::KING, false);
+					remove_piece(constants::H8, constants::ROOK, false);
+					add_piece   (constants::G8, constants::KING, false);
+					add_piece   (constants::F8, constants::ROOK, false);
 					break;
 				default:
 					assert(false);
@@ -125,23 +143,25 @@ std::pair<int, std::array<undo_t, 4> > IRAM_ATTR make_move(Eval *const e, Positi
 			assert(*promotion_pt != constants::PAWN);
 			assert((pos.color_of(from_square) == constants::WHITE && to_square.rank() == 7) ||
 			       (pos.color_of(from_square) == constants::BLACK && to_square.rank() == 0));
-			remove_piece(e, from_square, constants::PAWN, is_white, &actions, &n_actions);
-			add_piece   (e, to_square,  *promotion_pt,    is_white, &actions, &n_actions);
+			remove_piece(from_square, constants::PAWN, is_white);
+			add_piece   (to_square,  *promotion_pt,    is_white);
 			break;
 		case Move::Type::CAPTURE_PROMOTION:
 			assert(*moving_pt == constants::PAWN);
 			assert(*promotion_pt != constants::PAWN);
 			assert((pos.color_of(from_square) == constants::WHITE && to_square.rank() == 7) ||
 			       (pos.color_of(from_square) == constants::BLACK && to_square.rank() == 0));
-			remove_piece(e, to_square,  *captured_pt,    !is_white, &actions, &n_actions);
-			remove_piece(e, from_square, constants::PAWN, is_white, &actions, &n_actions);
-			add_piece   (e, to_square,  *promotion_pt,    is_white, &actions, &n_actions);
+			remove_piece(to_square,  *captured_pt,    !is_white);
+			remove_piece(from_square, constants::PAWN, is_white);
+			add_piece   (to_square,  *promotion_pt,    is_white);
 			break;
 		default:
 			printf("type is %d\n", int(move.type()));
 			assert(false);
 			break;
 	}
+
+	nnue_k::apply(e->acc_white().data(), e->acc_black().data(), deltas, n_deltas);
 
 	pos.make_move(move);
 
@@ -164,13 +184,22 @@ std::pair<int, std::array<undo_t, 4> > IRAM_ATTR make_move(Eval *const e, Positi
 
 void IRAM_ATTR unmake_move(Eval *const e, Position & pos, const std::pair<int, std::array<undo_t, 4> > & actions)
 {
-	for(int i=0; i<actions.first; i++) {
-		auto & action = actions.second[i];
-		if (action.is_put)
-			e->add_piece(action.type, action.location, action.is_white);
-		else
-			e->remove_piece(action.type, action.location, action.is_white);
+	nnue_k::Delta deltas[4];
+	int           n_deltas = 0;
+
+	// rebuild the inverse batch: every recorded fact flipped, removals
+	// first, additions last (canonical order for the board kernels)
+	for(int pass=0; pass<2; pass++) {
+		for(int i=0; i<actions.first; i++) {
+			auto & action = actions.second[i];
+			const bool add_now = action.is_put;
+			if ((pass == 0) == add_now)
+				continue;
+			e->push_delta(deltas, n_deltas, action.type, action.location.value(), action.is_white, add_now);
+		}
 	}
+
+	nnue_k::apply(e->acc_white().data(), e->acc_black().data(), deltas, n_deltas);
 
 	pos.unmake_move();
 }

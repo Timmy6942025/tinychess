@@ -1663,8 +1663,11 @@ void run_bench(const bool long_bench, const bool via_usb)
 				prepare_threads_state();
 				for(size_t ti=0; ti<sp.size(); ti++)
 					memset(sp.at(ti)->history, 0x00, history_malloc_size);
-				work.search_think_time_min = 1 << 31;
-				work.search_think_time_max = 1 << 31;
+				// "Infinite" bench time. 1 << 31 overflows int (INT_MIN),
+				// which made the absolute-time stop test fire after depth 1
+				// and collapsed the whole long bench to ~90 nodes per FEN.
+				work.search_think_time_min = 1 << 30;
+				work.search_think_time_max = 1 << 30;
 				work.search_is_abs_time    = true;
 				work.search_max_depth      = 10;
 				work.search_max_n_nodes.reset();

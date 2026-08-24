@@ -2,12 +2,9 @@
 
 #include <libchess/Position.h>
 
+#include "nnue_kernels.h"
 #include "weights.h"
 
-
-constexpr int SCALE = 400;
-constexpr std::int16_t QA = 255;
-constexpr std::int16_t QB = 64;
 
 struct Accumulator
 {
@@ -31,6 +28,13 @@ public:
 	int  evaluate    (const bool white_to_move) const;
 	void add_piece   (const int piece, const int square, const bool is_white);
 	void remove_piece(const int piece, const int square, const bool is_white);
+
+	// Collect the paired rows a piece event touches instead of applying it
+	// right away, so callers can batch a whole move's deltas into one sweep.
+	void push_delta(nnue_k::Delta *deltas, int &n, const int piece, const int square, const bool is_white, const bool add) const;
+
+	std::array<std::int16_t, HIDDEN_SIZE> & acc_white() { return white.vals; }
+	std::array<std::int16_t, HIDDEN_SIZE> & acc_black() { return black.vals; }
 };
 
 #if defined(ESP32)

@@ -1,6 +1,6 @@
 # BRAG.md
 
-A complete record of what this fork did on top of [Dog](https://github.com/folkertvanheusden/Dog) by Folkert van Heusden (MIT). Three weeks of work, August 3 to 23, 2026, 143 commits. The result ships as TinyChess (`Timmy6942025/tinychess`): one source tree that builds both a desktop UCI engine and ESP32-S3 firmware, a board that broadcasts its own WiFi and plays against a phone browser, and an experiment log with a number attached to every decision.
+A complete record of what this fork did on top of [Dog](https://github.com/folkertvanheusden/Dog) by Folkert van Heusden (MIT). Three weeks and change of work, August 3 to 24, 2026, 147 commits. The result ships as TinyChess (`Timmy6942025/tinychess`): one source tree that builds both a desktop UCI engine and ESP32-S3 firmware, a board that broadcasts its own WiFi and plays against a phone browser, and an experiment log with a number attached to every decision.
 
 Every figure below comes from `tools/results.log` (4,149 lines), `tools/bench.csv`, or a named doc in the repo. Nothing here is recalled from memory.
 
@@ -14,8 +14,9 @@ Credit where due. Upstream Dog at the fork point (`9549c3c`) gave us a working e
 |---|---|---|
 | Desktop vs Stockfish 17, 2+0.02, 200 games | -301.3 +/- 57.9 | **-56.1 +/- 43.4** (63-95-42) |
 | Gated search gains stacked after Tier-1 | 0 | **+209.5 Elo** |
-| Board bench | ~4,300 to 5,079 nps | **~8,300 nps** (depth-8 console protocol) |
-| Board absolute strength | unmeasured | **~2800-2900** on the SF17 scale |
+| Board bench | ~4,300 to 5,079 nps | **~14,700 nps** avg over the startpos bench (~17k instantaneous) |
+| Board speed gain from the evaluator rebuild | 0 | **+174 +/- 34 Elo**, measured, see the paired-fused section |
+| Board absolute strength | unmeasured | **~2800-2900** on the SF17 scale (slow TC anchor) |
 | Who can play it | people with a serial cable | **anyone with a phone in WiFi range** |
 | Unit tests | 12 | **21**, plus fuzzers |
 | Documented experiments | 0 | **~40 accepts and rejects**, all with numbers |
@@ -78,7 +79,7 @@ Platform and speed ideas:
 - 64 KB data cache: the Kconfig trades 32 KB of internal heap for it, and largest free block was 31.7 KB. Rejected on arithmetic before flashing.
 - QIO flash: claimed +32.7%, then we caught the claim as a clean-rebuild artifact, then the mode hung a 2-thread session at 12 minutes. Reverted. Flash is DIO and stays DIO.
 - Split-brain TT (per-core tables to dodge the non-coherent PSRAM cache): we wrote falsifiable predictions first. Throughput gate passed, Elo gate failed badly, hypothesis dropped by its own rules. This is how you kill a darling.
-- PIE vectorized accumulator updates: the S3's PIE is a reduced dot-product subset. `EE.VADD.S16` does not exist in this silicon (full add/sub PIE is S2-only). Proven with CCOUNT probes, documented, closed.
+- PIE vectorized accumulator updates: the S3's PIE is a reduced dot-product subset. `EE.VADD.S16` does not exist in this silicon (full add/sub PIE is S2-only). Proven with CCOUNT probes, documented, closed. **Correction, August 24:** closed on the wrong generalization. No wrapping int16 vector add exists, but exact mod-2^16 adds do: zero-widen each 128-bit chunk to s32 with `EE.VZIP.16` against a fresh zero register, combine with `EE.VADDS/VSUBS.S32` (a handful of widened rows cannot reach 2^31, so saturation never fires), narrow back with `EE.VUNZIP.16`, whose even elements are exactly the low 16 bits of each widened lane. The paired-fused rebuild below ships this. The original CCOUNT conclusion was right that a naive saturating add changes semantics; it was wrong that nothing could.
 - Serial-aware time budget (subtract the 50 ms serial floor): saves forfeits, costs 1.5 to 2 plies, a net wash that cannot pass a gate. Emergency clamp variant: +25 estimated against +/-32 gate noise, ungateable. No change.
 - Moves-to-go floor on desktop: -76 regression. Kept ESP32-only, and the desktop gate that caught the regression is recorded next to the fix.
 
@@ -99,6 +100,22 @@ The board went from ~4,300 scalar nps to ~8,300 on the depth-8 console bench, wi
 Tier-1 finished at 6,857 nps (fixed 2.5 s window), Phase B ported the accepted search set to 7,128, and the PSRAM-weights era measures 8,288 to 8,303 on the depth-8 console protocol. Wall-clock verification put the true 2-thread search at 7,369 nps.
 
 Then we stopped, on purpose. CCOUNT profiling accounted for the full 29k cycles per node: eval machinery is about 65% of it, mostly irreducible flash-cache-bound accumulator updates, and the qsearch subtree was profiled component by component to its floor (stand-pat eval 45%, movegen 25%, SEE 15%, TT 15%). NPS R&D was declared complete with receipts, which is rarer than a win.
+
+### The reopen: paired-fused evaluator (August 24)
+
+The stop was called on a cycle account of the old code. A callgrind instruction profile told a different story: six of every ten instructions sat in the evaluator - `add_piece` 21.5%, `remove_piece` 21.5%, inference 17% - while search itself was under 5%. So the evaluator got rebuilt instead of patched.
+
+Three parts, all new as far as a survey of Stockfish, Berserk, Halogen, Alexandria, Viridithas, and Seer could establish:
+
+- **Paired rows.** This net is flip-based: both perspectives read one shared table, own view at row f, other view at f+384 with the square mirrored. The blob permutes at load into 384 contiguous `[own|other]` pairs (partner index is not f+384; the square flips), so one piece event streams one 1KB region instead of two rows 192KB apart. Desktop permutes once from .rodata; the board cycle-walks its PSRAM copy in place so PSRAM never holds two tables.
+- **Fused dual-perspective passes.** All deltas of a move apply to both accumulators in one sweep; unmake rebuilds the inverse batch from the existing undo journal; position setup batches all 32 pieces into a single pass.
+- **PIE update kernels for the S3**, using the widen-add-narrow formulation from the graveyard correction above, plus NEON/SSE2 intrinsics and a scalar reference path elsewhere.
+
+Everything is integer addition mod 2^16, which commutes, so reordering or fusing deltas cannot move a bit. That makes verification unusually sharp, and it all passed: 4,000-position eval differential byte-identical against the old binary, node/score/PV equality at fixed depth on six positions, unit suite green including pinned literal eval values. On desktop the rebuild is wall-clock parity - instruction count dropped 12%, L1 read misses 17%, but the old eval turned out to be memory-latency-bound, hidden by out-of-order execution all along. Instruction profiles tell you where bytes are cheap, not where nanoseconds are. The strength gate confirmed it: 39-42-119 over 200 games, -5.2 +/- 30.7.
+
+The board is where compute actually binds, and there the same change is worth a lot: bench went from ~8,200 to ~14,700 average nps (~17k instantaneous), fixed-depth searches now match the desktop binary digit-for-digit through depth 8, and a 240-game self-play match giving one side exactly the achieved 1.8x clock ratio measured the gain at **+173.9 +/- 34.3, LOS 100%**.
+
+The hardware caught one bug during bring-up that desktop testing never could: the PIE dispatch assumed removals-first delta ordering, but en-passant journals sub,add,sub and castling sub,add,sub,add, so any such line corrupted both accumulators by twice a weight row. Boot-time selftests now validate the kernels against the scalar reference and the batch decomposition against scrambled orders, with silent fallback if either ever disagrees. A later audit also found and fixed a wrong row resolution in the flat-blob fallback path (the PSRAM-failure case), verified by an exhaustive 768-case index probe. Design notes live in `docs/paired-fused-nnue.md`.
 
 ## Measurement bugs we found in our own toolbox
 
@@ -122,6 +139,7 @@ Engine core and vendored libchess:
 - The opening book never fired a single move in this firmware's life. `query()` checked `!fh`, but `begin()` loads to memory and closes the file first, so the check always tripped after a successful load. Fixed: startpos reply went from 1,965 ms to 25 ms.
 - Moves-to-go collapsed to 1 after move 40, spending the whole remaining clock on one move and forfeiting on time. The fix floors the horizon at 30 on ESP32 only; the desktop variant of the same fix measurably regressed and was reverted.
 - The adaptive time budget collapsed to a third of nominal whenever the root move was stable, then got halved again by the stop threshold. The board was spending 300 ms of a 30 s budget. Fixed ESP32-only after the desktop gate showed -83.
+- The long bench quit after depth 1 and had been reporting nonsense for who knows how long: the "infinite" bench time was `1 << 31`, which overflows int to INT_MIN, so the absolute-time stop test compared positive elapsed milliseconds against a negative budget and fired instantly. Fixed with `1 << 30`; the bench went from ~8k nodes total to 7.6M.
 - Eight-bug hunt: `%u` on uint64_t counters, `%lu` mismatches, `munmap(p, 0)` returning EINVAL, an unused variable, a missing `nnue.cpp` link in one target, more `Bitboard{0}`.
 - Later seven-bug batch: polyglot promotion encoding, a settings buffer overflow risk, a shared-memory unlock, a stats divide-by-zero printing `nan%`, and friends.
 
