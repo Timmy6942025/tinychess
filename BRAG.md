@@ -1,6 +1,6 @@
 # BRAG.md
 
-A complete record of what this fork did on top of [Dog](https://github.com/folkertvanheusden/Dog) by Folkert van Heusden (MIT). Three weeks and change of work, August 3 to 24, 2026, 147 commits. The result ships as TinyChess (`Timmy6942025/tinychess`): one source tree that builds both a desktop UCI engine and ESP32-S3 firmware, a board that broadcasts its own WiFi and plays against a phone browser, and an experiment log with a number attached to every decision.
+A complete record of what this fork did on top of [Dog](https://github.com/folkertvanheusden/Dog) by Folkert van Heusden (MIT). Three weeks of work, August 3 to 25, 2026, 151 commits. The result ships as TinyChess (`Timmy6942025/tinychess`): one source tree that builds both a desktop UCI engine and ESP32-S3 firmware, a board that broadcasts its own WiFi and plays against a phone browser, and an experiment log with a number attached to every decision.
 
 Every figure below comes from `tools/results.log` (4,149 lines), `tools/bench.csv`, or a named doc in the repo. Nothing here is recalled from memory.
 
