@@ -1,0 +1,363 @@
+diff --git a/app/src/CMakeLists.txt b/app/src/CMakeLists.txt
+index e36df38..7d4b457 100644
+--- a/app/src/CMakeLists.txt
++++ b/app/src/CMakeLists.txt
+@@ -1,4 +1,4 @@
+-idf_component_register(SRCS book.cpp main.cpp max-ascii.cpp tt.cpp eval.cpp eval-stats.cpp san.cpp search.cpp stats.cpp str.cpp test.cpp tui.cpp nnue.cpp web.cpp led_strip_encoder.c
++idf_component_register(SRCS book.cpp main.cpp max-ascii.cpp tt.cpp eval.cpp eval-stats.cpp eval_corr.cpp san.cpp search.cpp stats.cpp str.cpp test.cpp tui.cpp nnue.cpp web.cpp led_strip_encoder.c
+ 	PRIV_REQUIRES spiffs console esp_driver_uart nvs_flash esp_wifi esp_driver_gpio esp_timer esp_netif esp_http_client esp_http_server esp_driver_usb_serial_jtag esp_driver_rmt esp_netif bootloader_support lwip pthread json esp_adc
+ 	INCLUDE_DIRS . ../include)
+ 
+diff --git a/app/src/eval.cpp b/app/src/eval.cpp
+index 2d5803c..fe5db0f 100644
+--- a/app/src/eval.cpp
++++ b/app/src/eval.cpp
+@@ -61,10 +61,12 @@ std::pair<int, std::array<undo_t, 4> > IRAM_ATTR make_move(Eval *const e, Positi
+ 
+ 	auto remove_piece = [&](const Square & loc, const PieceType & pt, const bool was_white) {
+ 		e->push_delta(deltas, n_deltas, pt, loc.value(), was_white, false);
++		e->corr_event(pt, loc.value(), was_white);
+ 		actions.at(n_actions++) = { loc, pt, was_white, true };   // inverse: put back
+ 	};
+ 	auto add_piece = [&](const Square & loc, const PieceType & pt, const bool now_white) {
+ 		e->push_delta(deltas, n_deltas, pt, loc.value(), now_white, true);
++		e->corr_event(pt, loc.value(), now_white);
+ 		actions.at(n_actions++) = { loc, pt, now_white, false };  // inverse: remove
+ 	};
+ 	auto move_piece = [&](const Square & from, const Square & to, const PieceType & pt, const bool piece_is_white) {
+@@ -196,6 +198,7 @@ void IRAM_ATTR unmake_move(Eval *const e, Position & pos, const std::pair<int, s
+ 			if ((pass == 0) == add_now)
+ 				continue;
+ 			e->push_delta(deltas, n_deltas, action.type, action.location.value(), action.is_white, add_now);
++			e->corr_event(action.type, action.location.value(), action.is_white);
+ 		}
+ 	}
+ 
+diff --git a/app/src/linux-windows/CMakeLists.txt b/app/src/linux-windows/CMakeLists.txt
+index 41056af..7eff714 100644
+--- a/app/src/linux-windows/CMakeLists.txt
++++ b/app/src/linux-windows/CMakeLists.txt
+@@ -116,6 +116,7 @@ set(APP_SOURCES
+   ../book.cpp
+   ../eval.cpp
+   ../eval-stats.cpp
++  ../eval_corr.cpp
+   ../main.cpp
+   ../max.cpp
+   ../max-ascii.cpp
+diff --git a/app/src/main.cpp b/app/src/main.cpp
+index d3cd2a6..4055252 100644
+--- a/app/src/main.cpp
++++ b/app/src/main.cpp
+@@ -77,6 +77,7 @@
+ 
+ #include "book.h"
+ #include "eval.h"
++#include "eval_corr.h"
+ #include "inbuf.h"
+ #include "main.h"
+ #include "max-ascii.h"
+@@ -956,6 +957,7 @@ void main_task()
+ 		for(auto & i: sp) {
+ 			memset(i->history, 0x00, history_malloc_size);
+ 		}
++		eval_corr::clear();
+ 		global_cs.reset();
+ 		tti.reset();
+ 	};
+@@ -1663,6 +1665,7 @@ void run_bench(const bool long_bench, const bool via_usb)
+ 				prepare_threads_state();
+ 				for(size_t ti=0; ti<sp.size(); ti++)
+ 					memset(sp.at(ti)->history, 0x00, history_malloc_size);
++				eval_corr::clear();
+ 				// "Infinite" bench time. 1 << 31 overflows int (INT_MIN),
+ 				// which made the absolute-time stop test fire after depth 1
+ 				// and collapsed the whole long bench to ~90 nodes per FEN.
+@@ -1694,6 +1697,7 @@ void run_bench(const bool long_bench, const bool via_usb)
+ 			sp.at(0)->pos = libchess::Position(libchess::constants::STARTPOS_FEN);
+ 			init_move(sp.at(0)->nnue_eval, sp.at(0)->pos);
+ 			memset(sp.at(0)->history, 0x00, history_malloc_size);
++			eval_corr::clear();
+ 			work.search_think_time_min = 2500;
+ 			work.search_think_time_max = 2500;
+ 			work.search_is_abs_time    = true;
+diff --git a/app/src/nnue-ruk.cpp b/app/src/nnue-ruk.cpp
+index 53c2a26..1d76ebb 100644
+--- a/app/src/nnue-ruk.cpp
++++ b/app/src/nnue-ruk.cpp
+@@ -75,6 +75,7 @@ void Eval::reset()
+ 
+ 	std::copy(ruk_feature_bias, ruk_feature_bias + HIDDEN_SIZE, this->white.vals.begin());
+ 	std::copy(ruk_feature_bias, ruk_feature_bias + HIDDEN_SIZE, this->black.vals.begin());
++	this->ck = CorrKeys { };
+ }
+ 
+ Eval::Eval()
+@@ -97,6 +98,7 @@ void Eval::set(const libchess::Position & pos)
+ 			libchess::Square sq = piece_bb_w.forward_bitscan();
+ 			piece_bb_w.forward_popbit();
+ 			add_piece(type, sq, true);
++			corr_event(type, sq.value(), true);
+ 		}
+ 
+ 		libchess::Bitboard piece_bb_b = pos.piece_type_bb(type, libchess::constants::BLACK);
+@@ -104,6 +106,7 @@ void Eval::set(const libchess::Position & pos)
+ 			libchess::Square sq = piece_bb_b.forward_bitscan();
+ 			piece_bb_b.forward_popbit();
+ 			add_piece(type, sq, false);
++			corr_event(type, sq.value(), false);
+ 		}
+ 	}
+ }
+diff --git a/app/src/nnue.cpp b/app/src/nnue.cpp
+index 3655fce..be3ee10 100644
+--- a/app/src/nnue.cpp
++++ b/app/src/nnue.cpp
+@@ -620,6 +620,7 @@ void Eval::reset()
+ {
+ 	this->white = NNUE->feature_bias;
+ 	this->black = NNUE->feature_bias;
++	this->ck    = CorrKeys { };
+ }
+ 
+ void Eval::set(const libchess::Position & pos)
+@@ -635,6 +636,7 @@ void Eval::set(const libchess::Position & pos)
+ 			libchess::Square sq = bb.forward_bitscan();
+ 			bb.forward_popbit();
+ 			push_delta(deltas, n, type, sq.value(), true, true);
++			corr_event(type, sq.value(), true);
+ 		}
+ 
+ 		bb = pos.piece_type_bb(type, libchess::constants::BLACK);
+@@ -642,6 +644,7 @@ void Eval::set(const libchess::Position & pos)
+ 			libchess::Square sq = bb.forward_bitscan();
+ 			bb.forward_popbit();
+ 			push_delta(deltas, n, type, sq.value(), false, true);
++			corr_event(type, sq.value(), false);
+ 		}
+ 	}
+ 
+diff --git a/app/src/nnue.h b/app/src/nnue.h
+index bf7d97d..3129d00 100644
+--- a/app/src/nnue.h
++++ b/app/src/nnue.h
+@@ -2,6 +2,7 @@
+ 
+ #include <libchess/Position.h>
+ 
++#include "eval_corr.h"
+ #include "nnue_kernels.h"
+ #include "weights.h"
+ 
+@@ -11,11 +12,22 @@ struct Accumulator
+     alignas(64) std::array<std::int16_t, HIDDEN_SIZE> vals;
+ };
+ 
++// Feature keys for the correction layer: one over all pawns, one per side
++// over that side's non-pawns (king included). XOR maintained alongside the
++// accumulator; null moves change neither.
++struct CorrKeys
++{
++	uint64_t pawn     { 0 };
++	uint64_t np_white { 0 };
++	uint64_t np_black { 0 };
++};
++
+ class Eval
+ {
+ private:
+ 	Accumulator white;
+ 	Accumulator black;
++	CorrKeys    ck;
+ 
+ 	Eval();
+ 
+@@ -33,6 +45,24 @@ public:
+ 	// right away, so callers can batch a whole move's deltas into one sweep.
+ 	void push_delta(nnue_k::Delta *deltas, int &n, const int piece, const int square, const bool is_white, const bool add) const;
+ 
++	// Mirror a piece event into the correction keys. XOR is its own inverse,
++	// so add and remove share this path.
++	void corr_event(const int piece, const int square, const bool is_white)
++	{
++		const uint64_t key = eval_corr::psq_key(piece, square);
++
++		if (piece == 0)
++			ck.pawn ^= key;
++		else if (is_white)
++			ck.np_white ^= key;
++		else
++			ck.np_black ^= key;
++	}
++
++	void corr_clear_keys() { ck = CorrKeys { }; }
++
++	const CorrKeys & corr_keys() const { return ck; }
++
+ 	std::array<std::int16_t, HIDDEN_SIZE> & acc_white() { return white.vals; }
+ 	std::array<std::int16_t, HIDDEN_SIZE> & acc_black() { return black.vals; }
+ };
+diff --git a/app/src/search.cpp b/app/src/search.cpp
+index 82fe3fd..0814d68 100644
+--- a/app/src/search.cpp
++++ b/app/src/search.cpp
+@@ -28,6 +28,7 @@ void es32_set_yield_peer(TaskHandle_t th)
+ #endif
+ 
+ #include "eval.h"
++#include "eval_corr.h"
+ #include "inbuf.h"
+ #include "lmr-red.h"
+ #include "main.h"
+@@ -306,8 +307,10 @@ int IRAM_ATTR qs(int alpha, const int beta, const int qsdepth, search_pars_t & s
+ 
+ 	bool in_check   = sp.pos.in_check();
+ 	if (!in_check) {
+-		// standing pat
+-		best_score = nnue_evaluate(sp.nnue_eval, sp.pos);
++		// standing pat, corrected: leaf values are where the net's class
++		// biases mis-score quiets directly. Main-search margins stay on the
++		// raw scale they were tuned against.
++		best_score = nnue_evaluate(sp.nnue_eval, sp.pos) + eval_corr::value(*sp.nnue_eval, sp.pos.side_to_move());
+ 		if (best_score > alpha && best_score >= beta) {
+ 			sp.cs.data.n_standing_pat++;
+ 			return best_score;
+@@ -611,10 +614,13 @@ int IRAM_ATTR search(int depth, int alpha, const int beta, const int null_move_d
+ 
+ 	int  staticeval   = 0;
+ 	bool futility_ok  = false;
++	bool staticeval_ok = false;
+ 
+ 	if (!is_root_position && !in_check && depth <= 7 && beta <= max_non_mate) {
+ 		sp.cs.data.n_static_eval++;
+ 		staticeval  = nnue_evaluate(sp.nnue_eval, sp.pos);
++		staticeval_ok = true;
++
+ 		futility_ok = depth <= 2;
+ 
+ 		// static null pruning (reverse futility pruning)
+@@ -806,6 +812,34 @@ int IRAM_ATTR search(int depth, int alpha, const int beta, const int null_move_d
+ 		sp.cs.data.nmc_nodes++;
+ 	}
+ 
++	// correction history update: when this node's bound proves the corrected
++	// static eval wrong in the direction the bound can express, feed the
++	// residual back into the position-class tables. Only bounded results
++	// teach: a quiet cutoff that outran the eval (eval was too low) or an
++	// all-moves-failed-low below it (eval was too high). Exact PV scores are
++	// excluded on purpose - their residuals are qsearch noise, and a 200-game
++	// gate with them enabled measured -31 Elo. Capture/promotion cutoffs are
++	// skipped too (they change the material the keys describe), as are
++	// mate-band scores, depth-1 nodes (residual is one qs ply of noise), and
++	// anything cut short by the stop flag.
++	if (!sp.stop->flag && staticeval_ok && n_played > 0 && depth >= 2 && abs(best_score) < max_non_mate) {
++		const bool quiet_cutoff = beta_cutoff_move.has_value() &&
++			!sp.pos.is_promotion_move(beta_cutoff_move.value());  // promos change the pawn key too
++		const bool failed_low   = best_score <= start_alpha;
++		const int  error        = best_score - staticeval;
++
++		bool informative = false;
++		if (quiet_cutoff)
++			informative = error > 0;          // a quiet move outran the eval: eval too low
++		else if (failed_low)
++			informative = error < 0;          // nothing beat alpha and the eval overshot
++
++		if (informative) {
++			sp.cs.data.n_corr_update++;
++			eval_corr::update(*sp.nnue_eval, sp.pos.side_to_move(), error, depth);
++		}
++	}
++
+ 	if (n_played == 0) {
+ 		if (in_check) {
+ 			sp.cs.data.n_checkmate++;
+diff --git a/app/src/stats.cpp b/app/src/stats.cpp
+index c36e3f3..753e373 100644
+--- a/app/src/stats.cpp
++++ b/app/src/stats.cpp
+@@ -51,6 +51,8 @@ void chess_stats::add(const chess_stats & source)
+ 	this->data.n_static_eval_hit += source.data.n_static_eval_hit;
+ 	this->data.n_futility_prune  += source.data.n_futility_prune;
+ 
++	this->data.n_corr_update     += source.data.n_corr_update;
++
+ 	this->data.n_moves_cutoff  += source.data.n_moves_cutoff;
+ 	this->data.nmc_nodes       += source.data.nmc_nodes;
+ 	this->data.n_qmoves_cutoff += source.data.n_qmoves_cutoff;
+diff --git a/app/src/stats.h b/app/src/stats.h
+index c794ad5..3b2d980 100644
+--- a/app/src/stats.h
++++ b/app/src/stats.h
+@@ -37,6 +37,8 @@ public:
+ 		uint32_t  n_razor;
+ 		uint32_t  n_futility_prune;
+ 
++		uint32_t  n_corr_update;
++
+ 		uint64_t  n_moves_cutoff;
+ 		uint64_t  nmc_nodes;
+ 		uint64_t  n_qmoves_cutoff;
+diff --git a/app/src/test.cpp b/app/src/test.cpp
+index 6bb0b93..14450e8 100644
+--- a/app/src/test.cpp
++++ b/app/src/test.cpp
+@@ -7,6 +7,7 @@
+ #include <libchess/Position.h>
+ 
+ #include "eval.h"
++#include "eval_corr.h"
+ #include "main.h"
+ #include "nnue.h"
+ #include "san.h"
+@@ -523,6 +524,7 @@ void tests()
+ 		init_move(sp.at(0)->nnue_eval, sp.at(0)->pos);
+ 		clear_flag(sp.at(0)->stop);
+ 		memset(sp.at(0)->history, 0x00, history_malloc_size);
++		eval_corr::clear();
+ 		Move best_move  { 0 };
+ 		int  best_score { 0 };
+ 		int  max_depth  { 0 };
+@@ -540,6 +542,7 @@ void tests()
+ 
+ 		clear_flag(sp.at(0)->stop);
+ 		memset(sp.at(0)->history, 0x00, history_malloc_size);
++		eval_corr::clear();
+ 
+ 		MoveList move_list = sp.at(0)->pos.pseudo_legal_move_list();
+ 		my_assert(move_list.size() == 7);
+@@ -917,6 +920,7 @@ void tests()
+ 			init_move(sp.at(0)->nnue_eval, sp.at(0)->pos);
+ 			clear_flag(sp.at(0)->stop);
+ 			memset(sp.at(0)->history, 0x00, history_malloc_size);
++			eval_corr::clear();
+ 			auto rc = search_it(0, 0, false, sp.at(0), m.second, 2000000, O_NONE, false);
+ 			int score = std::get<1>(rc);
+ 			if (abs(score) < max_non_mate) {
+@@ -946,6 +950,7 @@ void tests()
+ 			init_move(sp.at(0)->nnue_eval, sp.at(0)->pos);
+ 			clear_flag(sp.at(0)->stop);
+ 			memset(sp.at(0)->history, 0x00, history_malloc_size);
++			eval_corr::clear();
+ 			auto   legal = sp.at(0)->pos.legal_move_list();
+ 			auto   rc    = search_it(0, 0, false, sp.at(0), 6, 120000, O_NONE, false);
+ 			Move   best  = std::get<0>(rc);
+diff --git a/app/src/tui.cpp b/app/src/tui.cpp
+index 476f592..dd3ae57 100644
+--- a/app/src/tui.cpp
++++ b/app/src/tui.cpp
+@@ -31,6 +31,7 @@
+ #include "book.h"
+ #include "eval.h"
+ #include "eval-stats.h"
++#include "eval_corr.h"
+ #include "main.h"
+ #include "max-ascii.h"
+ #include "nnue.h"
+@@ -1230,6 +1231,7 @@ void tui()
+ 	auto reset_state = [&]()
+ 	{
+ 		memset(sp.at(0)->history, 0x00, history_malloc_size);
++		eval_corr::clear();
+ 		tti.reset();
+ 		moves_played.clear();
+ 		scores.clear();

@@ -59,8 +59,12 @@ This file tells coding agents how to work in this repo.
 
 ## State (what the numbers should look like)
 
-- Board bench: ~14,700 nps average on the startpos console bench (paired-fused
-  era, Aug 24 2026); was ~8,300 pre-rebuild, 6,857 at Tier-1.
+- Board bench: compare same-session pairs only - absolute nps swings ~15% with
+  board temperature. Cool-board anchors: ~18,800 staged vs ~17,700 control
+  (output-layer staging era, Aug 25); hot-board anchors: ~15,500 vs ~14,600
+  same night. History: ~8,300 pre-paired-fused rebuild, 6,857 at Tier-1.
+  Keep this dev Pi off DOG-CHESS while benching (its httpd client load costs
+  real nps).
 - Desktop native bench: ~340k nps via the bench protocol (~600k instantaneous
   UCI movetime on the dev Pi), LTO build, big net. The evaluator is
   memory-latency-bound on desktop; instruction-count profiles mislead.
@@ -69,7 +73,17 @@ This file tells coding agents how to work in this repo.
   Tier-1). Accepted eval-kernel item: paired-fused rebuild - bit-exact on
   desktop (strength gate 39-42-119, -5.2 +/- 30.7 = parity), ~1.8x board node
   throughput worth +173.9 +/- 34.3 measured Elo on-device (240-game
-  asymmetric-clock selfplay). Reference binary md5 `82b0b6c0134453ed0dba3fd50fe124a9`.
+  asymmetric-clock selfplay). Accepted speed item: output-layer SRAM staging -
+  bit-exact everywhere, +5.9-6.2% board node throughput same-day A/B
+  (docs/output-layer-staging.md). REJECTED after six gated variants (~1,900
+  games): correction history in every consumption form - within-game learning
+  volume is too small and the pruning margins are tuned tighter than any useful
+  deflection (docs/correction-history.md, do not re-try). Reference binary md5
+  `82b0b6c0134453ed0dba3fd50fe124a9`.
+- Board pthread stacks default to 16 KB (`sdkconfig`, was 32 KB): internal SRAM
+  got too tight for the old 96 KB peak demand during `test`. `allocate_threads`
+  degrades to fewer searchers instead of aborting, and the stack protector
+  (`check_min_stack_size`) bails depth gracefully if a searcher ever runs tight.
 - The long-bench INT_MIN bug (`1 << 31` as infinite time) is fixed; if the
   long bench ever reports a few hundred nodes total again, suspect a time-budget regression first.
 - 2-thread board stability: board must survive a 15-min 2-thread session
