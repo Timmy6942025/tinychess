@@ -524,6 +524,10 @@ void tests()
 		init_move(sp.at(0)->nnue_eval, sp.at(0)->pos);
 		clear_flag(sp.at(0)->stop);
 		memset(sp.at(0)->history, 0x00, history_malloc_size);
+		memset(sp.at(0)->capture_history, 0x00, capture_history_malloc_size);
+		memset(sp.at(0)->butterfly_history, 0x00, butterfly_history_malloc_size);
+		memset(sp.at(0)->cont_history, 0x00, cont_history_malloc_size);
+
 		Move best_move  { 0 };
 		int  best_score { 0 };
 		int  max_depth  { 0 };
@@ -541,6 +545,10 @@ void tests()
 
 		clear_flag(sp.at(0)->stop);
 		memset(sp.at(0)->history, 0x00, history_malloc_size);
+		memset(sp.at(0)->capture_history, 0x00, capture_history_malloc_size);
+		memset(sp.at(0)->butterfly_history, 0x00, butterfly_history_malloc_size);
+		memset(sp.at(0)->cont_history, 0x00, cont_history_malloc_size);
+
 
 		MoveList move_list = sp.at(0)->pos.pseudo_legal_move_list();
 		my_assert(move_list.size() == 7);
@@ -918,6 +926,10 @@ void tests()
 			init_move(sp.at(0)->nnue_eval, sp.at(0)->pos);
 			clear_flag(sp.at(0)->stop);
 			memset(sp.at(0)->history, 0x00, history_malloc_size);
+		memset(sp.at(0)->capture_history, 0x00, capture_history_malloc_size);
+		memset(sp.at(0)->butterfly_history, 0x00, butterfly_history_malloc_size);
+		memset(sp.at(0)->cont_history, 0x00, cont_history_malloc_size);
+
 			auto rc = search_it(0, 0, false, sp.at(0), m.second, 2000000, O_NONE, false);
 			int score = std::get<1>(rc);
 			if (abs(score) < max_non_mate) {
@@ -947,6 +959,10 @@ void tests()
 			init_move(sp.at(0)->nnue_eval, sp.at(0)->pos);
 			clear_flag(sp.at(0)->stop);
 			memset(sp.at(0)->history, 0x00, history_malloc_size);
+		memset(sp.at(0)->capture_history, 0x00, capture_history_malloc_size);
+		memset(sp.at(0)->butterfly_history, 0x00, butterfly_history_malloc_size);
+		memset(sp.at(0)->cont_history, 0x00, cont_history_malloc_size);
+
 			auto   legal = sp.at(0)->pos.legal_move_list();
 			auto   rc    = search_it(0, 0, false, sp.at(0), 6, 120000, O_NONE, false);
 			Move   best  = std::get<0>(rc);

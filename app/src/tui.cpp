@@ -1230,6 +1230,9 @@ void tui()
 	auto reset_state = [&]()
 	{
 		memset(sp.at(0)->history, 0x00, history_malloc_size);
+		memset(sp.at(0)->capture_history, 0x00, capture_history_malloc_size);
+		memset(sp.at(0)->butterfly_history, 0x00, butterfly_history_malloc_size);
+		memset(sp.at(0)->cont_history, 0x00, cont_history_malloc_size);
 		tti.reset();
 		moves_played.clear();
 		scores.clear();

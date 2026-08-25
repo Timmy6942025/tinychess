@@ -65,12 +65,11 @@ This file tells coding agents how to work in this repo.
   same night. History: ~8,300 pre-paired-fused rebuild, 6,857 at Tier-1.
   Keep this dev Pi off DOG-CHESS while benching (its httpd client load costs
   real nps).
-- Desktop native bench: ~340k nps via the bench protocol (~600k instantaneous
-  UCI movetime on the dev Pi), LTO build, big net. The evaluator is
+- Desktop native bench: roughly 350k-590k nps via the bench protocol depending on
+  machine load, LTO build, big net. The evaluator is
   memory-latency-bound on desktop; instruction-count profiles mislead.
-- Accepted search items (Phase B): razoring, check extension, qs SEE pruning,
-  recapture extension, qsearch TT-probe removal (+209.5 Elo cumulative vs
-  Tier-1). Accepted eval-kernel item: paired-fused rebuild - bit-exact on
+- Accepted search items (Phase B): razoring, check extension, qs SEE pruning, recapture extension, qsearch TT-probe removal (+209.5 Elo cumulative vs Tier-1), then the move-ordering rebuild: capture history `[side][piece][to][victim]`, butterfly from-to history, and a one-ply continuation table (+24.6 accepted at SPRT, +16.5 +/- 16.3 on 800-game replication; docs/move-ordering-rebuild.md). Cumulative post-Tier-1 is ~+230 Elo. REJECTED in the same campaign, do not retry: history-gated futility/LMR hooks (-28.8 packaged with the tables, roughly -50 isolated - third confirmation the margins have no slack), SEE scoring of main-search captures (~20% bench tax), two-sided LMR modulation (unit gate, R3R1K1 d19). The board's ordering tables live in one PSRAM block per searcher with an internal fallback; an ESP32-only 25 ms budget trim under a 3 s clock keeps bullet TCs clean because the reads cost ~3% node throughput.
+- Accepted eval-kernel item: paired-fused rebuild - bit-exact on
   desktop (strength gate 39-42-119, -5.2 +/- 30.7 = parity), ~1.8x board node
   throughput worth +173.9 +/- 34.3 measured Elo on-device (240-game
   asymmetric-clock selfplay). Accepted speed item: output-layer SRAM staging -
@@ -78,8 +77,10 @@ This file tells coding agents how to work in this repo.
   (docs/output-layer-staging.md). REJECTED after six gated variants (~1,900
   games): correction history in every consumption form - within-game learning
   volume is too small and the pruning margins are tuned tighter than any useful
-  deflection (docs/correction-history.md, do not re-try). Reference binary md5
-  `82b0b6c0134453ed0dba3fd50fe124a9`.
+  deflection (docs/correction-history.md, do not re-try). Reference desktop
+  binary at the move-ordering rebuild has md5
+  `fd8cef65eda53294c03a705bd40e32ff`; hashes change per build, fingerprints
+  land in results.log per match.
 - Board pthread stacks default to 16 KB (`sdkconfig`, was 32 KB): internal SRAM
   got too tight for the old 96 KB peak demand during `test`. `allocate_threads`
   degrades to fewer searchers instead of aborting, and the stack protector

@@ -27,6 +27,7 @@ void es32_set_yield_peer(TaskHandle_t th)
 }
 #endif
 
+constexpr bool ORDER_TABLE_READS = true;
 #include "eval.h"
 #include "inbuf.h"
 #include "lmr-red.h"
@@ -64,6 +65,22 @@ inline int history_index(const libchess::Color & side, const libchess::PieceType
 	return side * 6 * 64 + from_type * 64 + sq;
 }
 
+inline int capture_history_index(const libchess::Color & side, const libchess::PieceType & pt, const libchess::Square & to, const libchess::PieceType & captured)
+{
+	int piece = side * 6 + pt.value();
+	return piece * 64 * 6 + to.value() * 6 + captured.value();
+}
+
+inline int butterfly_history_index(const libchess::Color & side, const libchess::Square & from, const libchess::Square & to)
+{
+	return side * 64 * 64 + from.value() * 64 + to.value();
+}
+
+inline int cont_history_index(const libchess::Square & prev_to, const libchess::Square & curr_to)
+{
+	return prev_to.value() * 64 + curr_to.value();
+}
+
 sort_movelist_compare::sort_movelist_compare(const search_pars_t & sp) : sp(sp)
 {
 }
@@ -74,7 +91,7 @@ void sort_movelist_compare::add_first_move(const libchess::Move move)
 	first_moves[n_first_moves++] = move;
 }
 
-// MVV-LVA
+// MVV-LVA + capture history + butterfly/cont for quiets
 int IRAM_ATTR sort_movelist_compare::move_evaluater(const libchess::Move move) const
 {
 	for(int i=0; i<n_first_moves; i++) {
@@ -84,12 +101,13 @@ int IRAM_ATTR sort_movelist_compare::move_evaluater(const libchess::Move move) c
 
 	int  score      = 0;
 	auto piece_from = sp.pos.piece_on(move.from_square());
+	if (!piece_from)
+		return 0;
 	auto from_type  = piece_from->type();
 	auto to_type    = from_type;
 
 	if (sp.pos.is_promotion_move(move)) {
 		to_type = *move.promotion_piece_type();
-
 		int piece_val = to_type;
 		assert(piece_val < 2048);
 		score  += piece_val << 19;
@@ -101,11 +119,11 @@ int IRAM_ATTR sort_movelist_compare::move_evaluater(const libchess::Move move) c
 		}
 		else {
 			auto piece_to = sp.pos.piece_on(move.to_square());
-
-			// victim
-			int victim_val = piece_to->type();
-			assert(victim_val < 2048);
-			score += victim_val << 19;
+			if (piece_to) {
+				int victim_val = piece_to->type();
+				assert(victim_val < 2048);
+				score += victim_val << 19;
+			}
 		}
 
 		if (from_type != libchess::constants::KING) {
@@ -113,10 +131,39 @@ int IRAM_ATTR sort_movelist_compare::move_evaluater(const libchess::Move move) c
 			assert(abs(add) < (1 << 19));
 			score += add;
 		}
+
+		// capture history: learned ordering for captures (never tried here
+		// before). Scaled to reorder within a victim class and across the
+		// attacker sub-ranks; victim class stays dominant so an unlearned
+		// table degrades to plain MVV-LVA.
+		if (ORDER_TABLE_READS) {
+			libchess::PieceType capType = libchess::constants::PAWN;
+			if (move.type() == libchess::Move::Type::ENPASSANT) {
+				capType = libchess::constants::PAWN;
+			} else {
+				auto pt = sp.pos.piece_on(move.to_square());
+				if (pt) capType = pt->type();
+			}
+			int idx = capture_history_index(sp.pos.side_to_move(), from_type, move.to_square(), capType);
+			if (idx >=0 && idx < (int)capture_history_size && sp.capture_history)
+				score += sp.capture_history[idx] * 16;
+		}
 	}
 	else {
-		int index = history_index(sp.pos.side_to_move(), from_type, move.to_square());
-		score += sp.history[index];
+		int idx = history_index(sp.pos.side_to_move(), from_type, move.to_square());
+		score += sp.history[idx];
+		if (ORDER_TABLE_READS) {
+			int bfIdx = butterfly_history_index(sp.pos.side_to_move(), move.from_square(), move.to_square());
+			if (bfIdx >=0 && bfIdx < (int)butterfly_history_size && sp.butterfly_history)
+				score += sp.butterfly_history[bfIdx];
+			auto prev = sp.pos.previous_move();
+			if (prev.has_value() && sp.cont_history) {
+				libchess::Square prevTo = prev.value().to_square();
+				int cIdx = cont_history_index(prevTo, move.to_square());
+				if (cIdx >=0 && cIdx < (int)cont_history_size)
+					score += sp.cont_history[cIdx];
+			}
+		}
 	}
 
 	return score;
@@ -350,6 +397,10 @@ int IRAM_ATTR qs(int alpha, const int beta, const int qsdepth, search_pars_t & s
 	std::vector<int> & move_scores = *scores_ptr;
 	for(size_t i=0; i<n_moves; i++) {
 		auto & move = *(move_list.begin() + i);
+		// pure SEE: this array also drives the SEE<0 prune below, so it must
+		// stay bit-exact with the accepted qsearch semantics - no history
+		// blending here (a history-tainted score would turn ordering noise
+		// into real pruning)
 		move_scores[i] = see(sp.pos, move);
 	}
 
@@ -441,10 +492,43 @@ void IRAM_ATTR update_history(const search_pars_t & sp, const int index, const i
 	int  clamped_bonus = std::clamp(bonus, min_history, max_history);
 	int  final_value   = clamped_bonus - sp.history[index] * abs(clamped_bonus) / max_history;
 
-	assert(sp.history[index] + final_value <=  32767);  // sp.history is 16 bit
+	assert(sp.history[index] + final_value <=  32767);
 	assert(sp.history[index] + final_value >= -32768);
 
 	sp.history[index] += final_value;
+}
+
+void IRAM_ATTR update_capture_history(const search_pars_t & sp, const int index, const int bonus)
+{
+	constexpr const int max_hist = 1023;
+	constexpr const int min_hist = -max_hist;
+	int clamped = std::clamp(bonus, min_hist, max_hist);
+	int delta = clamped - sp.capture_history[index] * abs(clamped) / max_hist;
+	assert(sp.capture_history[index] + delta <= 32767);
+	assert(sp.capture_history[index] + delta >= -32768);
+	sp.capture_history[index] += delta;
+}
+
+void IRAM_ATTR update_butterfly_history(const search_pars_t & sp, const int index, const int bonus)
+{
+	constexpr const int max_hist = 1023;
+	constexpr const int min_hist = -max_hist;
+	int clamped = std::clamp(bonus, min_hist, max_hist);
+	int delta = clamped - sp.butterfly_history[index] * abs(clamped) / max_hist;
+	assert(sp.butterfly_history[index] + delta <= 32767);
+	assert(sp.butterfly_history[index] + delta >= -32768);
+	sp.butterfly_history[index] += delta;
+}
+
+void IRAM_ATTR update_cont_history(const search_pars_t & sp, const int index, const int bonus)
+{
+	constexpr const int max_hist = 1023;
+	constexpr const int min_hist = -max_hist;
+	int clamped = std::clamp(bonus, min_hist, max_hist);
+	int delta = clamped - sp.cont_history[index] * abs(clamped) / max_hist;
+	assert(sp.cont_history[index] + delta <= 32767);
+	assert(sp.cont_history[index] + delta >= -32768);
+	sp.cont_history[index] += delta;
 }
 
 int IRAM_ATTR search(int depth, int alpha, const int beta, const int null_move_depth, const int16_t max_depth, const int level, libchess::Move *const m, search_pars_t & sp)
@@ -776,8 +860,7 @@ int IRAM_ATTR search(int depth, int alpha, const int beta, const int null_move_d
 
 			if (score > alpha) {
 				if (score >= beta) {
-					if (!sp.pos.is_capture_move(move))
-						beta_cutoff_move = move;
+					beta_cutoff_move = move;
 					sp.cs.data.n_lmr_hit += is_lmr;
 					break;
 				}
@@ -787,21 +870,55 @@ int IRAM_ATTR search(int depth, int alpha, const int beta, const int null_move_d
 		}
 	}
 
-	// https://www.chessprogramming.org/History_Heuristic#History_Bonuses
-	if (beta_cutoff_move.has_value() && sp.pos.is_capture_move(beta_cutoff_move.value()) == false) {
+	// History updates: quiet histories (history, butterfly, cont) and capture history.
+	// Uses same gravity as the original history (depth*30-25) for all tables to keep
+	// the learning rate uniform; tables are orthogonal so they do not dilute each other
+	// like the failed hist3d single-table expansion did.
+	if (beta_cutoff_move.has_value()) {
 		int bonus = depth * 30 - 25;
-		for(auto move : move_list) {
-			if (sp.pos.is_capture_move(move))
-				continue;
-			auto piece_type_from = sp.pos.piece_type_on(move.from_square());
-			int  index           = history_index(sp.pos.side_to_move(), piece_type_from.value(), move.to_square());
-			if (move == beta_cutoff_move.value()) {
-				update_history(sp, index, bonus);
-				break;
+		bool is_cap = sp.pos.is_capture_move(beta_cutoff_move.value());
+		if (is_cap) {
+			// capture history: reward the cutting capture, penalize earlier captures
+			for(auto move : move_list) {
+				if (!sp.pos.is_capture_move(move))
+					continue;
+				auto pf = sp.pos.piece_on(move.from_square());
+				if (!pf) continue;
+				auto cap = sp.pos.piece_on(move.to_square());
+				libchess::PieceType capType = libchess::constants::PAWN;
+				if (move.type() == libchess::Move::Type::ENPASSANT) capType = libchess::constants::PAWN;
+				else if (cap) capType = cap->type();
+				int idx = capture_history_index(sp.pos.side_to_move(), pf->type(), move.to_square(), capType);
+				if (idx <0 || idx >= (int)capture_history_size) continue;
+				if (move == beta_cutoff_move.value()) {
+					update_capture_history(sp, idx, bonus);
+					break;
+				}
+				update_capture_history(sp, idx, -bonus);
 			}
-			update_history(sp, index, -bonus);
+		} else {
+			for(auto move : move_list) {
+				if (sp.pos.is_capture_move(move))
+					continue;
+				auto piece_type_from = sp.pos.piece_type_on(move.from_square());
+				if (!piece_type_from) continue;
+				int idx = history_index(sp.pos.side_to_move(), piece_type_from.value(), move.to_square());
+				int bfIdx = butterfly_history_index(sp.pos.side_to_move(), move.from_square(), move.to_square());
+				int cIdx = -1;
+				auto prev = sp.pos.previous_move();
+				if (prev.has_value() && sp.cont_history)
+					cIdx = cont_history_index(prev.value().to_square(), move.to_square());
+				if (move == beta_cutoff_move.value()) {
+					update_history(sp, idx, bonus);
+					if (bfIdx>=0 && bfIdx < (int)butterfly_history_size) update_butterfly_history(sp, bfIdx, bonus);
+					if (cIdx>=0 && cIdx < (int)cont_history_size) update_cont_history(sp, cIdx, bonus);
+					break;
+				}
+				update_history(sp, idx, -bonus);
+				if (bfIdx>=0 && bfIdx < (int)butterfly_history_size) update_butterfly_history(sp, bfIdx, -bonus);
+				if (cIdx>=0 && cIdx < (int)cont_history_size) update_cont_history(sp, cIdx, -bonus);
+			}
 		}
-
 		sp.cs.data.n_moves_cutoff += n_played;
 		sp.cs.data.nmc_nodes++;
 	}

@@ -1,8 +1,8 @@
 # BRAG.md
 
-A complete record of what this fork did on top of [Dog](https://github.com/folkertvanheusden/Dog) by Folkert van Heusden (MIT). Three weeks of work, August 3 to 25, 2026, 151 commits. The result ships as TinyChess (`Timmy6942025/tinychess`): one source tree that builds both a desktop UCI engine and ESP32-S3 firmware, a board that broadcasts its own WiFi and plays against a phone browser, and an experiment log with a number attached to every decision.
+A complete record of what this fork did on top of [Dog](https://github.com/folkertvanheusden/Dog) by Folkert van Heusden (MIT). Three weeks of work, August 3 to 25, 2026, 152 commits. The result ships as TinyChess (`Timmy6942025/tinychess`): one source tree that builds both a desktop UCI engine and ESP32-S3 firmware, a board that broadcasts its own WiFi and plays against a phone browser, and an experiment log with a number attached to every decision.
 
-Every figure below comes from `tools/results.log` (4,149 lines), `tools/bench.csv`, or a named doc in the repo. Nothing here is recalled from memory.
+Every figure below comes from `tools/results.log` (5,700+ lines), `tools/bench.csv`, or a named doc in the repo. Nothing here is recalled from memory.
 
 ## Where we started
 
@@ -13,7 +13,7 @@ Credit where due. Upstream Dog at the fork point (`9549c3c`) gave us a working e
 | | fork point | today |
 |---|---|---|
 | Desktop vs Stockfish 17, 2+0.02, 200 games | -301.3 +/- 57.9 | **-56.1 +/- 43.4** (63-95-42) |
-| Gated search gains stacked after Tier-1 | 0 | **+209.5 Elo** |
+| Gated search gains stacked after Tier-1 | 0 | **~+230 Elo** (last item: move-ordering rebuild, +24.6 accepted then +16.5 replicated) |
 | Board bench | ~4,300 to 5,079 nps | **~18,800 nps** avg over the startpos bench (17.7k same-day before the last speed item) |
 | Board speed gain from the evaluator rebuild | 0 | **+174 +/- 34 Elo**, measured, see the paired-fused section |
 | Board absolute strength | unmeasured | **~2800-2900** on the SF17 scale (slow TC anchor) |
@@ -39,8 +39,9 @@ Accepted, in order:
 - **Qsearch SEE pruning** (+29.6, LOS 98.0%), taking the Phase B set to **+116.5** over Tier-1. Skip losing captures, exempt the TT move, never when in check.
 - **Recapture extension** (+57.8, LOS ~99%). Capturing back on the previous capture square gets a ply. Biggest single accepted gain since the check extension.
 - **Qsearch TT probe removal** (+34.9, LOS 98.2%). The stats prober showed a 2.65% hit rate, and the hits were stale horizon-context scores cutting real evals. Sometimes the improvement is deleting code.
+- **Move-ordering rebuild** (+24.6, llr crossed H1 at 481 games; +16.5 +/- 16.3 on an 800-game replication). Capture history `[side][piece][to][victim]`, butterfly from-to history, and a one-ply continuation table, all int16 with the same gravity rule as the old history, fed by cutoff bonuses and maluses exactly like the quiet path always did. Captures blend it into MVV-LVA; quiets sum all three tables. Biggest single search win since the recapture extension. Known trade-off: about ten fewer WAC puzzle solves at fixed 1000 ms, roughly half of that the ~6% speed tax. Design notes in `docs/move-ordering-rebuild.md`.
 
-That last stretch puts the post-Tier-1 cumulative at **+209.5 gated Elo**, all logged in `results.log` with fingerprints.
+That last stretch puts the post-Tier-1 cumulative at **~+230 gated Elo**, all logged in `results.log` with fingerprints.
 
 ### Rating anchors
 
@@ -71,6 +72,9 @@ Search ideas:
 - Cached checkers_to: bit-correct but +6% per-op cost for noise-level nps. Reverted, simpler code kept.
 - Incremental x-ray SEE: fuzz-verified bit-exact, gained +0.1 to 0.3%, within noise. Reverted, simpler code kept.
 - TT generation-cycle tweak: rejected by SPRT. TT depth-0 store guard: -15.6, the fresh qsearch entries turn out to have mild ordering value.
+- History-gated futility escape plus LMR modulation: -28.8 as a package with the new ordering tables, roughly -50 against them alone. Third independent confirmation that these margins have no slack (after correction-history v4 and the margin probes).
+- Two-sided LMR modulation, letting bad history deepen reductions: failed the unit gate, same R3R1K1 depth-19 grave as LMR x1.15. The one-sided form (history buys depth, never spends it) passes but added nothing on top of the tables.
+- SEE scoring for main-search captures: ~20% bench tax before any strength evidence. Qsearch already SEEs its own moves; paying again per main node did not survive contact with the bench protocol.
 - RukChess nets, see the nets section. Definitively.
 
 Platform and speed ideas:
@@ -129,6 +133,7 @@ This deserves its own section because it invalidated numbers we had already publ
 - Every engine binary that enters a match gets an md5 fingerprint in `results.log`, so a mid-match swap is detectable.
 - Match reports must state both sides' thread counts. The board runs 2 searcher threads in games; the native baseline runs 1. An undocumented asymmetry here would have quietly inflated every board-vs-native number.
 - The SPRT harness originally used elo1=50, which mathematically could only ever accept +50 Elo effects. Fixed to elo1=20 after noticing the harness was structurally unable to confirm smaller wins.
+- An ablation compile switch (`ORDER_TABLE_READS`) got left in its off position after board A/B work, so one desktop build and one "clean" board gate ran with the new ordering reads compiled out. Everything looked green. The final bit-exactness ladder caught it: a fixed-depth search reproduced baseline node counts instead of the new binary's. Lesson recorded: an ablation switch must be verified in its shipping position before any gate result gets trusted.
 - The bench is deliberately single-threaded. Two threads racing one lock-free PSRAM TT inflate the shared node counter, and the old 2-thread bench was partly measuring that race.
 
 ## Bugs hunted down
@@ -152,6 +157,7 @@ Board stability:
 - HTTP handlers ran on a 4 KB stack, overflowed it, and corrupted the heap; the searcher panicked inside `esp_timer`. Requests now run on 24 KB PSRAM-stack workers.
 - WiFi and LWIP buffers drained internal RAM to 19 KB free and the beacon path NULL-derefed twice. Buffers now prefer PSRAM: 79 KB free with a client connected.
 - USB-JTAG serial folklore, written down so nobody rediscovers it: writing during boot wedges the input endpoint until a physical power cycle, TX drops bytes mid-burst, and changing the reported baud does nothing because USB CDC ignores line coding.
+- The ordering-table reads cost ~3% node throughput, and that was enough to break bullet clocks: slower nodes skip the between-iteration budget window, searches ride the hard cap every move, and cap plus emit plus the wrapper round trip overshoots the per-move income. Clock death around move 50, two forfeits in three games while a baseline control flashed the same hour passed clean. Fix: ESP32-only 25 ms budget trim when the remaining clock is under 3 s, same pattern as the floor-30 horizon. Solo re-gate after the fix: clean.
 
 Web stack, most of it found by driving the real page:
 

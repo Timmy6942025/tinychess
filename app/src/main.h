@@ -37,9 +37,18 @@ struct node_scratch_t {
 
 typedef struct
 {
-	int16_t   *const history   { nullptr };
+	int16_t   *history          { nullptr };
+	int16_t   *capture_history { nullptr };
+	int16_t   *butterfly_history { nullptr };
+	int16_t   *cont_history    { nullptr };
+#if defined(ESP32)
+	// The three ordering tables come out of one PSRAM block on the board
+	// (internal SRAM is too tight for another ~34 KB/thread); null when the
+	// fallback put them in individual internal allocations instead.
+	void      *order_tables_mem { nullptr };
+#endif
 	end_t           *stop      { nullptr };
-	const int        thread_nr { 0       };
+	int              thread_nr { 0       };
 	chess_stats      cs        {         };
 	uint32_t         cur_move  { 0       };
 	uint16_t         md        { 0       };
@@ -64,6 +73,12 @@ uint64_t esp_timer_get_time();
 
 constexpr size_t history_size        = 2 * 6 * 64;
 constexpr size_t history_malloc_size = sizeof(int16_t) * history_size;
+constexpr size_t capture_history_size        = 12 * 64 * 6;
+constexpr size_t capture_history_malloc_size = sizeof(int16_t) * capture_history_size;
+constexpr size_t butterfly_history_size        = 2 * 64 * 64;
+constexpr size_t butterfly_history_malloc_size = sizeof(int16_t) * butterfly_history_size;
+constexpr size_t cont_history_size        = 64 * 64;
+constexpr size_t cont_history_malloc_size = sizeof(int16_t) * cont_history_size;
 
 #include "book.h"
 #include "inbuf.h"

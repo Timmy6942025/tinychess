@@ -554,6 +554,20 @@ void delete_threads()
 		delete i->nnue_eval;
 		delete i->stop;
 		free(i->history);
+#if defined(ESP32)
+		if (i->order_tables_mem) {
+			heap_caps_free(i->order_tables_mem);
+		}
+		else {
+			free(i->capture_history);
+			free(i->butterfly_history);
+			free(i->cont_history);
+		}
+#else
+		free(i->capture_history);
+		free(i->butterfly_history);
+		free(i->cont_history);
+#endif
 		delete[] i->scratch;
 		delete i;
 	}
@@ -570,7 +584,35 @@ void allocate_threads(const int n)
 	delete_threads();
 
 	for(int i=0; i<n; i++) {
-		sp.push_back(new search_pars_t({ reinterpret_cast<int16_t *>(calloc(1, history_malloc_size)), new end_t, i }));
+		auto *pars = new search_pars_t();
+		pars->history = reinterpret_cast<int16_t *>(calloc(1, history_malloc_size));
+#if defined(ESP32)
+		// One PSRAM block for the three ordering tables (capture + butterfly +
+		// continuation): internal SRAM cannot fund another ~34 KB per searcher,
+		// and PSRAM already hosts the TT + weight copy. Falls back to separate
+		// internal allocations if PSRAM is exhausted - same values either way.
+		const size_t order_bytes = capture_history_malloc_size + butterfly_history_malloc_size + cont_history_malloc_size;
+		pars->order_tables_mem = heap_caps_aligned_alloc(16, order_bytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+		if (pars->order_tables_mem) {
+			memset(pars->order_tables_mem, 0x00, order_bytes);
+			int16_t *base = reinterpret_cast<int16_t *>(pars->order_tables_mem);
+			pars->capture_history   = base;
+			pars->butterfly_history = base + capture_history_size;
+			pars->cont_history      = pars->butterfly_history + butterfly_history_size;
+		}
+		else {
+			pars->capture_history   = reinterpret_cast<int16_t *>(calloc(1, capture_history_malloc_size));
+			pars->butterfly_history = reinterpret_cast<int16_t *>(calloc(1, butterfly_history_malloc_size));
+			pars->cont_history      = reinterpret_cast<int16_t *>(calloc(1, cont_history_malloc_size));
+		}
+#else
+		pars->capture_history = reinterpret_cast<int16_t *>(calloc(1, capture_history_malloc_size));
+		pars->butterfly_history = reinterpret_cast<int16_t *>(calloc(1, butterfly_history_malloc_size));
+		pars->cont_history = reinterpret_cast<int16_t *>(calloc(1, cont_history_malloc_size));
+#endif
+		pars->stop = new end_t();
+		pars->thread_nr = i;
+		sp.push_back(pars);
 		sp.at(i)->nnue_eval     = new Eval(sp.at(i)->pos);
 #if defined(ESP32)
 		// Searcher stacks: the pthread default dropped to 16 KB to keep the
@@ -597,6 +639,20 @@ void allocate_threads(const int n)
 			delete sp.at(i)->nnue_eval;
 			delete sp.at(i)->stop;
 			free(sp.at(i)->history);
+#if defined(ESP32)
+			if (sp.at(i)->order_tables_mem) {
+				heap_caps_free(sp.at(i)->order_tables_mem);
+			}
+			else {
+				free(sp.at(i)->capture_history);
+				free(sp.at(i)->butterfly_history);
+				free(sp.at(i)->cont_history);
+			}
+#else
+			free(sp.at(i)->capture_history);
+			free(sp.at(i)->butterfly_history);
+			free(sp.at(i)->cont_history);
+#endif
 			delete sp.at(i);
 			sp.pop_back();
 			break;
@@ -993,6 +1049,9 @@ void main_task()
 		stop_ponder();
 		for(auto & i: sp) {
 			memset(i->history, 0x00, history_malloc_size);
+			memset(i->capture_history, 0x00, capture_history_malloc_size);
+			memset(i->butterfly_history, 0x00, butterfly_history_malloc_size);
+			memset(i->cont_history, 0x00, cont_history_malloc_size);
 		}
 		global_cs.reset();
 		tti.reset();
@@ -1204,6 +1263,21 @@ void main_task()
 					// moves to go) and forfeits both engines on the clock.
 					think_time_max = ms / moves_to_go + time_inc * 2 / 3;
 					think_time_min = ms / std::max(1, moves_to_go * 3) + time_inc / 2;
+#if defined(ESP32)
+					// Bullet-clock slack: at fast TC the search rides its hard
+					// cap far more often than the desktop (slower nodes skip
+					// the between-iteration budget window), and cap + emit +
+					// wrapper round trip (~35 ms) overshoots the per-move
+					// income -> clock death around move 50. Trim the budget by
+					// the measured round-trip when the clock is small; long
+					// TCs are untouched (the trim is a fixed 25 ms). Desktop
+					// keeps the aggressive horizon (gating this there measured
+					// a big regression - see floor-30 history).
+					if (ms < 3000) {
+						think_time_max = std::max(1, think_time_max - 25);
+						think_time_min = std::max(1, think_time_min - 10);
+					}
+#endif
 					// a floor of 1 ms keeps a bounded search (search_time_max
 					// of 0 would disable the timeout timer entirely)
 					think_time_max = std::max(1, think_time_max);
@@ -1699,8 +1773,12 @@ void run_bench(const bool long_bench, const bool via_usb)
 				std::unique_lock<std::mutex> lck(work.search_fen_lock);
 				sp.at(0)->pos = libchess::Position(fen);
 				prepare_threads_state();
-				for(size_t ti=0; ti<sp.size(); ti++)
+				for(size_t ti=0; ti<sp.size(); ti++) {
 					memset(sp.at(ti)->history, 0x00, history_malloc_size);
+					memset(sp.at(ti)->capture_history, 0x00, capture_history_malloc_size);
+					memset(sp.at(ti)->butterfly_history, 0x00, butterfly_history_malloc_size);
+					memset(sp.at(ti)->cont_history, 0x00, cont_history_malloc_size);
+				}
 				// "Infinite" bench time. 1 << 31 overflows int (INT_MIN),
 				// which made the absolute-time stop test fire after depth 1
 				// and collapsed the whole long bench to ~90 nodes per FEN.
@@ -1732,6 +1810,9 @@ void run_bench(const bool long_bench, const bool via_usb)
 			sp.at(0)->pos = libchess::Position(libchess::constants::STARTPOS_FEN);
 			init_move(sp.at(0)->nnue_eval, sp.at(0)->pos);
 			memset(sp.at(0)->history, 0x00, history_malloc_size);
+			memset(sp.at(0)->capture_history, 0x00, capture_history_malloc_size);
+			memset(sp.at(0)->butterfly_history, 0x00, butterfly_history_malloc_size);
+			memset(sp.at(0)->cont_history, 0x00, cont_history_malloc_size);
 			work.search_think_time_min = 2500;
 			work.search_think_time_max = 2500;
 			work.search_is_abs_time    = true;
