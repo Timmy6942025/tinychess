@@ -2,6 +2,7 @@
 #include <cinttypes>
 #include <cstdlib>
 #include <random>
+#include <system_error>
 #include <thread>
 
 #include <libchess/Position.h>
@@ -972,10 +973,26 @@ void tests()
 
 void run_tests()
 {
+#if defined(ESP32)
+	// The suite runs in its own pthread. If internal SRAM is too fragmented
+	// to grant one, say so and bail: running inline would push the console
+	// task's 16 KB stack through deep perft recursion, trading a clean skip
+	// for a stack-overflow reboot.
+	try {
+		auto th = new std::thread{tests};
+		th->join();
+		delete th;
+	}
+	catch(const std::system_error & e) {
+		printf("# run_tests: no stack available for the suite (%s) - skipping\n", e.what());
+	}
+#else
 	// because of ESP32 stack
 	auto th = new std::thread{tests};
 	th->join();
 	delete th;
+#endif
+	delete_threads();
 }
 
 #if !defined(ESP32)

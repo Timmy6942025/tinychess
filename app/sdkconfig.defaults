@@ -15,7 +15,7 @@ CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL=16384
 # --- Threads: std::thread searchers + TUI need real stacks (crash fix) ---
 # 5 threads at runtime (2 searchers + TUI + UCI-go handler); internal RAM is
 # ~310KB total, so 32KB each fits. Tune with 'status' high-water marks.
-CONFIG_PTHREAD_TASK_STACK_SIZE_DEFAULT=32768
+CONFIG_PTHREAD_TASK_STACK_SIZE_DEFAULT=16384
 
 # --- Main task: runs main_task() (the UCI loop) inside app_main ---
 CONFIG_ESP_MAIN_TASK_STACK_SIZE=16384

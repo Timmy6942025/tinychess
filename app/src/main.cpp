@@ -40,6 +40,7 @@
 #include <limits.h>
 #include <pthread.h>
 #include <stdarg.h>
+#include <system_error>
 #include <thread>
 #include <unistd.h>
 #include <sys/time.h>
@@ -66,6 +67,7 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
 #include <freertos/task.h>
+#include <esp_pthread.h>
 
 #if defined(ESP32_S3_XIAO)
 #include "led_strip_encoder.h"
@@ -570,11 +572,47 @@ void allocate_threads(const int n)
 	for(int i=0; i<n; i++) {
 		sp.push_back(new search_pars_t({ reinterpret_cast<int16_t *>(calloc(1, history_malloc_size)), new end_t, i }));
 		sp.at(i)->nnue_eval     = new Eval(sp.at(i)->pos);
+#if defined(ESP32)
+		// Searcher stacks: the pthread default dropped to 16 KB to keep the
+		// test suite's thread churn inside internal SRAM (see sdkconfig),
+		// but qsearch depth pays for every byte under about 28 - the stack
+		// protector starts capping qs and warm benches lose ~8k nodes.
+		// Give searchers an explicit 28 KB block, web.cpp-style, and put
+		// the default back afterwards. Peak concurrent demand during
+		// `test` drops from 96 KB (old default everywhere) to 72 KB.
+		auto       cfg  = esp_pthread_get_default_config();
+		const auto prev = cfg;
+		cfg.stack_size  = 28 * 1024;
+		cfg.inherit_cfg = false;
+		esp_pthread_set_cfg(&cfg);
+		try {
+			sp.at(i)->thread_handle = new std::thread(searcher, i);
+		}
+		catch(const std::system_error & e) {
+			esp_pthread_set_cfg(&prev);
+			// roll the partial entry back: delete_threads() would
+			// dereference the missing thread_handle otherwise
+			printf("# allocate_threads: searcher %d failed to start (%s), continuing with %zu thread(s)\n",
+				i, e.what(), sp.size() - 1);
+			delete sp.at(i)->nnue_eval;
+			delete sp.at(i)->stop;
+			free(sp.at(i)->history);
+			delete sp.at(i);
+			sp.pop_back();
+			break;
+		}
+		esp_pthread_set_cfg(&prev);
+#else
 		sp.at(i)->thread_handle = new std::thread(searcher, i);
+#endif
 		sp.at(i)->scratch       = new node_scratch_t[n_search_scratch_levels + n_qs_scratch_levels];
 #if defined(ESP32)
 		sp.at(i)->md_limit      = 65535;
 #endif
+	}
+	if (sp.empty()) {
+		printf("# allocate_threads: no searchers could be started\n");
+		return;
 	}
 #if !defined(ESP32) && !defined(_WIN32)
 	if (se)
