@@ -62,6 +62,23 @@ static int IRAM_ATTR accx_dot16(const std::int16_t *inputs, const std::int16_t *
 #endif
 
 
+#if defined(ESP32)
+// The blob lives in flash (or the PSRAM copy), and evaluate() touches these
+// 1 KB on every single call - by far the hottest weight traffic there is.
+// Stage the output layer into internal SRAM once at boot: same bytes, so
+// results are bit-exact, but the reads stop paying flash/PSRAM latency.
+// Internal SRAM is scarce (task stacks come out of the same pool), so the
+// block is heap-allocated and the stage is skipped entirely if the
+// allocation loses to more urgent users - correctness never depends on it.
+struct OutputStage {
+	Accumulator  w[2];
+	std::int16_t bias;
+};
+static OutputStage *g_output_stage   = nullptr;
+static bool         g_output_staged  = false;
+static void         nnue_stage_output_layer();
+#endif
+
 struct Network {
 	Accumulator feature_weights[2 * 6 * 64];
 	Accumulator feature_bias;
@@ -71,18 +88,23 @@ struct Network {
 	int IRAM_ATTR evaluate(const Accumulator& us, const Accumulator& them) const {
 		static_assert(sizeof(Network) == weights_size);
 
-		int output;
-
 #if defined(ESP32)
-		output  = accx_dot16(us.vals.data(),   this->output_weights[0].vals.data());
-		output += accx_dot16(them.vals.data(), this->output_weights[1].vals.data());
+		// staged rows when boot reserved the SRAM, blob otherwise
+		const int16_t *w_us   = g_output_staged ? g_output_stage->w[0].vals.data() : this->output_weights[0].vals.data();
+		const int16_t *w_them = g_output_staged ? g_output_stage->w[1].vals.data() : this->output_weights[1].vals.data();
+		const int16_t  bias   = g_output_staged ? g_output_stage->bias            : this->output_bias;
+
+		int output  = accx_dot16(us.vals.data(),   w_us);
+		output     += accx_dot16(them.vals.data(), w_them);
 #else
-		output  = nnue_k::output_dot(us.vals.data(),   this->output_weights[0].vals.data());
-		output += nnue_k::output_dot(them.vals.data(), this->output_weights[1].vals.data());
+		const int16_t bias = this->output_bias;
+
+		int output  = nnue_k::output_dot(us.vals.data(),   this->output_weights[0].vals.data());
+		output     += nnue_k::output_dot(them.vals.data(), this->output_weights[1].vals.data());
 #endif
 
 		output /= int{QA};
-		output += this->output_bias;
+		output += bias;
 		output *= SCALE;
 		output /= int{QA} * int{QB};
 
@@ -91,6 +113,25 @@ struct Network {
 };
 
 const Network *NNUE = reinterpret_cast<const Network *>(weights_data);
+
+#if defined(ESP32)
+static void nnue_stage_output_layer()
+{
+	void *mem = heap_caps_aligned_alloc(16, sizeof(OutputStage), MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+	if (mem == nullptr) {
+		printf("# output-layer SRAM stage skipped: internal memory tight\n");
+		g_output_staged = false;
+		return;
+	}
+
+	g_output_stage = static_cast<OutputStage *>(mem);
+	memcpy(g_output_stage->w[0].vals.data(), NNUE->output_weights[0].vals.data(), sizeof(Accumulator));
+	memcpy(g_output_stage->w[1].vals.data(), NNUE->output_weights[1].vals.data(), sizeof(Accumulator));
+	g_output_stage->bias = NNUE->output_bias;
+	g_output_staged = true;
+	printf("# output layer staged in SRAM (%u bytes)\n", unsigned(sizeof(OutputStage)));
+}
+#endif
 
 // ---------------------------------------------------------------------------
 // Paired weight table
@@ -566,6 +607,7 @@ void IRAM_ATTR nnue_load_weights_to_psram()
 	void *mem = heap_caps_aligned_alloc(16, n, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
 	if (mem == nullptr) {
 		printf("# PSRAM weight copy failed (%u bytes) - using flash XIP\n", unsigned(n));
+		nnue_stage_output_layer();  // the 1 KB output layer still deserves SRAM
 		return;
 	}
 	memcpy(mem, weights_data, n);
@@ -574,6 +616,8 @@ void IRAM_ATTR nnue_load_weights_to_psram()
 	permute_rows_in_place(g_paired);
 
 	printf("# weights in PSRAM, paired layout: %u bytes\n", unsigned(n));
+
+	nnue_stage_output_layer();
 }
 
 void ensure_init()
