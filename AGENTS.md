@@ -32,6 +32,14 @@ This file tells coding agents how to work in this repo.
 - Search parameters are at a measured local optimum: probed-and-rejected list
   is in `tools/results.log` (killers, LMR PV *3/4, aspiration != 75, TT 4-way,
   blind singular extension, null-move R=5, razor depth<=2, razor 300+120d).
+  Phase 2 (Aug 25-26) added four more, all gated against the orderA state:
+  staged move picker (+9.6 then -2.8 on replication), time-management tweaks
+  at bullet TC (-8.6 package, -5.0 easy-move alone), proper singular
+  extensions (-6.5; the R3R1K1 depth-19 sweep is 5-0 lifetime - any variant
+  must preflight against it, and SE needs a LOWERBOUND TT entry to avoid
+  promiscuous extension in blown positions), TT key widening to 32 bit with
+  12-byte entries (-9.7 at Hash=8: capacity loss beats integrity gain at
+  blitz node counts).
 - Board console requires `uci` before UCI commands; the cutechess adapter is
   `tools/wrapper.py` (needs a serial DTR toggle / fresh port open).
 

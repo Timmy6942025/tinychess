@@ -1,6 +1,6 @@
 # BRAG.md
 
-A complete record of what this fork did on top of [Dog](https://github.com/folkertvanheusden/Dog) by Folkert van Heusden (MIT). Three weeks of work, August 3 to 25, 2026, 152 commits. The result ships as TinyChess (`Timmy6942025/tinychess`): one source tree that builds both a desktop UCI engine and ESP32-S3 firmware, a board that broadcasts its own WiFi and plays against a phone browser, and an experiment log with a number attached to every decision.
+A complete record of what this fork did on top of [Dog](https://github.com/folkertvanheusden/Dog) by Folkert van Heusden (MIT). Three weeks of work, August 3 to 26, 2026, 153 commits. The result ships as TinyChess (`Timmy6942025/tinychess`): one source tree that builds both a desktop UCI engine and ESP32-S3 firmware, a board that broadcasts its own WiFi and plays against a phone browser, and an experiment log with a number attached to every decision.
 
 Every figure below comes from `tools/results.log` (5,700+ lines), `tools/bench.csv`, or a named doc in the repo. Nothing here is recalled from memory.
 
@@ -75,6 +75,10 @@ Search ideas:
 - History-gated futility escape plus LMR modulation: -28.8 as a package with the new ordering tables, roughly -50 against them alone. Third independent confirmation that these margins have no slack (after correction-history v4 and the margin probes).
 - Two-sided LMR modulation, letting bad history deepen reductions: failed the unit gate, same R3R1K1 depth-19 grave as LMR x1.15. The one-sided form (history buys depth, never spends it) passes but added nothing on top of the tables.
 - SEE scoring for main-search captures: ~20% bench tax before any strength evidence. Qsearch already SEEs its own moves; paying again per main node did not survive contact with the bench protocol.
+- Staged move picker (phase 2): TT move, lazy-SEE winning captures, history-ranked quiets, losing captures last. +9.6 +/- 16.7 over 800 games that a pre-committed replication then flipped to -2.8 +/- 20.7. The orderA rebuild had already harvested what staged pickers usually eat. Two real bugs died in bring-up and are worth keeping in memory: picker pins must claim the movelist's own object (Move equality ignores type bits; playing a TT-stored twin feeds make_move a lie), and a pin can only order a generated move, never inject one.
+- Time management tweaks (phase 2): easy-move exit plus stability-stretched budgets -8.6 +/- 25.2; easy-move alone -5.0 +/- 22.6. At ~60 ms windows neither trigger fires enough to matter, and spending more on unclear positions is how time trouble starts.
+- Proper singular extensions (phase 2): exclusion search at depth/2 around tt_value - 2*depth, non-PV only, start depth 8, LOWERBOUND entries only, per-line budget of 4, TT ordering kept but cutoffs suppressed inside the subtree. -6.5 +/- 23.6. On the way in, an unpreflighted variant became the fifth implementation killed by the two-rook ladder sweep: in a +30-pawn position every alternative fails low, so without requiring a LOWERBOUND entry everything extends and the horizon falls apart. At 7-11 ply there is no population of singular nodes worth the verification cost.
+- TT key widening (phase 2): 16 -> 32 bit signatures in 12-byte entries, aging policy untouched. -9.7 +/- 25.9 at Hash=8. Capacity is the whole story: 699k entries vs 1.00M, and at blitz node counts a collided entry wastes a probe or gets rejected by legality rather than losing material. Should flip where tables actually fill (long TCs, big hashes); do not re-gate at bullet with small hashes.
 - RukChess nets, see the nets section. Definitively.
 
 Platform and speed ideas:
