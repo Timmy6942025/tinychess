@@ -19,7 +19,7 @@ Credit where due. Upstream Dog at the fork point (`9549c3c`) gave us a working e
 | Board absolute strength | unmeasured | **~2800-2900** on the SF17 scale (slow TC anchor) |
 | Who can play it | people with a serial cable | **anyone with a phone in WiFi range** |
 | Unit tests | 12 | **21**, plus fuzzers |
-| Documented experiments | 0 | **~40 accepts and rejects**, all with numbers |
+| Documented experiments | 0 | **~45 accepts and rejects**, all with numbers |
 
 The board rating deserves context. It loses every game against Stockfish 17 at any time control, and we say so in the anchors section. On the human scale it beats virtually every sub-2000 player, which is the scale that matters for a pocket chess computer.
 
@@ -52,7 +52,7 @@ That last stretch puts the post-Tier-1 cumulative at **~+230 gated Elo**, all lo
 
 ## The graveyard
 
-About 30 ideas were tried, measured, and killed. Each entry has numbers. This section is the actual brag: the discipline is the product.
+About 35 ideas were tried, measured, and killed. Each entry has numbers. This section is the actual brag: the discipline is the product.
 
 Search ideas:
 
