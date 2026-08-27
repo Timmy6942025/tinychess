@@ -14,8 +14,8 @@ This file tells coding agents how to work in this repo.
   `git checkout 2251e9974d5e1c77f09e35015fc325098e586e2c` (inside
   `app/src/fathom`) before `git add`.
 - Leave untracked: `app/src/linux-windows/Dog-native`, `Dog-ruk`,
-  `Dog-stats-prober` (prebuilt binaries, rebuilt by cmake; the canonical
-  release lives on GitHub Releases `v0.1-prebuilt`).
+  `Dog-stats-prober` (prebuilt binaries, rebuilt by cmake; the latest published
+  release is on GitHub Releases as `v0.3-prebuilt`, built from `4749c02`).
 - Never commit the generated `app/build/` directory (gitignored).
 
 ## Repo facts
