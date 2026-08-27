@@ -85,7 +85,10 @@ This file tells coding agents how to work in this repo.
   (docs/output-layer-staging.md). REJECTED after six gated variants (~1,900
   games): correction history in every consumption form - within-game learning
   volume is too small and the pruning margins are tuned tighter than any useful
-  deflection (docs/correction-history.md, do not re-try). Reference desktop
+  deflection (docs/correction-history.md, do not re-try). A follow-up with
+  shared persistent correction and experience tables also lost 19.1 +/- 32.5
+  Elo over 200 games and was reverted; do not retry without a new design.
+  Reference desktop
   binary at the move-ordering rebuild has md5
   `fd8cef65eda53294c03a705bd40e32ff`; hashes change per build, fingerprints
   land in results.log per match.

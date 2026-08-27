@@ -52,12 +52,30 @@ the trap: a 200-game sample scored +12.2 (LOS 79%), the 600-game
 replication of the same binary scored -33. Screening positives at 200
 games without replication would have shipped a regression.
 
+## Persistent follow-up
+
+On August 27, a separate implementation tried to remove the learning-budget
+problem instead of retrying the per-game design. It put one shared 1 MiB pawn
+correction table and one shared 1 MiB experience table in PSRAM, kept both
+across `ucinewgame`, and added raw SPIFFS load/save. The desktop fallback used
+`corrhist.bin` and `experience.bin`. The experience entries were 12 bytes, so
+the implementation held 87,381 entries rather than the requested 131,072
+8-byte entries.
+
+The combined implementation lost its 200-game gate, scoring 40-51-109 for
+`-19.1 +/- 32.5 Elo` and 12.4% LOS. The result does not isolate which table
+caused the loss, and no board or reboot gate was run. The implementation was
+reverted in `bd7bd11`; the result is recorded in `tools/results.log` under
+`d40104b`. Persistent correction history remains rejected. Do not retry this
+line without a new design and a stronger reason to expect a different result.
+
 ## Why it fails here
 
 Three reasons, in decreasing order of confidence:
 
-1. Learning budget. Tables reset every game (ucinewgame), so all learning
-   happens within one game: thousands of nodes per move, ~40 moves. That is
+1. Learning budget. In the original variants, tables reset every game
+   (`ucinewgame`), so all learning happens within one game: thousands of nodes
+   per move, ~40 moves. That is
    orders of magnitude less observation than Stockfish's millions of nodes
    per move with persistent-per-game tables. Buckets are still near noise
    when the game ends.
