@@ -8701,3 +8701,8 @@ SPRT: llr -2.27 (-103.1%), lbound -2.2, ubound 2.2 - H0 was accepted
   Decision: no bit-exact ship. The 3.3% board / 5.7% desktop read tax stands. Recovery via cheaper addressing is ~0.4% Ir, ~0% board wall, under the 1.7% bar. The next lane is the gated reduction (one variant per SPRT, 200 games TC=2+0.02 Threads=1 Hash=8): cont-only drop on ESP32 (smallest desktop signal + PSRAM-local, one PSRAM line saved per quiet move) or int8 packing with redesigned gravity. Not bundled. Fresh profile recorded here is itself the deliverable: further speed work should target the eval/make/unmake path (callgrind top: nnue_evaluate 14.5%, make/unmake 20%+), not move ordering, unless a reduction wins its SPRT.
 
   Tree reverted to baseline (fd8cef65-equivalent, HEAD). No code shipped. ORDER_TABLE_READS true verified in shipping position. Submodule fathom 2251e9974d5e1c77f09e35015fc325098e586e2c pinned.
+[14:30:00] MATCH persistent-corrhist-exp-20260827-143000  A=/home/timmy/chess2/engine/app/src/linux-windows/build/Dog-native  B=/tmp/b/Dog-baseline  tc=2+0.02 games=200 Hash=8 Threads=1
+Score of A vs B: 40 - 51 - 109  [0.472] 200
+Elo difference: -19.1 +/- 32.5, LOS: 12.4 %, DrawRatio: 54.5 %
+FINGERPRINT A=a0804fdf43ad77629412ffe47744b992  B=0f8026df24b37db846a417f39b62d676
+VERDICT: REJECT persistent shared corrhist+exp -19.1 Elo, LOS 12.4% (200 games). Mirrors per-game corrhist failure (-33 at 600). Do not ship as default true; keep code disabled or revert. See docs/correction-history.md.
