@@ -78,9 +78,7 @@
 #include <libchess/UCIService.h>
 
 #include "book.h"
-#include "corr_hist.h"
 #include "eval.h"
-#include "exp_table.h"
 #include "inbuf.h"
 #include "main.h"
 #include "max-ascii.h"
@@ -119,7 +117,6 @@ chess_stats g_global_cs;
 
 
 std::vector<search_pars_t *> sp;
-bool g_bench_active = false;
 #if !defined(ESP32)
 state_exporter              *se { nullptr };
 #endif
@@ -577,16 +574,6 @@ void delete_threads()
 
 	sp.clear();
 
-	// persistent shared tables: keep across thread reconfigurations (e.g. bench's
-	// single-thread measurement). Only free at final shutdown when not bench-active.
-	// Spec says add heap_caps_free on delete_threads; we handle it via explicit
-	// free_persistent_tables() at shutdown, but also keep alive for bench.
-	if (!g_bench_active) {
-		// do not free during normal thread reconfig to preserve forever memory;
-		// final free is done at program exit via free_persistent_tables().
-		// If allocation failed earlier, nothing to free.
-	}
-
 	// no locking required here: no threads running!
 	work.reconfigure_threads = false;
 	work.search_version     = -1;
@@ -595,17 +582,6 @@ void delete_threads()
 void allocate_threads(const int n)
 {
 	delete_threads();
-
-	// persistent shared tables: one allocation, shared between threads, survives ucinewgame
-	// allocate on first call, keep across thread reconfigurations
-	if (!corr_hist::g_inited && !g_bench_active) {
-		corr_hist::init();
-		corr_hist::load();
-	}
-	if (!exp_table::g_inited && !g_bench_active) {
-		exp_table::init();
-		exp_table::load();
-	}
 
 	for(int i=0; i<n; i++) {
 		auto *pars = new search_pars_t();
@@ -717,20 +693,6 @@ auto thread_count_handler = [](const int value)  {
 
 auto hash_size_handler = [](const int value)  {
 	tti.set_size(uint64_t(value) * 1024 * 1024);
-};
-
-auto corr_hist_handler = [](const bool value) {
-	corr_hist::g_enabled = value;
-	printf("# CorrHist %s\n", value ? "enabled" : "disabled");
-};
-auto exp_table_handler = [](const bool value) {
-	exp_table::g_enabled = value;
-	printf("# ExpTable %s\n", value ? "enabled" : "disabled");
-};
-auto clear_corr_hist_handler = []() {
-	corr_hist::clear();
-	exp_table::clear();
-	printf("# ClearCorrHist done\n");
 };
 
 bool allow_ponder         = false;
@@ -1511,12 +1473,6 @@ void main_task()
 	libchess::UCISpinOption hash_size_option("Hash", 6, 1, 8, hash_size_handler);
 	uci_service->register_option(hash_size_option);
 #endif
-	libchess::UCICheckOption corr_hist_option("CorrHist", corr_hist::g_enabled, corr_hist_handler);
-	uci_service->register_option(corr_hist_option);
-	libchess::UCICheckOption exp_table_option("ExpTable", exp_table::g_enabled, exp_table_handler);
-	uci_service->register_option(exp_table_option);
-	libchess::UCIButtonOption clear_corr_hist_option("ClearCorrHist", clear_corr_hist_handler);
-	uci_service->register_option(clear_corr_hist_option);
 	libchess::UCICheckOption allow_ponder_option("Ponder", allow_ponder, allow_ponder_handler);
 	uci_service->register_option(allow_ponder_option);
 	libchess::UCICheckOption allow_tracing_option("Trace", trace_enabled, allow_tracing_handler);
@@ -1599,10 +1555,6 @@ void main_task()
 	}
 
 	delete uci_service;
-
-	// persist forever memory before exit (not in hot path)
-	corr_hist::save();
-	exp_table::save();
 
 	printf("TASK TERMINATED\n");
 }
@@ -1690,29 +1642,6 @@ void web_engine_snapshot(std::string & fen_out, std::vector<std::string> & legal
 
 void run_bench_single(const bool long_bench, const bool via_usb)
 {
-	// bench determinism: tables start empty for reproducibility, but keep forever memory intact
-	// save copies, zero for bench, restore afterwards; keep enabled true so PSRAM read cost is measured
-	void *corr_save = nullptr;
-	void *exp_save = nullptr;
-	size_t corr_bytes = 0, exp_bytes = 0;
-	if (corr_hist::g_inited && corr_hist::g_table) {
-		corr_bytes = CORR_SIZE * sizeof(int16_t);
-		corr_save = malloc(corr_bytes);
-		if (corr_save) {
-			memcpy(corr_save, corr_hist::g_table, corr_bytes);
-			memset(corr_hist::g_table, 0, corr_bytes);
-		}
-	}
-	if (exp_table::g_inited && exp_table::g_entries) {
-		exp_bytes = exp_table::g_n_entries * sizeof(exp_entry);
-		exp_save = malloc(exp_bytes);
-		if (exp_save) {
-			memcpy(exp_save, exp_table::g_entries, exp_bytes);
-			memset(exp_table::g_entries, 0, exp_bytes);
-		}
-	}
-	bool prev_bench = g_bench_active;
-	g_bench_active = true;
 #if defined(ESP32)
 	// The bench (fixed depth, waits for every thread to finish) races the
 	// two searcher threads on the shared lock-free PSRAM TT and inflates
@@ -1729,42 +1658,10 @@ void run_bench_single(const bool long_bench, const bool via_usb)
 	esp_chip_info(&chip_info);
 	allocate_threads(chip_info.cores);
 #endif
-	if (corr_save) {
-		memcpy(corr_hist::g_table, corr_save, corr_bytes);
-		free(corr_save);
-	}
-	if (exp_save) {
-		memcpy(exp_table::g_entries, exp_save, exp_bytes);
-		free(exp_save);
-	}
-	g_bench_active = prev_bench;
 }
 
 void run_bench(const bool long_bench, const bool via_usb)
 {
-	bool bench_outer = !g_bench_active;
-	void *bench_corr_save = nullptr;
-	void *bench_exp_save = nullptr;
-	size_t bench_corr_bytes = 0, bench_exp_bytes = 0;
-	if (bench_outer) {
-		g_bench_active = true;
-		if (corr_hist::g_inited && corr_hist::g_table) {
-			bench_corr_bytes = CORR_SIZE * sizeof(int16_t);
-			bench_corr_save = malloc(bench_corr_bytes);
-			if (bench_corr_save) {
-				memcpy(bench_corr_save, corr_hist::g_table, bench_corr_bytes);
-				memset(corr_hist::g_table, 0, bench_corr_bytes);
-			}
-		}
-		if (exp_table::g_inited && exp_table::g_entries) {
-			bench_exp_bytes = exp_table::g_n_entries * sizeof(exp_entry);
-			bench_exp_save = malloc(bench_exp_bytes);
-			if (bench_exp_save) {
-				memcpy(bench_exp_save, exp_table::g_entries, bench_exp_bytes);
-				memset(exp_table::g_entries, 0, bench_exp_bytes);
-			}
-		}
-	}
 	reset_search_statistics();
 	tti.reset();
 
@@ -1953,17 +1850,6 @@ void run_bench(const bool long_bench, const bool via_usb)
 		my_printf("Nodes searched  : %" PRIu64 "\n", node_count);
 		my_printf("Nodes/second    : %" PRIu64 "\n", node_count * 1000000 / t_diff);
 	}
-	if (bench_outer) {
-		if (bench_corr_save) {
-			memcpy(corr_hist::g_table, bench_corr_save, bench_corr_bytes);
-			free(bench_corr_save);
-		}
-		if (bench_exp_save) {
-			memcpy(exp_table::g_entries, bench_exp_save, bench_exp_bytes);
-			free(bench_exp_save);
-		}
-		g_bench_active = false;
-	}
 }
 
 #if defined(linux) || defined(_WIN32) || defined(__ANDROID__) || defined(__APPLE__)
@@ -2071,13 +1957,7 @@ int main(int argc, char *argv[])
 	else
 		main_task();
 
-	corr_hist::save();
-	exp_table::save();
-
 	delete_threads();
-	// final free of persistent shared regions (PSRAM) after saves
-	corr_hist::free_table();
-	exp_table::free_table();
 
 	delete se;
 
@@ -2225,9 +2105,6 @@ extern "C" void app_main()
 	// run_tui(false);
 
 	main_task();
-
-	corr_hist::save();
-	exp_table::save();
 
 	esp_restart();
 }

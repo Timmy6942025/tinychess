@@ -7,9 +7,7 @@
 
 #include <libchess/Position.h>
 
-#include "corr_hist.h"
 #include "eval.h"
-#include "exp_table.h"
 #include "main.h"
 #include "nnue.h"
 #include "san.h"
@@ -367,25 +365,6 @@ void tests()
 	printf("OK\n");
 
 	allocate_threads(1);
-	corr_hist::clear();
-	exp_table::clear();
-
-	{
-		printf("corr_hist AND indexing\n");
-		my_assert(corr_hist::verify_and_indexing());
-		printf("OK\n");
-	}
-
-	{
-		printf("exp_table fastrange\n");
-		// fastrange should map uniformly; check a few values
-		my_assert(exp_table::g_n_entries > 0);
-		uint32_t idx0 = exp_table::fastrange32(0, uint32_t(exp_table::g_n_entries));
-		uint32_t idx1 = exp_table::fastrange32(0xFFFFFFFFu, uint32_t(exp_table::g_n_entries));
-		my_assert(idx0 < exp_table::g_n_entries);
-		my_assert(idx1 < exp_table::g_n_entries);
-		printf("OK\n");
-	}
 
 	{
 		printf("tt move conversion\n");

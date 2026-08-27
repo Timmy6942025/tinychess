@@ -29,10 +29,7 @@ void es32_set_yield_peer(TaskHandle_t th)
 
 constexpr bool ORDER_TABLE_READS = true;
 #include "eval.h"
-#include "corr_hist.h"
-#include "exp_table.h"
 #include "inbuf.h"
-extern bool g_bench_active;
 #include "lmr-red.h"
 #include "main.h"
 #include "max-ascii.h"
@@ -616,36 +613,7 @@ int IRAM_ATTR search(int depth, int alpha, const int beta, const int null_move_d
 
 	// TT //
 	std::optional<libchess::Move> tt_move { };
-	std::optional<libchess::Move> exp_move { };
-	std::optional<exp_entry> exp_e { };
 	uint64_t       hash        = sp.pos.hash();
-#if EXP_TABLE_ENABLED
-	if (exp_table::g_enabled && exp_table::g_entries) {
-		auto ee = exp_table::lookup(hash);
-		if (ee.has_value()) {
-			exp_e = ee;
-			if (ee->move) {
-				auto em = uint_to_libchessmove(ee->move);
-				if (sp.pos.is_legal_move(em)) exp_move = em;
-			}
-			if (ee->depth >= depth && !is_pv) {
-				int wscore = eval_from_tt(ee->score, csd);
-				auto flag = tt_entry_flag(ee->flags);
-				bool use = flag == EXACT ||
-					(flag == LOWERBOUND && wscore >= beta) ||
-					(flag == UPPERBOUND && wscore <= alpha);
-				if (use) {
-					sp.cs.data.tt_cutoff++;
-					if (exp_move.has_value()) {
-						*m = exp_move.value();
-						return wscore;
-					}
-					if (!is_root_position) return wscore;
-				}
-			}
-		}
-	}
-#endif
 	std::optional<tt_entry> te = tti.lookup(hash);
 	sp.cs.data.tt_query++;
 
@@ -726,23 +694,11 @@ int IRAM_ATTR search(int depth, int alpha, const int beta, const int null_move_d
 	bool in_check = sp.pos.in_check();
 
 	int  staticeval   = 0;
-	int  staticeval_raw = 0;
-	bool staticeval_ok = false;
 	bool futility_ok  = false;
 
 	if (!is_root_position && !in_check && depth <= 7 && beta <= max_non_mate) {
 		sp.cs.data.n_static_eval++;
-		staticeval_raw  = nnue_evaluate(sp.nnue_eval, sp.pos);
-		staticeval = staticeval_raw;
-#if CORR_HIST_ENABLED
-		if (corr_hist::g_enabled && corr_hist::g_table) {
-			int corr = corr_hist::get_correction_for_pos(sp.pos);
-			staticeval = staticeval_raw + corr;
-			if (staticeval > max_non_mate) staticeval = max_non_mate;
-			if (staticeval < -max_non_mate) staticeval = -max_non_mate;
-		}
-#endif
-		staticeval_ok = true;
+		staticeval  = nnue_evaluate(sp.nnue_eval, sp.pos);
 		futility_ok = depth <= 2;
 
 		// static null pruning (reverse futility pruning)
@@ -790,10 +746,6 @@ int IRAM_ATTR search(int depth, int alpha, const int beta, const int null_move_d
 
 	if (tt_move.has_value())
 		smc.add_first_move(tt_move.value());
-#if EXP_TABLE_ENABLED
-	if (exp_move.has_value() && (!tt_move.has_value() || exp_move.value() != tt_move.value()))
-		smc.add_first_move(exp_move.value());
-#endif
 	if (m->value() && sp.pos.is_capture_move(*m))
 		smc.add_first_move(*m);
 
@@ -971,33 +923,6 @@ int IRAM_ATTR search(int depth, int alpha, const int beta, const int null_move_d
 		sp.cs.data.nmc_nodes++;
 	}
 
-#if CORR_HIST_ENABLED
-	// persistent correction history update: bounded quiet results teach the pawn-structure tables
-	if (!g_bench_active && !sp.stop->flag && staticeval_ok && n_played > 0 && depth >= 2 && abs(best_score) < max_non_mate) {
-		const bool quiet_cutoff = beta_cutoff_move.has_value() &&
-			!sp.pos.is_promotion_move(beta_cutoff_move.value());
-		const bool failed_low = best_score <= start_alpha;
-		int error = 0;
-		bool informative = false;
-		if (quiet_cutoff) {
-			error = best_score - staticeval_raw;
-			informative = error > 0;
-		} else if (failed_low) {
-			error = best_score - staticeval_raw;
-			informative = error < 0;
-		}
-		// also require not in check and quiet-like (no capture promotion that changes pawn hash for quiet_cutoff path)
-		// pawn captures change pawn hash, but current position's pawn hash is independent of cutoff move, so we keep capture cutoffs for pawn correction
-		// we already excluded promotions above; additionally skip if cutoff is a pawn capture that would be noisy? keep inclusive for now.
-		if (informative && !in_check) {
-			// gravity update via shared PSRAM table, racy is fine
-			uint64_t ph = corr_hist::pawn_hash(sp.pos);
-			int side = sp.pos.side_to_move() == libchess::constants::WHITE ? 0 : 1;
-			corr_hist::update_with_hash(ph, side, error, depth);
-		}
-	}
-#endif
-
 	if (n_played == 0) {
 		if (in_check) {
 			sp.cs.data.n_checkmate++;
@@ -1026,12 +951,6 @@ int IRAM_ATTR search(int depth, int alpha, const int beta, const int null_move_d
 			tti.store(hash, flag, depth, work_score, *m);
 		else
 			tti.store(hash, flag, depth, work_score);
-
-#if EXP_TABLE_ENABLED
-		if (!g_bench_active && exp_table::g_enabled && exp_table::g_entries && !in_check && m->value() && depth >= 4) {
-			exp_table::store(hash, depth, work_score, *m, flag);
-		}
-#endif
 	}
 
 	return best_score;
