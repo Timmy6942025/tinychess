@@ -114,8 +114,10 @@ ENDIF ()
 
 set(APP_SOURCES
   ../book.cpp
+  ../corr_hist.cpp
   ../eval.cpp
   ../eval-stats.cpp
+  ../exp_table.cpp
   ../main.cpp
   ../max.cpp
   ../max-ascii.cpp
