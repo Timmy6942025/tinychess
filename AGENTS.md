@@ -1,6 +1,7 @@
 # Agent instructions
 
 > Always use the `unslop` skill when writing or editing any text, docs, comments, or user-facing messages. Scan for the patterns listed in the skill, rewrite to remove them, add soul, and self-audit before committing.
+> When the user says `bro` on its own (case-insensitive, trimmed, no other content), invoke the `bro` skill to restate the last message in plain human language.
 
 Repository: `Timmy6942025/tinychess` (branch `main`), origin on GitHub.
 This file tells coding agents how to work in this repo.
