@@ -931,6 +931,22 @@ esp_err_t handle_yield(httpd_req_t *req)
 	printf("[web] yield: %s releases the seat\n", g_owner_name.c_str());
 	g_owner_pid.clear();
 	g_owner_name.clear();
+	// Returning to the main menu after a finished game should leave a
+	// clean board for the next player. If the game is already over,
+	// clear the move log and the terminal flag so a fresh /state
+	// shows startpos with no game_over. Keep clocks at base for a
+	// tidy display; /new will overwrite them anyway.
+	if (g_web_game_over) {
+		g_web_moves.clear();
+		g_web_game_over = false;
+		g_web_game_result.clear();
+		g_web_last_seq = 0;
+		// reset engine position to startpos (same as /new, on PSRAM thread)
+		run_web_task([] { web_engine_set_position({}); });
+		g_clock_white_ms = g_base_ms;
+		g_clock_black_ms = g_base_ms;
+		g_turn_started_ms = esp_timer_get_time() / 1000;
+	}
 	httpd_resp_set_type(req, "application/json");
 	return httpd_resp_sendstr(req, "{\"ok\":true}");
 }

@@ -1131,33 +1131,34 @@ async function joinQueue() {
 async function giveUpBoard() {
   if (giveUpBoard._busy) return;
   giveUpBoard._busy = true;
+  // immediate UI feedback: hide result and show main menu
+  $("resultOverlay").classList.remove("show");
+  hidePostGameBar();
+  $("startOverlay").classList.add("show");
+  resultDismissed = true;
+  // clear local game state immediately so multiple taps can't queue stale work
+  gameStarted = false;
+  gameOver = false;
+  gameResult = "";
+  clientFlagged = false;
+  boardThinking = false;
+  sel = null;
+  lastMove = null;
+  moves = [];
+  fen = null;
+  legal = [];
+  legalMap = {};
   try {
-    $("resultOverlay").classList.remove("show");
-    hidePostGameBar();
-    resultDismissed = true;
-    // clear local game state immediately so multiple taps can't queue stale work
-    gameStarted = false;
-    gameOver = false;
-    gameResult = "";
-    clientFlagged = false;
-    boardThinking = false;
-    sel = null;
-    lastMove = null;
-    // keep last position visible behind menu, but disable input
     // try to free the seat on the board (ignore 409 / offline)
-    try {
-      await fetchJson("/yield", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ pid: PID })
-      }, 5000);
-    } catch (err) { }
-    try { await refreshState(); } catch (err) { }
-  } finally {
-    // always end on the main menu, even if yield or refresh failed
-    $("startOverlay").classList.add("show");
-    // re-enable after a short debounce so double-taps don't re-enter
-    setTimeout(() => { giveUpBoard._busy = false; }, 400);
-  }
+    await fetchJson("/yield", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ pid: PID })
+    }, 5000);
+    await refreshState();
+  } catch (err) { }
+  // keep menu visible even if refresh re-fetched a stale game_over
+  $("startOverlay").classList.add("show");
+  setTimeout(() => { giveUpBoard._busy = false; }, 400);
 }
 
 async function startGame() {
