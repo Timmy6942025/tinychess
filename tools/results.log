@@ -8713,3 +8713,10 @@ VERDICT: NOT RUN. Both 3-game attempts stopped before protocol startup because w
 [03:28:17] FINGERPRINT A=board(wrapper,port=/dev/ttyACM0)  B=/home/timmy/chess2/engine/app/src/linux-windows/build/Dog-native cecdb81dcf9e1a056e1a041e1c96bfe3
 [03:28:53] MATCH board-vs-native-20260828-032817  A=board(port=/dev/ttyACM0, wrapper)  B=/home/timmy/chess2/engine/app/src/linux-windows/build/Dog-native  tc=2+0.02 games=3 adj=yes
 Elo difference: nan +/- nan, LOS: nan %, DrawRatio: nan %
+[12:34:41] FINGERPRINT A=board(wrapper,port=/dev/ttyACM0)  B=/home/timmy/chess2/engine/app/src/linux-windows/build/Dog-native cecdb81dcf9e1a056e1a041e1c96bfe3
+[12:34:57] MATCH board-vs-native-20260828-123441  A=board(port=/dev/ttyACM0, wrapper)  B=/home/timmy/chess2/engine/app/src/linux-windows/build/Dog-native  tc=2+0.02 games=3 adj=yes
+Score of BoardXS3 vs DogNative: 0 - 1 - 0  [0.000] 1
+Score of BoardXS3 vs DogNative: 0 - 2 - 0  [0.000] 2
+Score of BoardXS3 vs DogNative: 0 - 3 - 0  [0.000] 3
+Elo difference: -inf +/- nan, LOS: 4.2 %, DrawRatio: 0.0 %
+VERDICT: PASS. 3 games completed with no stalls, forfeits, or illegal moves. Board lost all three by adjudication.

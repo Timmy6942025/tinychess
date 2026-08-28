@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 # board_vs_native.sh - strength probe: XIAO ESP32S3 board (via serial wrapper)
 # vs its desktop Dog-native twin at IDENTICAL TC.
 #
@@ -9,7 +9,7 @@
 # Usage: tools/board_vs_native.sh [port] [games] [tc]
 #   env: TC=2+0.02 GAMES=40 ADJ=yes  (same conventions as fast_sprt.sh)
 
-set -e
+set -euo pipefail
 
 ENGINE_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 CUTECHESS="${CUTECHESS:-/home/timmy/bin/cutechess-cli}"
