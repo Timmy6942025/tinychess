@@ -8706,3 +8706,10 @@ Score of A vs B: 40 - 51 - 109  [0.472] 200
 Elo difference: -19.1 +/- 32.5, LOS: 12.4 %, DrawRatio: 54.5 %
 FINGERPRINT A=a0804fdf43ad77629412ffe47744b992  B=0f8026df24b37db846a417f39b62d676
 VERDICT: REJECT persistent shared corrhist+exp -19.1 Elo, LOS 12.4% (200 games). Mirrors per-game corrhist failure (-33 at 600). Do not ship as default true; keep code disabled or revert. See docs/correction-history.md.
+[03:18:25] FINGERPRINT A=board(wrapper,port=/dev/ttyACM0)  B=/home/timmy/chess2/engine/app/src/linux-windows/build/Dog-native cecdb81dcf9e1a056e1a041e1c96bfe3
+[03:19:00] MATCH board-vs-native-20260828-031825  A=board(port=/dev/ttyACM0, wrapper)  B=/home/timmy/chess2/engine/app/src/linux-windows/build/Dog-native  tc=2+0.02 games=3 adj=yes
+Elo difference: nan +/- nan, LOS: nan %, DrawRatio: nan %
+VERDICT: NOT RUN. Both 3-game attempts stopped before protocol startup because wrapper.py did not receive a boot prompt. Direct serial smoke passed on the same firmware: DIO, PSRAM, UCI, and depth-4 bestmove.
+[03:28:17] FINGERPRINT A=board(wrapper,port=/dev/ttyACM0)  B=/home/timmy/chess2/engine/app/src/linux-windows/build/Dog-native cecdb81dcf9e1a056e1a041e1c96bfe3
+[03:28:53] MATCH board-vs-native-20260828-032817  A=board(port=/dev/ttyACM0, wrapper)  B=/home/timmy/chess2/engine/app/src/linux-windows/build/Dog-native  tc=2+0.02 games=3 adj=yes
+Elo difference: nan +/- nan, LOS: nan %, DrawRatio: nan %
