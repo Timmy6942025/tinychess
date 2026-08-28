@@ -11,12 +11,12 @@
 <style>
   :root { color-scheme: dark; }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-  html, body { height: 100%; overscroll-behavior: none; }
+  html, body { min-height: 100%; overscroll-behavior: none; }
   body {
     margin: 0; background: #101418; color: #d8dde2;
     font: 15px/1.4 -apple-system, "Segoe UI", Roboto, sans-serif;
     display: flex; justify-content: center;
-    overflow: hidden;
+    overflow-x: hidden; overflow-y: auto;
     touch-action: manipulation;
     -webkit-user-select: none; user-select: none;
     -webkit-touch-callout: none;
@@ -24,11 +24,11 @@
   input { -webkit-user-select: text; user-select: text; }
   #app {
     width: 100%; max-width: 520px;
-    height: 100vh; height: 100dvh;
+    min-height: 100vh; min-height: 100dvh;
     padding: calc(6px + env(safe-area-inset-top)) 10px
              calc(10px + env(safe-area-inset-bottom));
     display: flex; flex-direction: column; gap: 7px;
-    min-width: 0; min-height: 0;
+    min-width: 0;
   }
 
   /* ---- header ---- */
@@ -69,26 +69,19 @@
   .capbar .lead { font-size: 12px; color: #aeb7c0; font-variant-numeric: tabular-nums; margin-left: 5px; }
 
   /* ---- board ---- */
-  /* boardWrap owns all spare height; cqmin sizes the board to the largest
-     square that fits, so nothing ever needs to scroll on a phone */
+  /* portrait: board fills the available width and stays square.
+     The page scrolls if needed instead of shrinking the board. */
   #boardWrap {
-    flex: 1 1 auto; min-height: 0; min-width: 0;
+    flex: none; width: 100%;
     display: flex; align-items: center; justify-content: center;
-    container-type: size;
     touch-action: none;
   }
   #board {
-    width: 100cqmin; aspect-ratio: 1 / 1; display: grid;
+    width: 100%; max-width: 100%; aspect-ratio: 1 / 1; display: grid;
     grid-template-columns: repeat(8, minmax(0, 1fr)); grid-template-rows: repeat(8, minmax(0, 1fr));
     border-radius: 12px; overflow: hidden; border: 1px solid #242c34;
     box-shadow: 0 12px 40px rgba(0,0,0,.45); user-select: none; touch-action: none;
     min-width: 0; min-height: 0;
-  }
-  @supports not (width: 1cqmin) {
-    html, body { overflow: auto; }
-    #app { height: auto; min-height: 100vh; }
-    #boardWrap { container-type: normal; flex: none; }
-    #board { width: 100%; max-width: 460px; }
   }
   .sq { position: relative; display: flex; align-items: center; justify-content: center; min-width: 0; min-height: 0; overflow: hidden; }
   .sq.light { background: #ece6d8; }
@@ -224,10 +217,15 @@
     #history { height: 96px; }
   }
 
-  /* short landscape phones: board fills the left, everything else moves right */
+  /* short landscape phones: board fills the left, everything else moves right.
+     The board stays square by sizing from the viewport height. */
   @media (orientation: landscape) and (max-height: 500px) {
+    body { overflow: hidden; }
     #app {
+      max-width: none; width: 100%;
       height: 100vh; height: 100dvh;
+      min-height: 0; max-height: 100dvh;
+      overflow-y: auto;
       display: grid;
       grid-template-columns: auto minmax(170px, 300px);
       grid-template-rows: auto auto minmax(0, 1fr) auto auto auto auto auto auto;
@@ -243,9 +241,19 @@
         "board pgb";
       column-gap: 12px;
       align-items: start;
+      justify-content: center;
     }
-    #boardWrap { grid-area: board; align-self: stretch; container-type: normal; }
-    #board { width: auto; height: 100%; max-width: none; }
+    #boardWrap {
+      grid-area: board; align-self: center; justify-self: center;
+      width: auto; height: auto;
+    }
+    #board {
+      width: auto;
+      height: min(calc(100dvh - 20px), calc(100vw - 340px));
+      max-height: calc(100dvh - 20px);
+      max-width: calc(100vw - 340px);
+      aspect-ratio: 1 / 1;
+    }
     header { grid-area: hdr; align-self: end; }
     #clockTop { grid-area: top; }
     #clockBottom { grid-area: bot; }
@@ -254,6 +262,10 @@
     #seatBar { grid-area: seat; }
     #history { grid-area: hist; }
     #postGameBar { grid-area: pgb; }
+  }
+  /* any other landscape with limited height: keep squares square */
+  @media (orientation: landscape) and (min-height: 501px) and (max-height: 700px) {
+    #board { aspect-ratio: 1 / 1; }
   }
 </style>
 </head>
