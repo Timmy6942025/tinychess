@@ -41,7 +41,7 @@ You need Python 3 and a data cable. That is it if you use the prebuilt files.
 
 Get the latest published release, `v0.4-prebuilt`, built from commit `1d38015`, from https://github.com/Timmy6942025/tinychess/releases.
 
-Desktop engine, Linux x86_64:
+Desktop engine, Linux aarch64:
 
 ```sh
 chmod +x Dog-native
