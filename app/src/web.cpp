@@ -45,12 +45,41 @@ char ap_ip[16] = "0.0.0.0";
 // ---- Phase 2: game session state. Owned exclusively by the single httpd
 // task (handlers run on it and /move blocks it for the search), so no lock
 // is needed -- the engine bridge has its own locks in main.cpp. ----
-constexpr int64_t BASE_CLOCK_MS = 30 * 60 * 1000; // 30:00 per side (casual)
 
-int         g_web_level         = 4;
+// Fischer time controls, stored as base + increment per side.
+// Presets mirror chess.com / lichess: bullet <3 min, blitz 3-10, rapid 10-60, classical 60+.
+struct TcPreset {
+	const char *id;       // e.g. "5+3"
+	const char *label;    // e.g. "5+3"
+	int base_ms;
+	int inc_ms;
+	const char *cat;      // bullet / blitz / rapid / classical
+};
+static const TcPreset kPresets[] = {
+	{"1+0",   "1+0",   1*60*1000,    0, "bullet"},
+	{"2+1",   "2+1",   2*60*1000, 1000, "bullet"},
+	{"3+0",   "3+0",   3*60*1000,    0, "blitz"},
+	{"3+2",   "3+2",   3*60*1000, 2000, "blitz"},
+	{"5+0",   "5+0",   5*60*1000,    0, "blitz"},
+	{"5+3",   "5+3",   5*60*1000, 3000, "blitz"},
+	{"10+0",  "10+0", 10*60*1000,    0, "rapid"},
+	{"15+10", "15+10",15*60*1000,10000, "rapid"},
+	{"30+0",  "30+0", 30*60*1000,    0, "classical"},
+};
+static constexpr int kNumPresets = sizeof(kPresets)/sizeof(kPresets[0]);
+static constexpr int kDefaultTc = 5; // 5+3
+
+static const TcPreset &preset_for_idx(int idx) {
+	if (idx < 0 || idx >= kNumPresets) idx = kDefaultTc;
+	return kPresets[idx];
+}
+
+int         g_web_tc            = kDefaultTc;
+int64_t     g_base_ms           = kPresets[kDefaultTc].base_ms;
+int64_t     g_inc_ms            = kPresets[kDefaultTc].inc_ms;
 std::string g_web_human_color   = "white";
-int64_t     g_clock_white_ms    = BASE_CLOCK_MS;
-int64_t     g_clock_black_ms    = BASE_CLOCK_MS;
+int64_t     g_clock_white_ms    = kPresets[kDefaultTc].base_ms;
+int64_t     g_clock_black_ms    = kPresets[kDefaultTc].base_ms;
 std::vector<std::string> g_web_moves; // full move list of the web game
 bool        g_web_game_over     = false;
 std::string g_web_game_result;        // white_wins / black_wins / draw / human flag
@@ -99,24 +128,18 @@ static bool seat_takeable()
 	return esp_timer_get_time() / 1000 - g_last_activity_ms > SEAT_IDLE_TAKEOVER_MS;
 }
 
-// Difficulty -> per-move budget. The page's slider sends the level; the
-// mapping lives here (server-authoritative) and always goes through the
-// same go handler as serial UCI, so the ESP32 time-budget fix governs the
-// board's spending at every level.
-int level_movetime_ms(int level)
+// Legacy level -> Tc mapping (kept for old clients / automated gates that still
+// send {"level": n}). Maps 1..10 onto the 9 presets above.
+static int level_to_tc(int level)
 {
-	// 5s .. 120s per move - no bullet, solid think time up to deep analysis
-	static const int table[] = { 5000, 10000, 15000, 20000, 30000,
-	                             45000, 60000, 80000, 100000, 120000 };
-	return table[level - 1];
+	if (level < 1) level = 1;
+	if (level > 10) level = 10;
+	// 1->0, 2->1, 3->2, 4->5 (old default 4 = 5+3), 5->5, 6->6, 7->7, 8->8, 9-10->8
+	static const int map[] = {0,0,1,2,5,5,6,7,8,8,8};
+	return map[level];
 }
-
-int level_inc_ms(int level)
-{
-	static const int table[] = { 2000, 3000, 4000, 5000, 6000,
-	                             8000, 10000, 12000, 15000, 15000 };
-	return table[level - 1];
-}
+int level_movetime_ms(int level) { (void)level; return preset_for_idx(g_web_tc).base_ms; }
+int level_inc_ms(int level) { (void)level; return (int)g_inc_ms; }
 
 int count_ap_clients()
 {
@@ -317,12 +340,13 @@ esp_err_t handle_state(httpd_req_t *req)
 			printf("[web] /state: flag fall (%s)\n", g_web_game_result.c_str());
 		}
 	}
+	const TcPreset &cur = preset_for_idx(g_web_tc);
 	snprintf(buf, sizeof(buf),
-		",\"level\":%d,\"color\":\"%s\","
-		"\"clock\":{\"white\":%lld,\"black\":%lld,\"inc\":%d}",
-		g_web_level, g_web_human_color.c_str(),
+		",\"level\":%d,\"tc\":%d,\"tc_id\":\"%s\",\"tc_cat\":\"%s\",\"color\":\"%s\","
+		"\"clock\":{\"white\":%lld,\"black\":%lld,\"inc\":%lld,\"base\":%lld}",
+		g_web_tc, g_web_tc, cur.id, cur.cat, g_web_human_color.c_str(),
 		(long long)w, (long long)b,
-		level_inc_ms(g_web_level));
+		(long long)g_inc_ms, (long long)g_base_ms);
 	body += buf;
 
 	// multi-player: seat holder + waitlist + holder idle time
@@ -459,6 +483,15 @@ bool run_web_search(const std::vector<std::string> & moves, int movetime)
 	});
 }
 
+bool run_web_search_clock(const std::vector<std::string> & moves,
+                          int wtime_ms, int btime_ms, int winc_ms, int binc_ms)
+{
+	return run_web_task([moves, wtime_ms, btime_ms, winc_ms, binc_ms] {
+		web_engine_set_position(moves);
+		web_engine_go_clock(wtime_ms, btime_ms, winc_ms, binc_ms);
+	});
+}
+
 esp_err_t handle_move(httpd_req_t *req)
 {
 	// move lists stay well under ~1 KB (200 plies * 5 chars); cap the body
@@ -479,14 +512,16 @@ esp_err_t handle_move(httpd_req_t *req)
 	}
 
 	std::vector<std::string> moves = split_moves(moves_json->valuestring);
-	// Phase 2: the page sends the move list + human_ms only; the per-move
-	// budget comes from the stored level. An explicit movetime stays as the
-	// dev/console override (and is what the automated gates use).
-	int movetime = level_movetime_ms(g_web_level);
-	if (mt_json && cJSON_IsNumber(mt_json) && mt_json->valuedouble >= 1)
+	// Clock source: Fischer base+inc from the preset stored at /new.
+	// An explicit movetime in the request is a dev/console override
+	// (automated gates use it) and takes precedence.
+	bool has_movetime = false;
+	int movetime = (int)g_base_ms;
+	if (mt_json && cJSON_IsNumber(mt_json) && mt_json->valuedouble >= 1) {
 		movetime = (int)mt_json->valuedouble;
-	if (movetime > 120000)
-		movetime = 120000;
+		if (movetime > 120000) movetime = 120000;
+		has_movetime = true;
+	}
 
 	// The page tags each submission with a monotonically increasing seq so a
 	// retry of the SAME request (response lost on the wire) books the clocks
@@ -546,10 +581,10 @@ esp_err_t handle_move(httpd_req_t *req)
 				char resp[640];
 				snprintf(resp, sizeof(resp),
 					"{\"bestmove\":\"%s\",\"score\":%d,\"depth\":%d,\"pv\":\"%s\","
-					"\"clock\":{\"white\":%lld,\"black\":%lld,\"inc\":%d}}",
+					"\"clock\":{\"white\":%lld,\"black\":%lld,\"inc\":%lld,\"base\":%lld}}",
 					last.best_move.c_str(), last.score, last.depth, pv.c_str(),
 					(long long)g_clock_white_ms, (long long)g_clock_black_ms,
-					level_inc_ms(g_web_level));
+					(long long)g_inc_ms, (long long)g_base_ms);
 				printf("[web] /move: idempotent reply for %s (already answered)\n",
 				       moves.empty() ? "startpos" : moves.back().c_str());
 				httpd_resp_set_type(req, "application/json");
@@ -558,29 +593,60 @@ esp_err_t handle_move(httpd_req_t *req)
 		}
 	}
 
-	// Continuous chess-clock model, server-authoritative. The human's think
-	// ends when this request arrives (deducted from the turn anchor); the
-	// engine's ends when the reply has landed. Deducting at those boundaries
-	// (once per booked seq) keeps every client and the server on one clock,
-	// and lets /state flag a player who never moves again.
+	// Fischer clock, server-authoritative. Each move gives its mover
+	// inc_ms after deduction. The human's clock is charged at arrival,
+	// the engine's at reply. The turn anchor is re-set after each
+	// credit so /state drains the correct side during the opponent's think.
 	int64_t & human_clock  = g_web_human_color == "white" ? g_clock_white_ms : g_clock_black_ms;
 	int64_t & engine_clock = g_web_human_color == "white" ? g_clock_black_ms : g_clock_white_ms;
-	const int inc = level_inc_ms(g_web_level);
+	const int64_t inc = g_inc_ms;
 	const bool book = (seq != g_web_last_seq);
 	if (book)
 		g_web_last_seq = seq;
 	const int64_t arrived_ms = esp_timer_get_time() / 1000;
 	bool human_flags = false;
 	if (book && !g_web_game_over && !moves.empty()) {
-		// moves.empty() is the engine's auto-move as white: no human think.
 		human_clock -= arrived_ms - g_turn_started_ms;
 		if (human_clock <= 0) {
 			human_clock = 0;
 			human_flags = true;
+		} else {
+			human_clock += inc;
+		}
+		// engine's turn starts now; polling during the search drains the engine
+		g_turn_started_ms = arrived_ms;
+		if (human_flags) {
+			// flagged before the engine moves -- no search needed
+			g_web_game_over = true;
+			g_web_game_result = g_web_human_color == "white" ? "black_wins" : "white_wins";
+			g_web_moves = moves;
+			touch_activity();
+			char resp[200];
+			snprintf(resp, sizeof(resp),
+				"{\"game_over\":true,\"result\":\"%s\",\"score\":0,"
+				"\"clock\":{\"white\":%lld,\"black\":%lld,\"inc\":%lld,\"base\":%lld}}",
+				g_web_game_result.c_str(),
+				(long long)g_clock_white_ms, (long long)g_clock_black_ms,
+				(long long)g_inc_ms, (long long)g_base_ms);
+			printf("[web] /move: human flag fall\n");
+			httpd_resp_set_type(req, "application/json");
+			return httpd_resp_sendstr(req, resp);
 		}
 	}
 
-	if (!run_web_search(moves, movetime)) {
+	bool search_ok = false;
+	if (has_movetime) {
+		search_ok = run_web_search(moves, movetime);
+	} else {
+		// snapshot clocks after human credit; these are the wtime/btime the
+		// engine will budget from (Fischer)
+		int wtime = (int)g_clock_white_ms;
+		int btime = (int)g_clock_black_ms;
+		int winc  = (int)g_inc_ms;
+		int binc  = (int)g_inc_ms;
+		search_ok = run_web_search_clock(moves, wtime, btime, winc, binc);
+	}
+	if (!search_ok) {
 		printf("[web] /move: search timed out\n");
 		// Re-anchor so a retry does not charge the human for the stuck
 		// engine window.
@@ -593,17 +659,16 @@ esp_err_t handle_move(httpd_req_t *req)
 	bool engine_flags = false;
 	if (book && !g_web_game_over) {
 		if (last.valid && !last.game_over) {
-			// the go handler's own measurement of the search -- immune to
-			// any queuing/ponder delay between the reply landing and this
-			// booking code running
 			engine_clock -= (int64_t)last.elapsed_ms;
 			if (engine_clock <= 0) {
 				engine_clock = 0;
 				engine_flags = true;
+			} else {
+				engine_clock += inc;
 			}
+		} else if (!last.game_over) {
+			// no move but no terminal: still anchor
 		}
-		human_clock += inc;
-		engine_clock += inc;
 		g_turn_started_ms = esp_timer_get_time() / 1000;
 		touch_activity();
 	}
@@ -622,12 +687,13 @@ esp_err_t handle_move(httpd_req_t *req)
 		g_web_game_result = game_result;
 		// keep the human's last move in the game log (page refresh + history)
 		g_web_moves = moves;
-		char resp[160];
+		char resp[220];
 		snprintf(resp, sizeof(resp),
 			"{\"game_over\":true,\"result\":\"%s\",\"score\":%d,"
-			"\"clock\":{\"white\":%lld,\"black\":%lld,\"inc\":%d}}",
+			"\"clock\":{\"white\":%lld,\"black\":%lld,\"inc\":%lld,\"base\":%lld}}",
 			game_result, last.score,
-			(long long)g_clock_white_ms, (long long)g_clock_black_ms, inc);
+			(long long)g_clock_white_ms, (long long)g_clock_black_ms,
+			(long long)g_inc_ms, (long long)g_base_ms);
 		printf("[web] /move: game over (%s)\n", game_result);
 		httpd_resp_set_type(req, "application/json");
 		return httpd_resp_sendstr(req, resp);
@@ -651,9 +717,10 @@ esp_err_t handle_move(httpd_req_t *req)
 	char resp[640];
 	snprintf(resp, sizeof(resp),
 		"{\"bestmove\":\"%s\",\"score\":%d,\"depth\":%d,\"pv\":\"%s\","
-		"\"clock\":{\"white\":%lld,\"black\":%lld,\"inc\":%d}}",
+		"\"clock\":{\"white\":%lld,\"black\":%lld,\"inc\":%lld,\"base\":%lld}}",
 		last.best_move.c_str(), last.score, last.depth, pv.c_str(),
-		(long long)g_clock_white_ms, (long long)g_clock_black_ms, inc);
+		(long long)g_clock_white_ms, (long long)g_clock_black_ms,
+		(long long)g_inc_ms, (long long)g_base_ms);
 
 	printf("[web] /move: %s -> %s (score %d, depth %d, clocks %lld/%lld)\n",
 	       moves.empty() ? "startpos" : moves.back().c_str(),
@@ -675,22 +742,40 @@ esp_err_t handle_new(httpd_req_t *req)
 		return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "bad json");
 
 	std::string color = "white";
-	int level = 1;
-	int64_t base_ms = BASE_CLOCK_MS;
+	int tc = kDefaultTc;
+	bool tc_provided = false;
+	int level = -1;
 	std::string pid, name;
 	// copy out of the cJSON tree before it is freed below
 	cJSON *c = cJSON_GetObjectItem(json, "color");
 	if (c && cJSON_IsString(c))
 		color = c->valuestring;
+	c = cJSON_GetObjectItem(json, "tc");
+	if (c && cJSON_IsNumber(c)) {
+		tc = (int)c->valuedouble;
+		tc_provided = true;
+	}
 	c = cJSON_GetObjectItem(json, "level");
 	if (c && cJSON_IsNumber(c))
 		level = (int)c->valuedouble;
-	// dev/test override for the time control (clamped to 5s..10m)
-	c = cJSON_GetObjectItem(json, "base_ms");
-	if (c && cJSON_IsNumber(c) && c->valuedouble >= 5000)
-		base_ms = (int64_t)c->valuedouble;
-	if (base_ms > BASE_CLOCK_MS)
-		base_ms = BASE_CLOCK_MS;
+	if (!tc_provided && level >= 1 && level <= 10) {
+		tc = level_to_tc(level);
+		tc_provided = true;
+	}
+	// legacy dev/test overrides
+	cJSON *base_json = cJSON_GetObjectItem(json, "base_ms");
+	cJSON *inc_json  = cJSON_GetObjectItem(json, "inc_ms");
+	bool has_custom = false;
+	int64_t custom_base = 0, custom_inc = 0;
+	if (base_json && cJSON_IsNumber(base_json) && base_json->valuedouble >= 1000) {
+		custom_base = (int64_t)base_json->valuedouble;
+		has_custom = true;
+	}
+	if (inc_json && cJSON_IsNumber(inc_json) && inc_json->valuedouble >= 0) {
+		custom_inc = (int64_t)inc_json->valuedouble;
+		has_custom = true;
+	}
+	if (tc < 0 || tc >= kNumPresets) tc = kDefaultTc;
 	c = cJSON_GetObjectItem(json, "pid");
 	if (c && cJSON_IsString(c))
 		pid = c->valuestring;
@@ -701,8 +786,6 @@ esp_err_t handle_new(httpd_req_t *req)
 
 	if (color != "white" && color != "black")
 		color = "white";
-	if (level < 1 || level > 10)
-		level = 4;
 
 	// Seat arbitration: one game at a time. A different pid may take the
 	// seat only when it is free, or when the requester heads the waitlist
@@ -733,9 +816,17 @@ esp_err_t handle_new(httpd_req_t *req)
 
 	// fresh session: position reset (above), clocks at base, move log empty
 	g_web_human_color = color;
-	g_web_level       = level;
-	g_clock_white_ms  = base_ms;
-	g_clock_black_ms  = base_ms;
+	g_web_tc = tc;
+	if (has_custom) {
+		g_base_ms = custom_base;
+		g_inc_ms  = custom_inc;
+	} else {
+		const TcPreset &p = preset_for_idx(tc);
+		g_base_ms = p.base_ms;
+		g_inc_ms  = p.inc_ms;
+	}
+	g_clock_white_ms  = g_base_ms;
+	g_clock_black_ms  = g_base_ms;
 	g_web_moves.clear();
 	g_web_game_over   = false;
 	g_web_game_result.clear();
@@ -758,14 +849,15 @@ esp_err_t handle_new(httpd_req_t *req)
 	}
 	touch_activity();
 
-	char resp[256];
+	char resp[320];
+	const TcPreset &cur = preset_for_idx(g_web_tc);
 	snprintf(resp, sizeof(resp),
-		"{\"ok\":true,\"color\":\"%s\",\"level\":%d,"
-		"\"clock\":{\"white\":%lld,\"black\":%lld,\"inc\":%d}}",
-		color.c_str(), level,
+		"{\"ok\":true,\"color\":\"%s\",\"level\":%d,\"tc\":%d,\"tc_id\":\"%s\",\"tc_cat\":\"%s\","
+		"\"clock\":{\"white\":%lld,\"black\":%lld,\"inc\":%lld,\"base\":%lld}}",
+		color.c_str(), g_web_tc, g_web_tc, cur.id, cur.cat,
 		(long long)g_clock_white_ms, (long long)g_clock_black_ms,
-		level_inc_ms(level));
-	printf("[web] /new: %s, level %d\n", color.c_str(), level);
+		(long long)g_inc_ms, (long long)g_base_ms);
+	printf("[web] /new: %s, tc %s (%s)\n", color.c_str(), cur.id, cur.cat);
 
 	httpd_resp_set_type(req, "application/json");
 	return httpd_resp_sendstr(req, resp);
@@ -866,13 +958,13 @@ esp_err_t handle_resign(httpd_req_t *req)
 	g_web_game_over   = true;
 	g_web_game_result = g_web_human_color == "white" ? "black_wins" : "white_wins";
 	printf("[web] resign -> %s\n", g_web_game_result.c_str());
-	char resp[192];
+	char resp[220];
 	snprintf(resp, sizeof(resp),
 		"{\"ok\":true,\"game_over\":true,\"result\":\"%s\","
-		"\"clock\":{\"white\":%lld,\"black\":%lld,\"inc\":%d}}",
+		"\"clock\":{\"white\":%lld,\"black\":%lld,\"inc\":%lld,\"base\":%lld}}",
 		g_web_game_result.c_str(),
 		(long long)g_clock_white_ms, (long long)g_clock_black_ms,
-		level_inc_ms(g_web_level));
+		(long long)g_inc_ms, (long long)g_base_ms);
 	httpd_resp_set_type(req, "application/json");
 	return httpd_resp_sendstr(req, resp);
 }

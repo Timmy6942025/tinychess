@@ -1596,6 +1596,23 @@ bool web_engine_go_movetime(int movetime_ms)
 	return true;
 }
 
+bool web_engine_go_clock(int wtime_ms, int btime_ms, int winc_ms, int binc_ms)
+{
+	if (!g_web_go_handler)
+		return false;
+	g_web_suppress_ponder = true;
+	g_web_go_handler(libchess::UCIGoParameters(
+		std::nullopt,
+		std::nullopt,
+		std::nullopt,
+		wtime_ms, winc_ms,
+		btime_ms, binc_ms,
+		std::nullopt,
+		false, false, std::nullopt));
+	g_web_suppress_ponder = false;
+	return true;
+}
+
 const web_search_result_t web_engine_last_result()
 {
 	std::lock_guard<std::mutex> state_lock(g_web_state_mutex);

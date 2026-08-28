@@ -26,6 +26,7 @@ struct web_search_result_t {
 // pondering bit-identically with serial UCI mode.
 bool web_engine_set_position(const std::vector<std::string> & moves);
 bool web_engine_go_movetime(int movetime_ms);
+bool web_engine_go_clock(int wtime_ms, int btime_ms, int winc_ms, int binc_ms);
 const web_search_result_t web_engine_last_result();
 std::string web_engine_fen();
 // Legal moves for the position the engine was last told (snapshot taken by

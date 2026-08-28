@@ -189,9 +189,17 @@
     background: #1d252c; color: #d8dde2; font-size: 15px; cursor: pointer; font-family: inherit;
   }
   .pick button.on { border-color: #4d8a68; background: #22302a; color: #6ecb63; }
-  .lvl { margin-bottom: 18px; }
-  .lvl .lbl { display: flex; justify-content: space-between; font-size: 13px; color: #7c8790; margin-bottom: 6px; }
-  .lvl input[type=range] { width: 100%; accent-color: #4d8a68; }
+  .tc { margin-bottom: 18px; }
+  .tc .lbl { display: flex; justify-content: space-between; font-size: 13px; color: #7c8790; margin-bottom: 8px; }
+  .tcGrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .tcBtn {
+    padding: 10px 4px; border-radius: 10px; border: 1px solid #2a343e;
+    background: #1d252c; color: #d8dde2; font-size: 13px; cursor: pointer; font-family: inherit;
+    text-align: center; line-height: 1.2;
+  }
+  .tcBtn small { display: block; font-size: 10px; color: #7c8790; margin-top: 2px; text-transform: uppercase; letter-spacing: .5px; }
+  .tcBtn.on { border-color: #4d8a68; background: #22302a; color: #6ecb63; }
+  .tcBtn.on small { color: #6ecb63; opacity: .8; }
   .big {
     width: 100%; padding: 14px; border: 0; border-radius: 12px;
     background: #2c6e4f; color: #eafff2; font-size: 17px; font-weight: 600; cursor: pointer;
@@ -320,9 +328,9 @@
       <button data-color="white">Play White</button>
       <button data-color="black">Play Black</button>
     </div>
-    <div class="lvl">
-      <div class="lbl"><span>Difficulty</span><span id="lvlLabel">2s / move</span></div>
-      <input type="range" id="lvl" min="1" max="10" value="4">
+    <div class="tc">
+      <div class="lbl"><span>Time control</span><span id="tcLabel">5+3 blitz</span></div>
+      <div class="tcGrid" id="tcGrid"></div>
     </div>
     <button class="big" id="startBtn">Start game</button>
     <div class="tip">One game at a time — others can watch or join the waitlist.<br>Tip: phones remember this network; "forget" it to stop auto-connecting.</div>
@@ -353,14 +361,32 @@
 /* ================= constants ================= */
 const PIECE_VALUES = { p: 1, n: 3, b: 3, r: 5, q: 9, k: 0 };
 function pieceSrc(color, type) { return `pieces/ejgfv/${color}${type}.png`; }
-const LEVEL_TIMES = ["5s", "10s", "15s", "20s", "30s", "45s", "60s", "80s", "100s", "120s"];
+const TC_PRESETS = [
+  { id: "1+0",   label: "1+0",   cat: "bullet" },
+  { id: "2+1",   label: "2+1",   cat: "bullet" },
+  { id: "3+0",   label: "3+0",   cat: "blitz" },
+  { id: "3+2",   label: "3+2",   cat: "blitz" },
+  { id: "5+0",   label: "5+0",   cat: "blitz" },
+  { id: "5+3",   label: "5+3",   cat: "blitz" },
+  { id: "10+0",  label: "10+0",  cat: "rapid" },
+  { id: "15+10", label: "15+10", cat: "rapid" },
+  { id: "30+0",  label: "30+0",  cat: "classical" },
+];
 const MOVE_FETCH_TIMEOUT_MS = 160000;
 const POLL_MS = 2000;
 const POLL_TIMEOUT_MS = 15000;
 
 /* ================= page state ================= */
 let myColor = "white";
-let level = 4;
+let tc = parseInt(localStorage.getItem("dog_tc") || "5", 10); // default 5+3
+if (isNaN(tc) || tc < 0 || tc >= TC_PRESETS.length) tc = 5;
+// migrate old level if present and no tc stored
+if (!localStorage.getItem("dog_tc") && localStorage.getItem("dog_level")) {
+  const lvl = parseInt(localStorage.getItem("dog_level"), 10);
+  const map = [0,0,1,2,5,5,6,7,8,8,8];
+  if (!isNaN(lvl) && lvl >= 1 && lvl <= 10) tc = map[lvl];
+}
+let level = tc; // kept for backwards compat with server "level" field
 let moves = [];             // full move list of the game (server-authoritative)
 let gameOver = false;
 let gameResult = "";
@@ -1137,11 +1163,12 @@ async function startGame() {
   engineToMove = false;
   myName = ($("nameInput").value || "").trim().slice(0, 16);
   localStorage.setItem("dog_name", myName);
+  localStorage.setItem("dog_tc", String(tc));
   try {
     const r = await fetchJson("/new", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ color: myColor, level, pid: PID, name: myName })
+      body: JSON.stringify({ color: myColor, tc, level: tc, pid: PID, name: myName })
     }, 30000);
     if (r.clock) clocks = { white: r.clock.white, black: r.clock.black };
     clockSyncAt = Date.now();
@@ -1201,10 +1228,26 @@ document.querySelectorAll("#colorPick button").forEach(b => {
     document.querySelectorAll("#colorPick button").forEach(x => x.classList.toggle("on", x === b));
   };
 });
-$("lvl").oninput = () => {
-  level = +$("lvl").value;
-  $("lvlLabel").textContent = LEVEL_TIMES[level - 1] + " / move";
-};
+function buildTcGrid() {
+  const grid = $("tcGrid");
+  if (!grid) return;
+  grid.innerHTML = "";
+  TC_PRESETS.forEach((p, idx) => {
+    const btn = document.createElement("button");
+    btn.className = "tcBtn" + (idx === tc ? " on" : "");
+    btn.innerHTML = `${p.label}<small>${p.cat}</small>`;
+    btn.onclick = () => {
+      tc = idx; level = idx;
+      localStorage.setItem("dog_tc", String(tc));
+      $("tcLabel").textContent = `${p.label} ${p.cat}`;
+      grid.querySelectorAll(".tcBtn").forEach((x, i) => x.classList.toggle("on", i === idx));
+    };
+    grid.appendChild(btn);
+  });
+  const cur = TC_PRESETS[tc] || TC_PRESETS[5];
+  $("tcLabel").textContent = `${cur.label} ${cur.cat}`;
+}
+buildTcGrid();
 $("startBtn").onclick = startGame;
 $("resignBtn").onclick = async () => {
   if (!gameStarted || gameOver || !isOwner()) return;
@@ -1253,12 +1296,13 @@ refreshState().then(s => {
   if (s && s.moves && s.moves.length) {
     // mid-game page load: join the running game with the server's session
     myColor = s.color || "white";
-    level = s.level || 4;
+    if (typeof s.tc === "number") { tc = s.tc; level = s.tc; }
+    else if (typeof s.level === "number") { level = s.level; tc = level; }
+    if (tc < 0 || tc >= TC_PRESETS.length) tc = 5;
     gameStarted = true;
     $("startOverlay").classList.remove("show");
     document.querySelectorAll("#colorPick button").forEach(b => b.classList.toggle("on", b.dataset.color === myColor));
-    $("lvl").value = level;
-    $("lvlLabel").textContent = LEVEL_TIMES[level - 1] + " / move";
+    buildTcGrid();
     if (s.game_over) showResult();
     else if (engineToMove && !gameOver && isOwner()) postMove(0);
   } else {
