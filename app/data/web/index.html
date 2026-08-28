@@ -350,7 +350,7 @@
     <div id="resultTitle">—</div>
     <div id="resultSub"></div>
     <button class="big" id="rematchBtn">Rematch</button>
-    <button class="big alt" id="giveUpBtn">Give up the board</button>
+    <button class="big alt" id="giveUpBtn">Return to main menu</button>
     <button class="big alt" id="viewBoardBtn">View board</button>
   </div>
 </div>
@@ -1061,9 +1061,9 @@ function showResult() {
   }
   $("resultTitle").textContent = title;
   $("resultSub").textContent = sub;
-  // seat actions belong to the holder only
+  // rematch is holder only, return to menu is for everyone
   $("rematchBtn").style.display = isOwner() ? "" : "none";
-  $("giveUpBtn").style.display = isOwner() ? "" : "none";
+  $("giveUpBtn").style.display = "";
   // View board is always available – lets anyone inspect the final position
   $("viewBoardBtn").style.display = "";
   hidePostGameBar();
@@ -1129,22 +1129,35 @@ async function joinQueue() {
 }
 
 async function giveUpBoard() {
-  $("resultOverlay").classList.remove("show");
-  hidePostGameBar();
-  resultDismissed = true;
+  if (giveUpBoard._busy) return;
+  giveUpBoard._busy = true;
   try {
-    await fetchJson("/yield", {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ pid: PID })
-    }, 10000);
-  } catch (err) { /* keep watching; the seat stays until takeover */ }
-  gameStarted = false;
-  gameOver = false;
-  gameResult = "";
-  await refreshState();
-  // the seat is free again — offer the start screen so this player can
-  // re-take it (or watch) instead of stranding them on a dead board
-  $("startOverlay").classList.add("show");
+    $("resultOverlay").classList.remove("show");
+    hidePostGameBar();
+    resultDismissed = true;
+    // clear local game state immediately so multiple taps can't queue stale work
+    gameStarted = false;
+    gameOver = false;
+    gameResult = "";
+    clientFlagged = false;
+    boardThinking = false;
+    sel = null;
+    lastMove = null;
+    // keep last position visible behind menu, but disable input
+    // try to free the seat on the board (ignore 409 / offline)
+    try {
+      await fetchJson("/yield", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pid: PID })
+      }, 5000);
+    } catch (err) { }
+    try { await refreshState(); } catch (err) { }
+  } finally {
+    // always end on the main menu, even if yield or refresh failed
+    $("startOverlay").classList.add("show");
+    // re-enable after a short debounce so double-taps don't re-enter
+    setTimeout(() => { giveUpBoard._busy = false; }, 400);
+  }
 }
 
 async function startGame() {
