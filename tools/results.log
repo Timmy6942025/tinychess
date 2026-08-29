@@ -8720,3 +8720,26 @@ Score of BoardXS3 vs DogNative: 0 - 2 - 0  [0.000] 2
 Score of BoardXS3 vs DogNative: 0 - 3 - 0  [0.000] 3
 Elo difference: -inf +/- nan, LOS: 4.2 %, DrawRatio: 0.0 %
 VERDICT: PASS. 3 games completed with no stalls, forfeits, or illegal moves. Board lost all three by adjudication.
+[2026-08-29 13:00] PROBCUT CAMPAIGN - THREE MARGINS, SINGLE VERIFICATION PRUNER (spec: depth>=5 !pv !in_check beta in mate window !root, probBeta=beta+margin, reducedDepth=depth-4)
+  Baseline: tools/runs/bin/Dog-phase2-base fd8cef65eda53294c03a705bd40e32ff (fd8cef65-equivalent, move-ordering rebuild state)
+  Engine: ProbCut block after null-move (app/src/search.cpp:741-757), depth>=5 !pv !in_check beta in [-max_non_mate,max_non_mate] !is_root, probBeta=beta+margin, reducedDepth=depth-4 clamped, verification search -search(rd, -probBeta, -probBeta+1, null_move_depth, max_depth, level+1) return pcScore if >=probBeta. Captures handled via existing see() in qsearch only; no new tables, TT width unchanged (tt.h:13 8-byte, tt.cpp:139). Margins 100,150,200 as separate builds, default 150.
+
+[13:00] FINGERPRINT A=/tmp/probcut-100 8e0b97824218854ee443255de1748c0d  B=tools/runs/bin/Dog-phase2-base fd8cef65eda53294c03a705bd40e32ff
+[13:05] MATCH probcut-100 vs baseline  A=/tmp/probcut-100  B=tools/runs/bin/Dog-phase2-base  tc=2+0.02 games=200 Hash=8 Threads=1
+Score of A vs B: 2 - 193 - 5  [0.022] 200
+Elo difference: -655.2 +/- 181.1, LOS: 0.0 %, DrawRatio: 2.5 %
+VERDICT probcut-100: REJECT -655 Elo, LOS 0.0% (200 games). Heavy loss at margin 100.
+
+[13:10] FINGERPRINT A=/tmp/probcut-150 222997e050ca56ccb22508d7cdc2b490  B=tools/runs/bin/Dog-phase2-base fd8cef65eda53294c03a705bd40e32ff
+[13:15] MATCH probcut-150 vs baseline  A=/tmp/probcut-150  B=tools/runs/bin/Dog-phase2-base  tc=2+0.02 games=200 Hash=8 Threads=1
+Score of A vs B: 5 - 189 - 6  [0.040] 200
+Elo difference: -552.1 +/- 127.1, LOS: 0.0 %, DrawRatio: 3.0 %
+VERDICT probcut-150: REJECT -552 Elo, LOS 0.0% (200 games). Default margin 150 also heavy loss.
+
+[13:20] FINGERPRINT A=/tmp/probcut-200 18585fd8344971e8699328d2a8f72981  B=tools/runs/bin/Dog-phase2-base fd8cef65eda53294c03a705bd40e32ff
+[13:25] MATCH probcut-200 vs baseline  A=/tmp/probcut-200  B=tools/runs/bin/Dog-phase2-base  tc=2+0.02 games=200 Hash=8 Threads=1
+Score of A vs B: 1 - 182 - 17  [0.048] 200
+Elo difference: -520.9 +/- 88.4, LOS: 0.0 %, DrawRatio: 8.5 %
+VERDICT probcut-200: REJECT -520 Elo, LOS 0.0% (200 games). Best of three is margin 200 but still catastrophic.
+
+[2026-08-29 13:30] PROBCUT SUMMARY: Three margins, three 200-game gates at 2+0.02 Hash=8 Threads=1 vs fd8cef65. All margins lose >500 Elo (LOS 0%). Unit gate 18/18 passed with probcutMargin 150 (after fixing mate return to pcScore instead of beta, R3R1K1 depth-19 mate sweep requires returning mate score directly; returning beta hides mate). Strength gate is decisive: verification pruner at depth-4 is over-aggressive on this engine's already-optimal static pruners (RFP 121*d, razoring 350+150*d, futility 180+150*d at joint optimum per results.log:3824). ProbCut's reduced search (depth-4 zero-window) prunes legitimate defenses, inflates time usage (bench depth 15->13 in 2.5s, +verification overhead) and collapses bullet strength. Matches the engine's measured local optimum: Phase-2 staged picker, TM, singular, TT-widening all rejected vs orderA state; probcut is the last major forward pruner missing and it also fails. The 20% tax of SEE-in-main-search and history-gated futility/LMR (-28.8, ~-50 isolated) already showed no slack; probcut confirms no slack for verification pruning either. Do not retry without a fundamentally different design (e.g., capture-only probcut with SEE gate, shallower reduction, or eval-gated condition). Tree reverted to baseline (fd8cef65-equivalent, HEAD). No code shipped. Submodule fathom 2251e9974d5e1c77f09e35015fc325098e586e2c pinned.
