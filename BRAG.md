@@ -1,6 +1,6 @@
 # BRAG.md
 
-A complete record of what this fork did on top of [Dog](https://github.com/folkertvanheusden/Dog) by Folkert van Heusden (MIT). Three weeks of work, August 3 to 26, 2026, 153 commits. The result ships as TinyChess (`Timmy6942025/tinychess`): one source tree that builds both a desktop UCI engine and ESP32-S3 firmware, a board that broadcasts its own WiFi and plays against a phone browser, and an experiment log with a number attached to every decision.
+A complete record of what this fork did on top of [Dog](https://github.com/folkertvanheusden/Dog) by Folkert van Heusden (MIT). Three weeks of work, August 3 to 29, 2026, 154 commits. The result ships as TinyChess (`Timmy6942025/tinychess`): one source tree that builds both a desktop UCI engine and ESP32-S3 firmware, a board that broadcasts its own WiFi and plays against a phone browser, and an experiment log with a number attached to every decision.
 
 Every figure below comes from `tools/results.log` (5,700+ lines), `tools/bench.csv`, or a named doc in the repo. Nothing here is recalled from memory.
 
@@ -52,7 +52,7 @@ That last stretch puts the post-Tier-1 cumulative at **~+230 gated Elo**, all lo
 
 ## The graveyard
 
-About 35 ideas were tried, measured, and killed. Each entry has numbers. This section is the actual brag: the discipline is the product.
+About 36 ideas were tried, measured, and killed. Each entry has numbers. This section is the actual brag: the discipline is the product.
 
 Search ideas:
 
@@ -79,6 +79,7 @@ Search ideas:
 - Time management tweaks (phase 2): easy-move exit plus stability-stretched budgets -8.6 +/- 25.2; easy-move alone -5.0 +/- 22.6. At ~60 ms windows neither trigger fires enough to matter, and spending more on unclear positions is how time trouble starts.
 - Proper singular extensions (phase 2): exclusion search at depth/2 around tt_value - 2*depth, non-PV only, start depth 8, LOWERBOUND entries only, per-line budget of 4, TT ordering kept but cutoffs suppressed inside the subtree. -6.5 +/- 23.6. On the way in, an unpreflighted variant became the fifth implementation killed by the two-rook ladder sweep: in a +30-pawn position every alternative fails low, so without requiring a LOWERBOUND entry everything extends and the horizon falls apart. At 7-11 ply there is no population of singular nodes worth the verification cost.
 - TT key widening (phase 2): 16 -> 32 bit signatures in 12-byte entries, aging policy untouched. -9.7 +/- 25.9 at Hash=8. Capacity is the whole story: 699k entries vs 1.00M, and at blitz node counts a collided entry wastes a probe or gets rejected by legality rather than losing material. Should flip where tables actually fill (long TCs, big hashes); do not re-gate at bullet with small hashes.
+- ProbCut verification pruner (Aug 29): `depth>=5 && !is_pv && !in_check && beta in [-max_non_mate,max_non_mate] && !is_root`, `probBeta=beta+margin`, `rd=depth-4`, verification `search(rd, -probBeta, -probBeta+1)`. Margins 100, 150, 200 gated at 2+0.02 Hash=8 vs fd8cef65, 200 games each: -655.2 +/-181.1, -552.1 +/-127.1, -520.9 +/-88.4, all LOS 0.0%. Bench depth 15 to 13 in 2.5s. Verification prunes real defenses and adds overhead on top of already-optimal RFP/razoring/futility margins. Do not retry without a capture-gated or eval-gated redesign.
 - RukChess nets, see the nets section. Definitively.
 
 Platform and speed ideas:
