@@ -10,6 +10,8 @@ This file tells coding agents how to work in this repo.
 
 - **Commit and push**: commit every change and `git push origin main`
   immediately after it passes its gates. Do not leave work uncommitted.
+- Commit messages are plain: no assistant/co-author attribution footer.
+  (Removed Aug 29 by request; earlier commits still carry it.)
 - Before committing, check `git submodule status`: if `app/src/fathom` drifts
   off `2251e9974d5e1c77f09e35015fc325098e586e2c`, restore it with
   `git checkout 2251e9974d5e1c77f09e35015fc325098e586e2c` (inside
