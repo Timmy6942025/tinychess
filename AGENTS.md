@@ -93,6 +93,12 @@ This file tells coding agents how to work in this repo.
   binary at the move-ordering rebuild has md5
   `fd8cef65eda53294c03a705bd40e32ff`; hashes change per build, fingerprints
   land in results.log per match.
+- Accepted speed item (Aug 29): C8 IRAM of the remaining per-node flash
+  callees (generate_non_pawn_captures/quiets, Position::is_legal_move,
+  nnue_k::apply) plus a grow-only scores resize that kills the per-node
+  libstdc++ `_M_default_append` flash call. Search tree bit-identical. Board
+  startpos bench 14,198 vs 14,027 (+1.2%); strength gate +15.6 +/- 34.6,
+  LOS 81.2% vs pre-C8 HEAD: KEEP; 18/18 unit; board-vs-native 3-game clean.
 - Board pthread stacks default to 16 KB (`sdkconfig`, was 32 KB): internal SRAM
   got too tight for the old 96 KB peak demand during `test`. `allocate_threads`
   degrades to fewer searchers instead of aborting, and the stack protector

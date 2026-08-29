@@ -125,7 +125,7 @@ scalar (4 row-ops per move, 256 int16 each); only the output layer is PIE'd.
 6. **DCache is 32 KB (8-way); 64 KB is available** and not enabled
    (CONFIG_ESP32S3_DATA_CACHE_SIZE=0x8000). 32 KB is shared by TT stream,
    NNUE weight rows, zobrist, attack tables.
-7. **IRAM headroom**: .iram0.text is only 128,443 B of the 448 KB
+7. **IRAM headroom**: .iram0.text is 135,915 B of the 448 KB
    instruction-addressable budget; .flash.text is 1,009,876 B. Hot engine
    functions are already IRAM'd (search, qs, see, movegen, make/unmake,
    attacks, hash, NNUE eval). libstdc++ vector ops remain in flash.
@@ -210,6 +210,16 @@ common case). Expectation: +1-3%. Effort: small. Risk: low.
 **C8. IRAM the remaining per-node flash callees** (libstdc++ vector ops die
 with C5; then re-measure PMC I-cache misses and IRAM the next hot symbols).
 Expectation: +1-3% after C5. Effort: small (map-file driven).
+
+DONE Aug 29 2026 (~4.0 KB flash -> IRAM): IRAM'd the only movegen fns still
+missing LIBCHESS_IRAM_ATTR (generate_non_pawn_quiets/captures),
+Position::is_legal_move (per-node TT-move verify), nnue_k::apply (per-move
+delta dispatcher); grow-only scores resize killed the per-node libstdc++
+_M_default_append flash call and its zero-fill (scores always overwritten
+below n_moves). Board startpos bench 14,198 vs 14,027 (+1.2%); strength gate
++15.6 +/- 34.6, LOS 81.2% vs pre-C8 HEAD: KEEP. Unit 18/18, board-vs-native
+3-game clean. Still open from this scope: C7 insertion sort (the node sort is
+still O(n^2) selection sort) and the WDT yield-gate reduction.
 
 **C9. Weight-layout locality**: order NNUE feature rows by king square so the
 streamed rows cluster in the DCache. Bit-identical math, different memory
