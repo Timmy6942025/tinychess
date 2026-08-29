@@ -107,3 +107,8 @@ This file tells coding agents how to work in this repo.
   long bench ever reports a few hundred nodes total again, suspect a time-budget regression first.
 - 2-thread board stability: board must survive a 15-min 2-thread session
   (a 2-thread hang is what killed QIO).
+- `app/sdkconfig` is tracked and takes precedence over `sdkconfig.defaults`:
+  editing only `.defaults` silently keeps the old value baked into the build
+  (caught Aug 29 when a 16B cache-line flip never applied). To change a
+  config, edit `app/sdkconfig` directly (or delete it to regenerate from
+  `.defaults`), then verify in `app/build/config/sdkconfig.h` before flashing.

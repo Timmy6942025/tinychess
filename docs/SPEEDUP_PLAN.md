@@ -248,7 +248,7 @@ dram0 data+bss ~45 KB today; ~200 KB free internal).
 - **Bigger net in SRAM / TT in internal SRAM**: internal SRAM too small
   (394 KB net + 6 MB TT cannot move).
 - **Whole-engine IRAM residency**: 1 MB flash text cannot fit 448 KB IRAM
-  budget (128 KB used); only targeted moves (C8) make sense.
+  budget (135,915 B used per 7.); only targeted moves (C8) make sense.
 
 ---
 
