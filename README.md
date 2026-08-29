@@ -39,7 +39,7 @@ You need Python 3 and a data cable. That is it if you use the prebuilt files.
 
 ### Option A. Prebuilt binaries, no toolchain
 
-Get the latest published release, `v0.4-prebuilt`, built from commit `1d38015`, from https://github.com/Timmy6942025/tinychess/releases.
+Get the latest published release, `v0.5-prebuilt`, built from commit `1efb667`, from https://github.com/Timmy6942025/tinychess/releases.
 
 Desktop engine, Linux aarch64:
 
