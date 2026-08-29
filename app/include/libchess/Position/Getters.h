@@ -154,7 +154,7 @@ LIBCHESS_IRAM_ATTR inline bool Position::is_legal_generated_move(Move move, Bitb
     }
 }
 
-inline bool Position::is_legal_move(Move move) const {
+LIBCHESS_IRAM_ATTR inline bool Position::is_legal_move(Move move) const {
     Square from_sq = move.from_square();
     auto piece_opt = piece_on(from_sq);
     if (!piece_opt) {

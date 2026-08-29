@@ -28,6 +28,13 @@
 #include <cstdint>
 #include <cstddef>
 
+#if defined(ESP32)
+#include <esp_attr.h>
+#define NNUEK_IRAM_ATTR IRAM_ATTR
+#else
+#define NNUEK_IRAM_ATTR
+#endif
+
 #include "weights.h"
 
 constexpr int SCALE = 400;
@@ -74,7 +81,7 @@ void pie_dual_2s1a(std::int16_t *aw, std::int16_t *ab,
                    const std::int16_t *aa, const std::int16_t *ab2);
 #endif
 
-inline void apply(std::int16_t *acc_w, std::int16_t *acc_b, const Delta *ops, int n_ops)
+NNUEK_IRAM_ATTR inline void apply(std::int16_t *acc_w, std::int16_t *acc_b, const Delta *ops, int n_ops)
 {
 	if (n_ops <= 0)
 		return;

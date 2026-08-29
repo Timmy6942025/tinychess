@@ -386,8 +386,11 @@ int IRAM_ATTR qs(int alpha, const int beta, const int qsdepth, search_pars_t & s
 	libchess::Bitboard pinned = sp.pos.pinned_pieces_of(sp.pos.side_to_move());
 	std::vector<int> * scores_ptr;
 	if (qscr) {
-		qscr->scores.clear();
-		qscr->scores.resize(n_moves);
+		// grow-only: scores are always fully overwritten below n_moves, so
+		// only grow the buffer. Avoids the per-node libstdc++ resize call
+		// (flash) and its zero-fill on every qsearch node.
+		if (n_moves > qscr->scores.size())
+			qscr->scores.resize(n_moves);
 		scores_ptr = &qscr->scores;
 	}
 	else {
@@ -755,8 +758,11 @@ int IRAM_ATTR search(int depth, int alpha, const int beta, const int null_move_d
 	// generate list of scores
 	size_t           n_moves = move_list.size();
 	libchess::Bitboard pinned = sp.pos.pinned_pieces_of(sp.pos.side_to_move());
-	scr.scores.clear();
-	scr.scores.resize(n_moves);
+	// grow-only: scores are always fully overwritten below n_moves, so only
+	// grow the buffer. Avoids the per-node libstdc++ resize call (flash)
+	// and its zero-fill on every internal node.
+	if (n_moves > scr.scores.size())
+		scr.scores.resize(n_moves);
 	std::vector<int> & move_scores = scr.scores;
 	for(size_t i=0; i<n_moves; i++)
 		move_scores[i] = smc.move_evaluater(*(move_list.begin() + i));

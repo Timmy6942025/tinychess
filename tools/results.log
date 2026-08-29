@@ -8749,3 +8749,11 @@ Score of BoardXS3 vs DogNative: 0 - 1 - 0  [0.000] 1
 Score of BoardXS3 vs DogNative: 0 - 2 - 0  [0.000] 2
 Score of BoardXS3 vs DogNative: 0 - 3 - 0  [0.000] 3
 Elo difference: -inf +/- nan, LOS: 4.2 %, DrawRatio: 0.0 %
+[19:02:32] FINGERPRINT A=board(wrapper,port=/dev/ttyACM0)  B=/home/timmy/chess2/engine/app/src/linux-windows/build/Dog-native c4fac558d4bd4eee0c94a73f040b35ef
+[19:02:52] MATCH board-vs-native-20260829-190232  A=board(port=/dev/ttyACM0, wrapper)  B=/home/timmy/chess2/engine/app/src/linux-windows/build/Dog-native  tc=2+0.02 games=3 adj=yes
+Score of BoardXS3 vs DogNative: 0 - 1 - 0  [0.000] 1
+Score of BoardXS3 vs DogNative: 0 - 2 - 0  [0.000] 2
+Score of BoardXS3 vs DogNative: 0 - 3 - 0  [0.000] 3
+Elo difference: -inf +/- nan, LOS: 4.2 %, DrawRatio: 0.0 %
+
+[2026-08-29 19:12] C8 SUMMARY (IRAM the rest of the node): IRAM'd generate_non_pawn_captures/quiets (MoveGeneration.h - the only movegen fns missing LIBCHESS_IRAM_ATTR), Position::is_legal_move (Getters.h, per-node TT-move verify), nnue_k::apply (nnue_kernels.h, per-move dispatcher from IRAM add/remove_piece); replaced per-node clear()+resize() on the scores vectors with grow-only resize (search.cpp, qs + main) to kill the per-node libstdc++ _M_default_append flash call and its zero-fill (scores always fully overwritten below n_moves; no size() readers). Verified via nm: all four symbols moved 0x4200.. flash -> 0x4037.. IRAM (+~4.6KB .iram0.text). Search tree bit-identical (placement + grow-only only). Board bench 14,198/14,199 nps vs 14,027 before (+1.2%). Strength gate 56-47-97 [+15.6 +/- 34.6, LOS 81.2%] vs a9ae6abb (pre-C8 HEAD) at 2+0.02 Hash=8 Threads=1: KEEP. Unit gate 18/18 OK (0 assert fail). Board-vs-native 3-game gate clean (0 stalls/forfeits/illegals). Submodule fathom pinned.

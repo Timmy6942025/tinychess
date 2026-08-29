@@ -101,7 +101,7 @@ LIBCHESS_IRAM_ATTR inline void Position::generate_pawn_moves(MoveList& move_list
     generate_pawn_quiets(move_list, stm);
 }
 
-inline void Position::generate_non_pawn_quiets(PieceType pt, MoveList& move_list, Color stm) const {
+LIBCHESS_IRAM_ATTR inline void Position::generate_non_pawn_quiets(PieceType pt, MoveList& move_list, Color stm) const {
     Bitboard piece_bb = piece_type_bb(pt, stm);
     Bitboard occupancy = occupancy_bb();
     while (piece_bb) {
@@ -116,9 +116,9 @@ inline void Position::generate_non_pawn_quiets(PieceType pt, MoveList& move_list
     }
 }
 
-inline void Position::generate_non_pawn_captures(PieceType pt,
-                                                 MoveList& move_list,
-                                                 Color stm) const {
+LIBCHESS_IRAM_ATTR inline void Position::generate_non_pawn_captures(PieceType pt,
+                                                                    MoveList& move_list,
+                                                                    Color stm) const {
     Bitboard piece_bb = piece_type_bb(pt, stm);
     Bitboard occupancy = occupancy_bb();
     Bitboard opp_occupancy = color_bb(!stm);
