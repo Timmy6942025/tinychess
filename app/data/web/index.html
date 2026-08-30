@@ -140,8 +140,43 @@
   #controls button:active { background: #232b33; }
 
   /* ---- status / history ---- */
-  #statusline { text-align: center; font-size: 12px; color: #7c8790; min-height: 18px; flex: none; }
+  #statusline { text-align: center; font-size: 12px; color: #7c8790; min-height: 18px; flex: none; display: flex; align-items: center; justify-content: center; }
   #statusline.thinking { color: #6ecb63; }
+  /* Thinking animation: the user-supplied loader repurposed from Loading... to Thinking... */
+  .thinking-loader {
+    font-weight: bold;
+    font-family: ui-monospace, "SF Mono", monospace;
+    font-size: 13px;
+    line-height: 1.2em;
+    display: inline-grid;
+    letter-spacing: .3px;
+  }
+  .thinking-loader:before,
+  .thinking-loader:after {
+    content: "Thinking...";
+    grid-area: 1/1;
+    -webkit-mask: linear-gradient(90deg,#000 50%,#0000 0) 0 50%/2ch 100%;
+    color: #0000;
+    text-shadow: 0 0 0 #6ecb63, 0 calc(var(--s,1)*1.2em) 0 #6ecb63;
+    animation: thinkingAnim 1s infinite;
+  }
+  .thinking-loader:after {
+    -webkit-mask-position: 1ch 50%;
+    --s: -1;
+  }
+  @keyframes thinkingAnim { 80%,100% { text-shadow: 0 calc(var(--s,1)*-1.2em) 0 #6ecb63, 0 0 0 #6ecb63; } }
+  /* paused banner */
+  #statusline.paused { color: #d9a13b; font-weight: 600; }
+  /* toast */
+  #toast {
+    position: fixed; left: 50%; bottom: calc(16px + env(safe-area-inset-bottom));
+    transform: translateX(-50%); z-index: 70; display: none;
+    background: #1f262e; color: #e8e6e1; border: 1px solid #2a343e;
+    padding: 10px 14px; border-radius: 10px; font-size: 13px; max-width: 92vw;
+    box-shadow: 0 10px 30px rgba(0,0,0,.4); text-align: center;
+  }
+  #toast.show { display: block; animation: toastIn .2s ease; }
+  @keyframes toastIn { from { opacity: 0; transform: translateX(-50%) translateY(10px); } to { opacity: 1; transform: translateX(-50%) translateY(0); } }
   #seatBar[hidden], #postGameBar[hidden] { display: none; }
   #seatBar {
     display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 10px;
@@ -304,6 +339,7 @@
   </div>
 
   <div id="controls">
+    <button id="pauseBtn" style="flex:1.15;">Pause</button>
     <button id="resignBtn" class="danger">Resign</button>
     <button id="flipBtn">Flip board</button>
   </div>
@@ -345,6 +381,16 @@
   </div>
 </div>
 
+<div class="overlay" id="pauseOverlay">
+  <div class="card" style="text-align:center;">
+    <div style="font-size:42px; margin-bottom:8px;">⏸</div>
+    <div id="pauseTitle" style="font-size:20px; font-weight:700; margin-bottom:6px;">Game paused</div>
+    <div id="pauseSub" style="color:#7c8790; font-size:13px; margin-bottom:16px;">Clocks are frozen. Tap resume to continue.</div>
+    <button class="big" id="resumeBtn">Resume</button>
+    <button class="big alt" id="pauseGiveUpBtn">Return to main menu</button>
+  </div>
+</div>
+
 <div class="overlay" id="resultOverlay">
   <div class="card">
     <div id="resultTitle">—</div>
@@ -354,6 +400,8 @@
     <button class="big alt" id="viewBoardBtn">View board</button>
   </div>
 </div>
+
+<div id="toast"></div>
 
 <script>
 "use strict";
@@ -373,8 +421,15 @@ const TC_PRESETS = [
   { id: "30+0",  label: "30+0",  cat: "classical" },
 ];
 const MOVE_FETCH_TIMEOUT_MS = 160000;
-const POLL_MS = 2000;
-const POLL_TIMEOUT_MS = 15000;
+// Adaptive polling: snappy when the game is live, relaxed in the lobby.
+// The old fixed 2000 ms made two-device play feel frozen; the board now
+// pushes human moves instantly via async /move, and every phone polls at
+// ~350 ms while the clock ticks, so spectators see moves with <500 ms lag.
+const POLL_MS_ACTIVE = 350;
+const POLL_MS_THINKING = 250;
+const POLL_MS_IDLE = 1200;
+const POLL_MS_PAUSED = 1000;
+const POLL_TIMEOUT_MS = 8000;
 
 /* ================= page state ================= */
 let myColor = "white";
@@ -430,6 +485,10 @@ let queueList = [];         // [{pid,name}]
 let idleMs = -1;
 let inQueue = false;
 let resultDismissed = false; // after Give up, don't auto-reshow result until next game
+let paused = false;
+let serverSearching = false; // engine thinking on the board (visible to every device)
+let pollTimer = null;
+let lastStateHash = ""; // skip render when nothing changed — saves jank on slow phones
 
 function isOwner() { return !ownerId || ownerId === PID; }
 function queuePos() {
@@ -744,10 +803,15 @@ function updateClocks() {
   const now = Date.now();
   const stmName = fen ? (fenToSquares(fen).stm === "w" ? "White" : "Black") : "White";
   let w = clocks.white, b = clocks.black;
-  if (!gameOver) {
+  if (!gameOver && !paused) {
     const ticking = stmName === "White" ? "white" : "black";
     const base = ticking === "white" ? clocks.white : clocks.black;
-    const tick = now - (boardThinking ? (moveSentAt || now) : clockSyncAt);
+    // When the board is searching, the engine's clock should drain for every
+    // spectator too (multi-device), not just the mover. serverSearching covers that.
+    const isThinking = boardThinking || serverSearching;
+    const tick = now - (isThinking ? (moveSentAt || clockSyncAt) : clockSyncAt);
+    // Freeze tick when it's the human's turn but the board is searching? No, that's engine turn.
+    // Only tick the side to move, and pause freezes everything.
     if (ticking === "white") w = Math.max(0, base - tick);
     else b = Math.max(0, base - tick);
   }
@@ -768,14 +832,53 @@ function updateClocks() {
 }
 
 /* ================= status / history ================= */
+function showToast(msg, ms) {
+  const t = $("toast");
+  t.textContent = msg;
+  t.classList.add("show");
+  clearTimeout(showToast._tm);
+  showToast._tm = setTimeout(() => t.classList.remove("show"), ms || 2800);
+}
 function updateStatus() {
   $("resignBtn").style.display = gameStarted && !gameOver && isOwner() ? "" : "none";
-  if (boardThinking) { $("statusline").textContent = "board is thinking…"; $("statusline").className = "thinking"; return; }
+  const pauseBtn = $("pauseBtn");
+  if (pauseBtn) {
+    const canPause = gameStarted && !gameOver && isOwner();
+    pauseBtn.style.display = canPause ? "" : "none";
+    pauseBtn.textContent = paused ? "Resume" : "Pause";
+    pauseBtn.disabled = serverSearching && !paused; // don't pause mid-search
+    pauseBtn.style.opacity = pauseBtn.disabled ? ".5" : "";
+  }
+  const thinking = (boardThinking || serverSearching) && !paused && !gameOver;
+  if (paused) {
+    $("statusline").innerHTML = "⏸ Paused — clocks frozen";
+    $("statusline").className = "paused";
+    return;
+  }
+  if (thinking) {
+    $("statusline").innerHTML = '<span class="thinking-loader" aria-label="Thinking"></span>';
+    $("statusline").className = "thinking";
+    return;
+  }
   if (gameOver) { $("statusline").textContent = "game over"; $("statusline").className = ""; return; }
   if (!isOwner()) { $("statusline").textContent = ownerName ? ownerName + " is playing" : "waiting for a player"; $("statusline").className = ""; return; }
   if (engineToMove) { $("statusline").textContent = "board to move"; $("statusline").className = ""; return; }
   $("statusline").textContent = sel !== null ? "your move — tap a target" : "your move";
   $("statusline").className = "";
+}
+function updatePauseOverlay() {
+  const ov = $("pauseOverlay");
+  if (!ov) return;
+  if (paused && gameStarted && !gameOver) {
+    ov.classList.add("show");
+    const isHolder = isOwner();
+    $("pauseTitle").textContent = isHolder ? "Game paused" : "Paused by " + (ownerName || "host");
+    $("pauseSub").textContent = isHolder ? "Clocks are frozen. Tap resume to continue." : "Waiting for the host to resume…";
+    $("resumeBtn").style.display = isHolder ? "" : "none";
+    $("resumeBtn").textContent = "Resume";
+  } else {
+    ov.classList.remove("show");
+  }
 }
 
 // replay the game formatting each move: captures as ×, promotions as =
@@ -838,7 +941,7 @@ function stopDrag() {
 }
 
 function onPointerDown(e) {
-  if (!gameStarted || gameOver || boardThinking || engineToMove || !fen) return;
+  if (!gameStarted || gameOver || paused || boardThinking || serverSearching || engineToMove || !fen) return;
   if (!isOwner()) return; // spectators don't move
   const idx = sqIndexFromEvent(e);
   if (idx < 0) return;
@@ -941,46 +1044,88 @@ async function fetchJson(path, opts, timeoutMs) {
 
 async function postMove(humanMs) {
   if (!isOwner()) return; // spectators never drive the game
+  if (paused) { showToast("Game is paused — resume to move"); return; }
+  if (serverSearching) { showToast("Board is thinking…"); return; }
   boardThinking = true;
   moveSentAt = Date.now();
   updateStatus();
+  updatePauseOverlay();
   let tries = 0;
   while (true) {
     try {
       const r = await fetchJson("/move", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ moves: moves.join(" "), human_ms: humanMs, seq: seq++, pid: PID })
+        body: JSON.stringify({ moves: moves.join(" "), human_ms: humanMs, seq: seq++, pid: PID, async: true })
       }, MOVE_FETCH_TIMEOUT_MS);
-      boardThinking = false;
-      clockSyncAt = Date.now();
-      replyAt = Date.now();
+      // Modern async path: the board replies immediately with {searching:true}
+      // and the human move is already visible to every spectator via /state.
+      if (r.searching) {
+        // Keep the local thinking banner up; the engine's move will land via
+        // /state polling — that's what makes multi-device feel instant
+        // (spectators see the human move in ~300 ms instead of ~search time).
+        const startLen = moves.length;
+        const deadline = Date.now() + MOVE_FETCH_TIMEOUT_MS;
+        while (Date.now() < deadline) {
+          await new Promise(res => setTimeout(res, 350));
+          const s = await refreshState();
+          if (!s) continue;
+          if (s.paused) { boardThinking = false; serverSearching = false; updateStatus(); updatePauseOverlay(); return; }
+          if (s.game_over) {
+            boardThinking = false; serverSearching = false;
+            clockSyncAt = Date.now(); replyAt = Date.now();
+            if (s.clock) clocks = { white: s.clock.white, black: s.clock.black };
+            // refreshState already set gameOver/result and rendered
+            return;
+          }
+          if (s.moves && s.moves.length > startLen) {
+            boardThinking = false; serverSearching = false;
+            clockSyncAt = Date.now(); replyAt = Date.now();
+            if (s.clock) clocks = { white: s.clock.white, black: s.clock.black };
+            updateStatus();
+            return;
+          }
+          if (!s.searching) {
+            // Search finished but no new move (terminal position or error)
+            boardThinking = false; serverSearching = false;
+            await refreshState();
+            return;
+          }
+        }
+        boardThinking = false; serverSearching = false;
+        showToast("Board didn't reply — check connection");
+        updateStatus();
+        return;
+      }
+      // Sync fallback (automated tests / old clients that expect bestmove)
+      boardThinking = false; serverSearching = false;
+      clockSyncAt = Date.now(); replyAt = Date.now();
       if (r.clock) clocks = { white: r.clock.white, black: r.clock.black };
       if (r.game_over) {
-        gameOver = true;
-        gameResult = r.result;
-        showResult();
-      } else {
+        gameOver = true; gameResult = r.result; showResult();
+      } else if (r.bestmove) {
         moves.push(r.bestmove);
         lastMove = [idxOf(r.bestmove.slice(0, 2)), idxOf(r.bestmove.slice(2, 4))];
       }
-      await refreshState(true);
+      await refreshState();
       return;
     } catch (err) {
-      if (err.status === 409) {
-        // the seat was taken mid-game (idle takeover): drop to spectator
-        boardThinking = false;
-        await refreshState(true);
+      // 409 = seat taken or paused, 423 = board busy (searching)
+      if (err.status === 409 || err.status === 423) {
+        boardThinking = false; serverSearching = false;
+        const txt = err.status === 423 ? "Board is busy — try again" : "Game is paused or seat busy";
+        showToast(txt);
+        await refreshState();
         return;
       }
       tries++;
       if (tries >= 3) {
-        boardThinking = false;
-        $("statusline").textContent = "board unreachable — check the connection";
-        $("statusline").className = "";
+        boardThinking = false; serverSearching = false;
+        showToast("Board unreachable — check the connection");
+        updateStatus();
         return;
       }
-      await new Promise(res => setTimeout(res, 2000));
+      await new Promise(res => setTimeout(res, 700));
     }
   }
 }
@@ -989,7 +1134,17 @@ async function refreshState() {
   try {
     const s = await fetchJson("/state", {}, POLL_TIMEOUT_MS);
     $("dot").className = "dot";
-    if (boardThinking) return s; // server fen/moves/clocks are pre-move until the /move response lands
+    // Pause + searching are global — every device must reflect them instantly,
+    // even while the local boardThinking flag is up (the old early-return hid
+    // the engine's reply from spectators for the full search time).
+    paused = !!s.paused;
+    serverSearching = !!s.searching;
+    // Build a tiny hash to skip redundant renders (major jank fix on slow phones:
+    // we were rebuilding the 64-square DOM every 350 ms even when nothing changed)
+    const hash = (s.fen || "") + "|" + (s.moves || []).join(",") + "|" + (s.paused?"P":"") + (s.searching?"S":"") + (s.game_over?"G":"") + JSON.stringify(s.clock || {});
+    const changed = hash !== lastStateHash;
+    lastStateHash = hash;
+
     fen = s.fen;
     legal = s.legal || [];
     legalMap = {};
@@ -1000,16 +1155,23 @@ async function refreshState() {
     });
     if (s.clock) { clocks = { white: s.clock.white, black: s.clock.black }; clockSyncAt = Date.now(); }
     if (s.moves && s.moves.join(" ") !== moves.join(" ")) {
+      const prevLen = moves.length;
       moves = s.moves.slice();
       lastMove = moves.length
         ? [idxOf(moves[moves.length - 1].slice(0, 2)), idxOf(moves[moves.length - 1].slice(2, 4))]
         : null;
+      // If we just received the engine's reply while locally thinking, clear the local flag
+      if (boardThinking && moves.length > prevLen) {
+        boardThinking = false;
+        replyAt = Date.now();
+      }
     }
     if (s.game_over) {
       if (!resultDismissed) {
         gameOver = true;
         gameResult = s.result || "";
         clientFlagged = false;
+        paused = false; // game over clears pause
         const viewing = !$("postGameBar").hidden;
         if (!$("resultOverlay").classList.contains("show") && !viewing) showResult();
       } else {
@@ -1031,12 +1193,34 @@ async function refreshState() {
     idleMs = (typeof s.idle_ms === "number") ? s.idle_ms : -1;
     inQueue = queuePos() > 0;
     updateSeatBar();
-    render();
+    updatePauseOverlay();
+    // Only re-render the board when something visible changed — otherwise we
+    // were thrashing the DOM on every poll and phones felt sluggish.
+    if (changed) render();
+    else { updateClocks(); updateStatus(); }
+    scheduleNextPoll(s);
     return s;
   } catch (err) {
-    if (!boardThinking) $("dot").className = "dot off";
+    if (!boardThinking && !serverSearching) $("dot").className = "dot off";
+    scheduleNextPoll(null);
     return null;
   }
+}
+function scheduleNextPoll(lastState) {
+  if (pollTimer) clearTimeout(pollTimer);
+  let delay = POLL_MS_IDLE;
+  if (paused) delay = POLL_MS_PAUSED;
+  else if (gameStarted && !gameOver) {
+    if (serverSearching || boardThinking) delay = POLL_MS_THINKING;
+    else delay = POLL_MS_ACTIVE;
+  } else if (!gameStarted) {
+    delay = POLL_MS_IDLE;
+  }
+  // If the tab is hidden, back off to save radio/battery
+  if (document.hidden) delay = Math.max(delay, 1800);
+  // Add a tiny jitter so many phones don't thunder-herd the board
+  delay += Math.floor(Math.random() * 90);
+  pollTimer = setTimeout(() => refreshState(), delay);
 }
 
 /* ================= game flow ================= */
@@ -1142,6 +1326,9 @@ async function giveUpBoard() {
   gameResult = "";
   clientFlagged = false;
   boardThinking = false;
+  paused = false;
+  serverSearching = false;
+  lastStateHash = "";
   sel = null;
   lastMove = null;
   moves = [];
@@ -1170,6 +1357,9 @@ async function startGame() {
   gameOver = false;
   gameResult = "";
   clientFlagged = false;
+  paused = false;
+  serverSearching = false;
+  lastStateHash = "";
   moves = [];
   lastMove = null;
   sel = null;
@@ -1298,12 +1488,34 @@ $("exitPostBtn").onclick = () => {
   hidePostGameBar();
   giveUpBoard();
 };
+// Pause / resume (new)
+async function doPause() {
+  if (!isOwner() || paused || gameOver || serverSearching) return;
+  try {
+    await fetchJson("/pause", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({ pid: PID, name: myName }) }, 8000);
+    showToast("Game paused");
+  } catch (err) { showToast(err.status===423?"Board is busy":"Could not pause"); }
+  await refreshState();
+}
+async function doResume() {
+  if (!paused) return;
+  if (!isOwner()) { showToast("Only the host can resume"); return; }
+  try {
+    await fetchJson("/resume", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({ pid: PID, name: myName }) }, 8000);
+    showToast("Game resumed");
+  } catch (err) { showToast("Could not resume"); }
+  await refreshState();
+}
+$("pauseBtn").onclick = () => { if (paused) doResume(); else doPause(); };
+$("resumeBtn").onclick = doResume;
+$("pauseGiveUpBtn").onclick = () => { $("pauseOverlay").classList.remove("show"); giveUpBoard(); };
 
-setInterval(() => refreshState(), POLL_MS);
-// smooth clock display between polls and during the engine's think
-// (refreshState skips rendering while a /move is in flight)
-setInterval(() => { if (fen && gameStarted) updateClocks(); }, 500);
+// Adaptive polling: scheduleNextPoll() keeps every phone snappy without
+// hammering the board. The old fixed 2 s interval made the board feel laggy.
+if (pollTimer) clearTimeout(pollTimer);
+setInterval(() => { if (fen && gameStarted && !paused) updateClocks(); }, 250);
 setInterval(refreshBattery, 30000);
+document.addEventListener("visibilitychange", () => { if (!document.hidden) refreshState(); });
 refreshBattery();
 $("nameInput").value = myName;
 refreshState().then(s => {

@@ -10,6 +10,7 @@
 // move list on every /move, so the position is re-derived from scratch each
 // request and any console-side tinkering self-heals.
 
+#include <atomic>
 #include <chrono>
 #include <condition_variable>
 #include <cstdio>
@@ -100,6 +101,12 @@ int64_t     g_last_activity_ms  = 0;  // last booked move or /new
 
 constexpr int64_t SEAT_IDLE_TAKEOVER_MS = 3 * 60 * 1000; // abandoned-seat takeover
 
+// ---- Pause & engine-busy state (multi-device + pause) ----
+std::atomic<bool> g_paused{false};
+std::atomic<int64_t> g_pause_started_ms{0}; // when the current pause began (esp_timer ms)
+std::atomic<bool> g_searching{false};
+std::mutex g_session_mutex; // guards g_web_moves, clocks, turn anchor, game_over (async writer vs /state reader)
+
 // Names end up in JSON served to every client: keep them boring.
 static std::string sanitize_name(const std::string & in)
 {
@@ -119,8 +126,11 @@ static void touch_activity()
 
 // The seat is considered free for takeover when no game is running, or the
 // seat holder has been inactive for a while (closed the tab and walked off).
+// A paused game is never considered takeable — the pauser explicitly stepped away.
 static bool seat_takeable()
 {
+	if (g_paused.load())
+		return false;
 	if (g_web_game_over)
 		return true;
 	if (!g_last_activity_ms)
@@ -326,8 +336,11 @@ esp_err_t handle_state(httpd_req_t *req)
 	// anchor stays fixed until the next move, so storing it made every poll
 	// deduct the full elapsed-since-anchor again: an accelerating drain
 	// that flagged players within minutes regardless of play).
+	// Session state is now shared with the async search worker — guard it.
+	std::unique_lock<std::mutex> sess_lock(g_session_mutex);
 	int64_t w = g_clock_white_ms, b = g_clock_black_ms;
-	if (!g_web_game_over && g_turn_started_ms) {
+	// Paused games freeze clocks and flag checks — resume will shift the anchor.
+	if (!g_paused.load() && !g_web_game_over && g_turn_started_ms) {
 		const bool white_to_move = (g_web_moves.size() % 2 == 0);
 		const int64_t eff = (white_to_move ? w : b) -
 		                    (esp_timer_get_time() / 1000 - g_turn_started_ms);
@@ -339,6 +352,14 @@ esp_err_t handle_state(httpd_req_t *req)
 			g_clock_black_ms = b;
 			printf("[web] /state: flag fall (%s)\n", g_web_game_result.c_str());
 		}
+	} else if (g_paused.load() && g_turn_started_ms) {
+		// While paused, show clocks frozen at the instant of pausing.
+		// g_turn_started_ms is still the pre-pause anchor; compute frozen elapsed.
+		const bool white_to_move = (g_web_moves.size() % 2 == 0);
+		const int64_t frozen_elapsed = g_pause_started_ms.load() - g_turn_started_ms;
+		int64_t eff = (white_to_move ? w : b) - frozen_elapsed;
+		if (eff < 0) eff = 0;
+		if (white_to_move) w = eff; else b = eff;
 	}
 	const TcPreset &cur = preset_for_idx(g_web_tc);
 	snprintf(buf, sizeof(buf),
@@ -383,8 +404,18 @@ esp_err_t handle_state(httpd_req_t *req)
 			g_web_game_result.c_str());
 		body += buf;
 	}
+	// pause + engine-busy (thinking) — every device needs this to render the
+	// same banner and to disable moves while the engine or a pause holds the seat.
+	body += g_paused.load() ? ",\"paused\":true" : ",\"paused\":false";
+	body += g_searching.load() ? ",\"searching\":true" : ",\"searching\":false";
+	if (g_paused.load()) {
+		snprintf(buf, sizeof(buf), ",\"pause_ms\":%lld",
+		         (long long)(esp_timer_get_time() / 1000 - g_pause_started_ms.load()));
+		body += buf;
+	}
 
 	body += "}";
+	sess_lock.unlock();
 
 	httpd_resp_set_type(req, "application/json");
 	return httpd_resp_sendstr(req, body.c_str());
@@ -522,6 +553,13 @@ esp_err_t handle_move(httpd_req_t *req)
 		if (movetime > 120000) movetime = 120000;
 		has_movetime = true;
 	}
+	// New async flag: the modern page sends "async":true so the board can
+	// return immediately and let every spectator see the human move via /state
+	// instead of queuing behind the engine's search (the old blocking path
+	// made the board feel frozen for seconds on other phones).
+	bool wants_async = false;
+	cJSON *async_json = cJSON_GetObjectItem(json, "async");
+	if (async_json && cJSON_IsTrue(async_json)) wants_async = true;
 
 	// The page tags each submission with a monotonically increasing seq so a
 	// retry of the SAME request (response lost on the wire) books the clocks
@@ -550,13 +588,30 @@ esp_err_t handle_move(httpd_req_t *req)
 		return httpd_resp_sendstr(req, resp);
 	}
 
+	// Pause guard: no moves while the game is frozen.
+	if (g_paused.load()) {
+		cJSON_Delete(json);
+		httpd_resp_set_type(req, "application/json");
+		httpd_resp_set_status(req, "409 Conflict");
+		return httpd_resp_sendstr(req, "{\"error\":\"paused\"}");
+	}
+	// Engine-busy guard: the board can only search one position at a time.
+	if (g_searching.load()) {
+		cJSON_Delete(json);
+		httpd_resp_set_type(req, "application/json");
+		httpd_resp_set_status(req, "423 Locked");
+		return httpd_resp_sendstr(req, "{\"error\":\"searching\"}");
+	}
+
 	// Continuous chess-clock model: the server owns the clocks. The page's
 	// legacy human_ms field is accepted but ignored -- real time is deducted
 	// from the turn anchor instead, so every client and the server agree.
 
+	bool async_path = wants_async;
 	cJSON_Delete(json);
 
-	std::lock_guard<std::mutex> req_lock(g_web_req_mutex);
+	std::unique_lock<std::mutex> req_lock(g_web_req_mutex);
+	std::unique_lock<std::mutex> sess_lock(g_session_mutex);
 
 	// Idempotency: if the engine already answered this exact request (the
 	// page's fetch failed and retried, or a reloaded page re-sent the same
@@ -634,6 +689,103 @@ esp_err_t handle_move(httpd_req_t *req)
 		}
 	}
 
+	// ---- Async fast-path: return immediately and run the search in the
+	// background. This keeps the single httpd task free so every other phone's
+	// /state poll stays snappy (the old blocking path queued spectators behind
+	// the search for the full think time, which felt "extremely slow and
+	// bugged" with two devices). ---
+	if (async_path) {
+		// Human clock already booked above; publish the human move instantly
+		// so spectators see the board update without waiting for the reply.
+		g_searching.store(true);
+		g_web_moves = moves;
+		// Capture everything the worker needs by value (the request stack will
+		// be gone before the detached thread finishes).
+		int wtime_snap = (int)g_clock_white_ms;
+		int btime_snap = (int)g_clock_black_ms;
+		int winc_snap  = (int)g_inc_ms;
+		int binc_snap  = (int)g_inc_ms;
+		bool has_mt_snap = has_movetime;
+		int mt_snap = movetime;
+		int64_t seq_snap = seq;
+		bool book_snap = book;
+		std::string human_color_snap = g_web_human_color;
+		std::vector<std::string> moves_snap = moves;
+		char resp2[320];
+		snprintf(resp2, sizeof(resp2),
+		         "{\"searching\":true,\"clock\":{\"white\":%lld,\"black\":%lld,\"inc\":%lld,\"base\":%lld}}",
+		         (long long)g_clock_white_ms, (long long)g_clock_black_ms,
+		         (long long)g_inc_ms, (long long)g_base_ms);
+		// Release session+engine locks before spawning — the worker will
+		// re-acquire them, and /state must stay readable while the engine thinks.
+		sess_lock.unlock();
+		req_lock.unlock();
+		// Detached worker: the search + clock booking + game-over handling.
+		std::thread([moves_snap, has_mt_snap, mt_snap, wtime_snap, btime_snap, winc_snap, binc_snap, book_snap, human_color_snap, seq_snap]() {
+			bool ok = false;
+			// Serialize with any other /move — the engine is single-instance.
+			// Lock order is req then session to match the outer handler.
+			std::unique_lock<std::mutex> lk_req(g_web_req_mutex);
+			std::unique_lock<std::mutex> lk_sess(g_session_mutex);
+			if (has_mt_snap) {
+				// Release session lock while the search runs so /state stays snappy
+				lk_sess.unlock();
+				ok = run_web_search(moves_snap, mt_snap);
+				lk_sess.lock();
+			} else {
+				lk_sess.unlock();
+				ok = run_web_search_clock(moves_snap, wtime_snap, btime_snap, winc_snap, binc_snap);
+				lk_sess.lock();
+			}
+			const web_search_result_t last = web_engine_last_result();
+			if (!ok) {
+				printf("[web] async search timed out\n");
+				g_turn_started_ms = esp_timer_get_time() / 1000;
+				g_searching.store(false);
+				return;
+			}
+			int64_t &engine_clock = human_color_snap == "white" ? g_clock_black_ms : g_clock_white_ms;
+			const int64_t inc = g_inc_ms;
+			bool engine_flags = false;
+			if (book_snap && !g_web_game_over) {
+				if (last.valid && !last.game_over) {
+					engine_clock -= (int64_t)last.elapsed_ms;
+					if (engine_clock <= 0) { engine_clock = 0; engine_flags = true; }
+					else engine_clock += inc;
+				}
+				g_turn_started_ms = esp_timer_get_time() / 1000;
+				touch_activity();
+			}
+			const char *game_result = nullptr;
+			if (last.game_over) game_result = last.game_state.c_str();
+			else if (engine_flags) game_result = human_color_snap == "white" ? "white_wins" : "black_wins";
+			if (game_result) {
+				g_web_game_over = true;
+				g_web_game_result = game_result;
+				g_web_moves = moves_snap;
+				printf("[web] async game over (%s)\n", game_result);
+			} else if (!last.valid || last.best_move.empty()) {
+				printf("[web] async search produced no move\n");
+			} else {
+				g_web_moves = moves_snap;
+				g_web_moves.push_back(last.best_move);
+				printf("[web] async %s -> %s (score %d depth %d)\n",
+				       moves_snap.empty() ? "startpos" : moves_snap.back().c_str(),
+				       last.best_move.c_str(), last.score, last.depth);
+			}
+			g_searching.store(false);
+		}).detach();
+
+		httpd_resp_set_type(req, "application/json");
+		return httpd_resp_sendstr(req, resp2);
+	}
+
+	// Sync fallback path (tests and old clients): the httpd task blocks for
+	// the search as before, but we release the session lock so /state can
+	// still be read by the search's own progress? In sync mode /state is
+	// still queued behind the single httpd task, but the lock release keeps
+	// the state consistent.
+	sess_lock.unlock();
 	bool search_ok = false;
 	if (has_movetime) {
 		search_ok = run_web_search(moves, movetime);
@@ -646,6 +798,7 @@ esp_err_t handle_move(httpd_req_t *req)
 		int binc  = (int)g_inc_ms;
 		search_ok = run_web_search_clock(moves, wtime, btime, winc, binc);
 	}
+	sess_lock.lock();
 	if (!search_ok) {
 		printf("[web] /move: search timed out\n");
 		// Re-anchor so a retry does not charge the human for the stuck
@@ -832,6 +985,10 @@ esp_err_t handle_new(httpd_req_t *req)
 	g_web_game_result.clear();
 	g_web_last_seq    = 0;
 	g_turn_started_ms = esp_timer_get_time() / 1000;
+	// pause/searching are session-scoped — a new game is always unpaused
+	g_paused.store(false);
+	g_pause_started_ms.store(0);
+	g_searching.store(false);
 
 	// seat bookkeeping
 	if (!pid.empty()) {
@@ -946,6 +1103,9 @@ esp_err_t handle_yield(httpd_req_t *req)
 		g_clock_white_ms = g_base_ms;
 		g_clock_black_ms = g_base_ms;
 		g_turn_started_ms = esp_timer_get_time() / 1000;
+		g_paused.store(false);
+		g_pause_started_ms.store(0);
+		g_searching.store(false);
 	}
 	httpd_resp_set_type(req, "application/json");
 	return httpd_resp_sendstr(req, "{\"ok\":true}");
@@ -983,6 +1143,69 @@ esp_err_t handle_resign(httpd_req_t *req)
 		(long long)g_inc_ms, (long long)g_base_ms);
 	httpd_resp_set_type(req, "application/json");
 	return httpd_resp_sendstr(req, resp);
+}
+
+// ---- Pause / resume (new) ----
+esp_err_t handle_pause(httpd_req_t *req)
+{
+	std::string pid, name;
+	if (!parse_pid_name(req, pid, name))
+		return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "need pid");
+	if (!pid.empty() && !g_owner_pid.empty() && pid != g_owner_pid) {
+		char resp[192];
+		snprintf(resp, sizeof(resp),
+		         "{\"error\":\"not_owner\",\"owner\":\"%s\"}", g_owner_name.c_str());
+		httpd_resp_set_type(req, "application/json");
+		httpd_resp_set_status(req, "409 Conflict");
+		return httpd_resp_sendstr(req, resp);
+	}
+	if (g_paused.load()) {
+		httpd_resp_set_type(req, "application/json");
+		return httpd_resp_sendstr(req, "{\"ok\":true,\"paused\":true}");
+	}
+	if (g_searching.load()) {
+		httpd_resp_set_type(req, "application/json");
+		httpd_resp_set_status(req, "423 Locked");
+		return httpd_resp_sendstr(req, "{\"error\":\"searching\"}");
+	}
+	if (g_web_game_over) {
+		httpd_resp_set_type(req, "application/json");
+		httpd_resp_set_status(req, "409 Conflict");
+		return httpd_resp_sendstr(req, "{\"error\":\"game_over\"}");
+	}
+	g_pause_started_ms.store(esp_timer_get_time() / 1000);
+	g_paused.store(true);
+	printf("[web] pause by %s\n", g_owner_name.c_str());
+	httpd_resp_set_type(req, "application/json");
+	return httpd_resp_sendstr(req, "{\"ok\":true,\"paused\":true}");
+}
+
+esp_err_t handle_resume(httpd_req_t *req)
+{
+	std::string pid, name;
+	if (!parse_pid_name(req, pid, name))
+		return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "need pid");
+	if (!pid.empty() && !g_owner_pid.empty() && pid != g_owner_pid) {
+		char resp[192];
+		snprintf(resp, sizeof(resp),
+		         "{\"error\":\"not_owner\",\"owner\":\"%s\"}", g_owner_name.c_str());
+		httpd_resp_set_type(req, "application/json");
+		httpd_resp_set_status(req, "409 Conflict");
+		return httpd_resp_sendstr(req, resp);
+	}
+	if (!g_paused.load()) {
+		httpd_resp_set_type(req, "application/json");
+		return httpd_resp_sendstr(req, "{\"ok\":true,\"paused\":false}");
+	}
+	int64_t now = esp_timer_get_time() / 1000;
+	int64_t paused_for = now - g_pause_started_ms.load();
+	// Shift the turn anchor forward so the paused interval is not charged.
+	g_turn_started_ms += paused_for;
+	g_paused.store(false);
+	g_pause_started_ms.store(0);
+	printf("[web] resume after %lld ms\n", (long long)paused_for);
+	httpd_resp_set_type(req, "application/json");
+	return httpd_resp_sendstr(req, "{\"ok\":true,\"paused\":false}");
 }
 
 esp_err_t handle_battery(httpd_req_t *req)
@@ -1024,7 +1247,13 @@ httpd_handle_t start_httpd()
 	// 8 KB: the Phase-1 /move handler parses JSON + spawns the search
 	// worker here; 4 KB overflowed and corrupted the adjacent heap.
 	cfg.stack_size = 8192;
-	cfg.max_uri_handlers = 14;
+	cfg.max_uri_handlers = 18;
+	// More concurrent sockets + a short timeout keeps the board snappy with
+	// several phones polling while the engine thinks (the old single-socket
+	// queue is what made multi-device feel "extremely slow").
+	cfg.max_open_sockets = 7;
+	cfg.recv_wait_timeout = 5;
+	cfg.send_wait_timeout = 5;
 	cfg.lru_purge_enable = true;
 	// wildcard matcher for the captive-portal catch-all ("/*"); exact
 	// registered URIs still match exactly, in registration order
@@ -1046,6 +1275,8 @@ httpd_handle_t start_httpd()
 	httpd_uri_t unqueue = { .uri = "/unqueue", .method = HTTP_POST, .handler = handle_unqueue, .user_ctx = nullptr };
 	httpd_uri_t yield_seat = { .uri = "/yield", .method = HTTP_POST, .handler = handle_yield, .user_ctx = nullptr };
 	httpd_uri_t resign = { .uri = "/resign", .method = HTTP_POST, .handler = handle_resign, .user_ctx = nullptr };
+	httpd_uri_t pause = { .uri = "/pause", .method = HTTP_POST, .handler = handle_pause, .user_ctx = nullptr };
+	httpd_uri_t resume = { .uri = "/resume", .method = HTTP_POST, .handler = handle_resume, .user_ctx = nullptr };
 	httpd_uri_t pieces = { .uri = "/pieces/*", .method = HTTP_GET, .handler = handle_pieces, .user_ctx = nullptr };
 	httpd_register_uri_handler(server, &root);
 	httpd_register_uri_handler(server, &welcome);
@@ -1057,6 +1288,8 @@ httpd_handle_t start_httpd()
 	httpd_register_uri_handler(server, &unqueue);
 	httpd_register_uri_handler(server, &yield_seat);
 	httpd_register_uri_handler(server, &resign);
+	httpd_register_uri_handler(server, &pause);
+	httpd_register_uri_handler(server, &resume);
 	httpd_register_uri_handler(server, &pieces);
 	// LAST: the captive-portal catch-all for foreign-host probes
 	httpd_uri_t fallback = { .uri = "/*", .method = HTTP_GET, .handler = handle_catchall, .user_ctx = nullptr };
