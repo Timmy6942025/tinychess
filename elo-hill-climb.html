@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TinyChess — 182 commits, ruthless hill climb</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js"></script>
+<style>
+  :root { --fg: #111; --muted: #666; --line: #0a6; --bg: #fff; --grid: #e8e8e8; --accent: #0a6; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: ui-sans, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; color: var(--fg); background: var(--bg); line-height: 1.5; }
+  header { max-width: 1100px; margin: 2rem auto 1rem; padding: 0 1rem; }
+  h1 { font-size: 1.9rem; font-weight: 700; margin: 0 0 0.4rem; letter-spacing: -0.02em; }
+  .sub { color: var(--muted); font-size: 0.95rem; max-width: 75ch; }
+  .sub a { color: inherit; }
+  .wrap { max-width: 1100px; margin: 0 auto; padding: 0 1rem; }
+  .chart-box { position: relative; width: 100%; height: 520px; border: 1px solid var(--grid); border-radius: 10px; padding: 10px; background: #fff; }
+  canvas { width: 100% !important; height: 100% !important; }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin: 1rem 0; }
+  .stat { border: 1px solid var(--grid); border-radius: 8px; padding: 10px 12px; }
+  .stat .k { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+  .stat .v { font-size: 1.25rem; font-weight: 700; }
+  .note { background: #f7f7f7; border: 1px solid var(--grid); border-radius: 8px; padding: 12px 14px; font-size: 0.92rem; color: #222; margin: 1rem 0; }
+  .note p { margin: 0.5em 0; }
+  h2 { font-size: 1.15rem; margin: 1.6rem 0 0.4rem; font-weight: 700; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.86rem; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--grid); vertical-align: top; }
+  th { font-weight: 600; background: #fafafa; position: sticky; top: 0; }
+  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.84em; }
+  .tag { display: inline-block; font-size: 0.72em; padding: 1px 6px; border-radius: 999px; border: 1px solid #ccc; color: #333; }
+  .tag.accept { border-color: #0a6; color: #0a6; background: #eafff3; }
+  .tag.reject { border-color: #c33; color: #c33; background: #fff0f0; }
+  .tag.docs { border-color: #888; color: #666; }
+  .legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 0.85rem; color: var(--muted); margin: 0.5rem 0; }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+  .dot.green { background: #0a6; }
+  .dot.red { background: #c33; }
+  .dot.grey { background: #999; }
+  details { margin: 0.6rem 0; }
+  summary { cursor: pointer; font-weight: 600; }
+  footer { max-width: 1100px; margin: 2rem auto; padding: 0 1rem 2rem; color: var(--muted); font-size: 0.85rem; border-top: 1px solid var(--grid); }
+  .small { font-size: 0.82rem; color: var(--muted); }
+  @media (max-width: 640px) { .chart-box { height: 420px; } h1 { font-size: 1.5rem; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>The ruthless hill climb — 182 commits of TinyChess</h1>
+  <p class="sub">Fork point is <span class="mono">9549c3c</span> (Dog upstream, <a href="https://github.com/folkertvanheusden/Dog">folkertvanheusden/Dog</a>). X is commit order, one step per commit, equally spaced from 1 to 182. No time scaling. Y is cumulative Elo versus the fork baseline, summed from SPRT matches at 2+0.02, Hash 8, Threads 1. Flat means the commit did not change strength, or it tried and was reverted. Steps are the keepers. I kept every number that survived a gate, and I left the rejections flat because the tree was put back.</p>
+</header>
+<div class="wrap">
+  <div class="stats">
+    <div class="stat"><div class="k">Commits since fork</div><div class="v">182</div><div class="small">9549c3c .. 154d61a, main, Aug 3–30 2026</div></div>
+    <div class="stat"><div class="k">Accepted strength steps</div><div class="v">10 <span class="small" style="font-weight:400">+ 1 speed keep</span></div><div class="small">Search Elo that passed a gate</div></div>
+    <div class="stat"><div class="k">Internal cumulative</div><div class="v">+350.7 Elo <span class="small" style="font-weight:400">+366.3 with C8</span></div><div class="small">Sum of SPRT deltas in commit order</div></div>
+    <div class="stat"><div class="k">External anchor vs Stockfish 17</div><div class="v">-301.3 → -56.1 <span class="small" style="font-weight:400">+245 ± ~50</span></div><div class="small">200 games, 2+0.02, 63-95-42 final. Gap is noise + non-additivity.</div></div>
+  </div>
+
+  <div class="legend">
+    <span><i class="dot green"></i> Accepted step, cumulative line</span>
+    <span><i class="dot red"></i> Rejected or reverted attempt, Elo shown on hover, line stays flat</span>
+    <span><i class="dot grey"></i> Docs, infra, board, web, no Elo</span>
+  </div>
+
+  <div class="chart-box">
+    <canvas id="hill"></canvas>
+  </div>
+  <p class="small" style="margin:6px 2px 0">Spacing is commit index, linear. Hover for hash, date, message, delta, cumulative, LOS. The board gained an extra +173.9 ±34.3 at <span class="mono">31be6d3</span> (paired-fused, 1.8× nps) and about +12 at <span class="mono">c0505d0</span> on-device only. Desktop stayed flat there because the change is bit-exact.</p>
+
+  <div class="note">
+    <p><strong>How I built the Elo.</strong> I walked the 182 commits in topology order and for each commit looked up its SPRT in <span class="mono">tools/results.log</span> and <span class="mono">BRAG.md</span>. Only commits with an ACCEPT or KEEP and a measured Elo difference contribute. Rejects are logged but the tree was reverted, so cumulative does not move. Error bars are the ± shown in the log. LOS is the likelihood of superiority. I did not smooth or interpolate. One commit equals one x step, even if two accepts were bundled in one commit, the jump there is the sum.</p>
+    <p><strong>Why internal sum and Stockfish anchor disagree.</strong> Internal deltas are sequential, each versus the prior accepted state at bullet TC. They do not add perfectly to a Stockfish anchor because SPRT deltas are noisy at 2+0.02 and because sequential improvements interfere. The anchor is the truth for absolute strength, the hill is the truth for process. Both are shown. The hill is ruthless either way. Roughly 80% of ideas failed.</p>
+    <p><strong>What flat hides.</strong> About 36 ideas were measured and killed. Killer moves +13.9 ±33.1 inconclusive, 3D history -2.2, checkext variants -124.9 and -79.5, eval cache -113.6, gentle LMR -72.9, static-null -21.0, futility -57.8, Ruk nets -300 to -500, razor variants -27.9 etc, qs SEE -40 -33.1, incremental SEE +0.1% within noise, staged picker +9.6 then -2.8 on replication, TM -8.6 and -5.0, singular -6.5, TT widen -9.7, corrhist variants -19 to -33, ProbCut -520 to -655. All in <span class="mono">tools/results.log</span> with fingerprints.</p>
+  </div>
+
+  <h2>Accepted steps in order</h2>
+  <table id="steps">
+    <thead><tr><th>#</th><th>Commit</th><th>Date</th><th>Message</th><th>Delta Elo</th><th>Cumulative</th><th>LOS</th></tr></thead>
+    <tbody>
+    </tbody>
+  </table>
+
+  <details>
+    <summary>All 182 commits and their Elo effect</summary>
+    <div style="max-height: 520px; overflow:auto; border:1px solid #e8e8e8; border-radius:8px; margin-top:8px;">
+      <table id="all">
+        <thead><tr><th>#</th><th>Hash</th><th>Date</th><th>Message</th><th>Effect</th><th>Cum.</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <p class="small">Full hash is in the tooltip. Table is commit order, equally spaced on the chart. Docs and infra show 0.</p>
+  </details>
+
+  <div class="note">
+    <p><strong>Files that prove it.</strong> <span class="mono">tools/results.log</span> (8,764 lines, every match with score sequence and Elo), <span class="mono">BRAG.md</span>, <span class="mono">docs/paired-fused-nnue.md</span>, <span class="mono">docs/output-layer-staging.md</span>, <span class="mono">docs/correction-history.md</span>.</p>
+    <p>Build and gate per <span class="mono">AGENTS.md</span>. Desktop build, unit gate <span class="mono">printf "test\n" | ./Dog-native</span> 18/18, strength gate 200 games at 2+0.02 vs prior accepted, board 3-game gate and bench. Flash is DIO only, <span class="mono">app/sdkconfig</span> precedence mattered for the 16B line experiment.</p>
+  </div>
+</div>
+
+<footer>
+  <p>Generated from <span class="mono">9549c3c..154d61a</span>, 182 commits, Aug 30 2026. Commit order is topology order, <span class="mono">git log --reverse --format="%H %ad %s" --date=short 9549c3c..origin/main</span>. Elo deltas are exactly as logged. No smoothing, no time warping, no hidden scaling on x.</p>
+</footer>
+
+<script>
+// ---- data injected ----
+const commits = [{"idx": 1, "hash": "c85d7ee3d9ae1eed10a86bda2a4ba3f3066b37ab", "short": "c85d7ee", "date": "2026-08-03", "msg": "use 128-hidden net on both builds; test snapshots; movetime overhead; PSRAM TT; misc fixes"}, {"idx": 2, "hash": "8f792bf43ed2087a13d2953bc23ad9e2928f8203", "short": "8f792bf", "date": "2026-08-03", "msg": "ESP32S3 PIE SIMD NNUE accumulator kernels (nnue_simd.S); saturating vadds/vsubs bit-match scalar wrapping (max |acc| 19360 < 32767)"}, {"idx": 3, "hash": "2660aaeab97012616bcf7bcd6b895ba223f7769c", "short": "2660aae", "date": "2026-08-03", "msg": "point libchess submodule at fork (dog-st-uci branch reachable)"}, {"idx": 4, "hash": "16c4fe74765868f682fa1b76183aaf5286427972", "short": "16c4fe7", "date": "2026-08-03", "msg": "tools: board validation script + automated serial session"}, {"idx": 5, "hash": "4c82bf01114963c48c86c16da0ab9f4499af790a", "short": "4c82bf0", "date": "2026-08-03", "msg": "tools: ignore __pycache__"}, {"idx": 6, "hash": "83310dae05b494eb42da65a44d6b90fb57cca96f", "short": "83310da", "date": "2026-08-03", "msg": "test: raw SIMD kernel unit test with saturating semantics; DOG_NO_SIMD scalar fallback build; board_session wrong-image guard; tools/native_check.sh; drop tracked gprof build junk"}, {"idx": 7, "hash": "84e9a0e7542aae452eed596a9db118f774232a53", "short": "84e9a0e", "date": "2026-08-04", "msg": "NNUE: drop PIE SIMD accumulator kernels; scalar-only accumulation on all targets"}, {"idx": 8, "hash": "c3d99bd478081f49fbfb30b10d5a7d3b6aea2e0d", "short": "c3d99bd", "date": "2026-08-04", "msg": "board sdkconfig: register DOG_LED_WS2812=y (new Kconfig default)"}, {"idx": 9, "hash": "75004eada5b31dae96190aff17c92ff1c454c373", "short": "75004ea", "date": "2026-08-04", "msg": "ci: add linux-native-tests workflow (build + 12/12 unit suite on push)"}, {"idx": 10, "hash": "4e9ec21b19773db0b0aeca4c534f9493dc92ad83", "short": "4e9ec21", "date": "2026-08-04", "msg": "tools: add test_board_session.py e2e harness for board_session.py"}, {"idx": 11, "hash": "e80d99e7a41d63619c0093d1682899f90b5dfd98", "short": "e80d99e", "date": "2026-08-04", "msg": "tt: fix write-after-free on Hash resize when PSRAM is unavailable"}, {"idx": 12, "hash": "56feb4bf5f0389f9f4ec39e48ad6c1730edd723d", "short": "56feb4b", "date": "2026-08-04", "msg": "test: add NNUE incremental fuzz, TT round-trip fuzz, mate-in-N depth sweep, deep perft"}, {"idx": 13, "hash": "f083c95659f0cd85a33caf254725a3fad50c43ec", "short": "f083c95", "date": "2026-08-04", "msg": "uci: honor movestogo, deduct MOVE_OVERHEAD_MS from the clock, floor think time"}, {"idx": 14, "hash": "a69289e14b663dff7f40fdd18d3a480cc9764dc3", "short": "a69289e", "date": "2026-08-04", "msg": "docs: add NNUE/eval research and hardware-readiness reports"}, {"idx": 15, "hash": "472eae1b84ea561b6f5616b2b1295be48b4b8daf", "short": "472eae1", "date": "2026-08-04", "msg": "esp32: size flash to the Plus's real 16 MB budget"}, {"idx": 16, "hash": "1d1093cea82e701c2d8cafddebe9ad615c5006c0", "short": "1d1093c", "date": "2026-08-04", "msg": "tools: add fast_sprt.sh A/B harness, openings, and match artifacts"}, {"idx": 17, "hash": "d82d7c924ef43a62f43334bb8865923247a02547", "short": "d82d7c9", "date": "2026-08-04", "msg": "sprt: killer-moves A/B inconclusive (+13.9 +/-33.1), reverted change"}, {"idx": 18, "hash": "b259c97950133042399594dfb2f2dd5db3323fc8", "short": "b259c97", "date": "2026-08-04", "msg": "tools: make SPRT harness decisive (elo1=50 + llr cap verdict) so A/B tests can conclude"}, {"idx": 19, "hash": "eee5cd6aa96c156cf97d9e1f583e49d3f79f544d", "short": "eee5cd6", "date": "2026-08-04", "msg": "tools: fix SPRT adjudication flag syntax for cutechess 1.5.1 (named args)"}, {"idx": 20, "hash": "eabc2a41fe7a54d109d0630fde018c69288239c5", "short": "eabc2a4", "date": "2026-08-04", "msg": "tools: fingerprint engine binaries in results.log so mid-match swaps are detectable"}, {"idx": 21, "hash": "430a55de8de09cce43f2fd9da05bd2af69ee3a1d", "short": "430a55d", "date": "2026-08-04", "msg": "tools: expand openings.epd to 28 balanced main lines (canonical FENs)"}, {"idx": 22, "hash": "86696e37fd67b33a35bce925de7a9b9b96b99adf", "short": "86696e3", "date": "2026-08-04", "msg": "libchess: bump to d9b811e (enpassant square FEN validation)"}, {"idx": 23, "hash": "1cebb896ffeb00113169781630b11adc4a10a7b8", "short": "1cebb89", "date": "2026-08-04", "msg": "tools: pipeline auto-worker (PIPELINE.md + cron driver); snapshot hist3d/checkext WIP as apply-able patches"}, {"idx": 24, "hash": "8461ecd83a70c00340bb468041e79b0683893618", "short": "8461ecd", "date": "2026-08-04", "msg": "tools: remove cron auto-worker; manual 15-min check loop instead"}, {"idx": 25, "hash": "85d072c3a0cde76b6cfa3179b4e6ba444c2b78d4", "short": "85d072c", "date": "2026-08-04", "msg": "tools: snapshot TT static-eval cache WIP as patch"}, {"idx": 26, "hash": "e42af7c36a4fa1f5feba2e3691a6ae7863eba91a", "short": "e42af7c", "date": "2026-08-04", "msg": "tools: snapshot gentler LMR table (mul 0.35, base 0.75) WIP as patch"}, {"idx": 27, "hash": "e53fd78e91fa2d370d4e3be4ceaa56cc0b283e8f", "short": "e53fd78", "date": "2026-08-05", "msg": "tools: fix SPRT power (elo1 50->20; 50 only ever accepts +50elo effects); snapshot big-net WIP as patch"}, {"idx": 28, "hash": "23a02e10053a044c6bb28073cc675cee92263b2c", "short": "23a02e1", "date": "2026-08-05", "msg": "enable HIDDEN_SIZE=256 big net (394816B blob); recalibrate NNUE eval and mate-in-N tests; SPRT +25 elo vs 128-wide net (ab-bignet-20260805-000637 ACCEPT)"}, {"idx": 29, "hash": "7c7327b42045a41e04cd3a87993ab2c1fe8244a4", "short": "7c7327b", "date": "2026-08-05", "msg": "tools: log SPRT run artifacts + verdicts (incl. 2 big-net ACCEPTs, gate diagnostic); commit Dog-v2-bignet as the new reference binary"}, {"idx": 30, "hash": "958fbb4638a8bd8aaec488b6f7d340d16704d256", "short": "958fbb4", "date": "2026-08-05", "msg": "monorepo: vendor libchess (+embedded Catch2) as regular files, drop the submodule (fixes pushed separately are now in-tree)"}, {"idx": 31, "hash": "2d975e4b5ca3ad89e9bc2c7910601da222613957", "short": "2d975e4", "date": "2026-08-05", "msg": "README: document MaxDogOne fork state (big net, SPRT pipeline, monorepo layout, ESP32 targets)"}, {"idx": 32, "hash": "f9d9bd1fecbcdd9041f153109b0131bd0beccb17", "short": "f9d9bd1", "date": "2026-08-05", "msg": "housekeeping: drop stale upstream cruft (disp/, box.scad, Docker, RPM spec, macos CI, wrapper scripts, historic-versions, versions.txt); archive upstream docs + training notes under docs/"}, {"idx": 33, "hash": "56d30e51a2acede5eb2167f3f216209e348bade0", "short": "56d30e5", "date": "2026-08-06", "msg": "search: SEE+QS ordering, futility pruning, TT aging, mate distance pruning"}, {"idx": 34, "hash": "513c1330a92c6210794de5c36a0055f02f985d76", "short": "513c133", "date": "2026-08-06", "msg": "tt: revert generation cycle change (SPRT REJECT, llr -2.26)"}, {"idx": 35, "hash": "7f03b047299705f1a0f02662255a7d74db27cecb", "short": "7f03b04", "date": "2026-08-06", "msg": "tools: log finished agingfix SPRT (REJECT, llr -2.26) bookkeeping"}, {"idx": 36, "hash": "9aea532ec8502bedce950760d1484e1c7f64ee83", "short": "9aea532", "date": "2026-08-06", "msg": "board-free items: bench.csv (item 4), engine/RESEARCH.md (item 3), node-identity gate + rating anchor record"}, {"idx": 37, "hash": "a45332aa1ac4120c0dc5199ef8b9d5793033ba2f", "short": "a45332a", "date": "2026-08-06", "msg": "item5: time-management validated (direct probe; cutechess segfaults in env), item1 idf build reconfigure in progress"}, {"idx": 38, "hash": "3d64866ddcff0e749e8f993e8b1d6c62042eb035", "short": "3d64866", "date": "2026-08-06", "msg": "item8: document net-converter blocker + caveat (no RukChess net; RESEARCH concludes not viable)"}, {"idx": 39, "hash": "0ba982879d027d86b6f30d7d7c21ab27a2337911", "short": "0ba9828", "date": "2026-08-07", "msg": "item1: idf.py esp32s3 firmware build check compiles + passes with current source"}, {"idx": 40, "hash": "e2dda8e7a0fd3df85669e7a3c940a3668fac77e0", "short": "e2dda8e", "date": "2026-08-07", "msg": "item6: LMR mr_reductions table recalibrated (mul 0.65 base 1.0) - SPRT ab-lmr065 ACCEPT llr 2.2"}, {"idx": 41, "hash": "ee214549f0140af5328683aeb63367f0fbf8d5d0", "short": "ee21454", "date": "2026-08-07", "msg": "item7: static-null / razor / futility calibration - 3 variants, 0 accepted (SPRT REJECTs logged)"}, {"idx": 42, "hash": "42d99a368949fc811fde1efdd13c2d576beaa098", "short": "42d99a3", "date": "2026-08-07", "msg": "item8: RukChess 768->512->1 net converter + gated loader + desktop SPRT (ab-ruk512 REJECT llr -2.22)"}, {"idx": 43, "hash": "105ad26c93ceda2ac0566014ac87c1b0ac035f35", "short": "105ad26", "date": "2026-08-07", "msg": "item2: rating anchor for final binary vs Stockfish 17 (2+0.02, 200g, 63-95-42, elo -56.1 +/- 43.4); note docs/RESEARCH.md superseded by root RESEARCH.md"}, {"idx": 44, "hash": "d1413feaff85eec2185ecdfc15698ab8d0a90774", "short": "d1413fe", "date": "2026-08-07", "msg": "docs: close RESEARCH.md open-questions with the 8-item plan verdicts + final anchor"}, {"idx": 45, "hash": "4165722ce3930c53f9a64280e5dd366534a5ee34", "short": "4165722", "date": "2026-08-07", "msg": "tools: repair gen_lmr_table.py (unterminated string literal) + log LMR x1.15 gate failure"}, {"idx": 46, "hash": "331e438aaca782dd9be59f0eb8ef88b7602facda", "short": "331e438", "date": "2026-08-07", "msg": "tt: defensive guards (allocation-failure nullptr + clamp per-mille scan) + log LMP gate failure"}, {"idx": 47, "hash": "974ca667088f6cff8719758f51966b36d57428a1", "short": "974ca66", "date": "2026-08-07", "msg": "tools: refresh PIPELINE.md to current state (8/8 items closed, gate rules, verdict history); preserve LMP experiment as tools/patches/lmp.patch; fix mangled results.log entry"}, {"idx": 48, "hash": "e7fadb99b9ea635dd8387f0e7f893b67f0a42a17", "short": "e7fadb9", "date": "2026-08-07", "msg": "docs: sync README reference binary + 8-item verdicts, RESEARCH.md gate-failure addendum, HARDWARE_READINESS flash/net status, PIPELINE test count 17"}, {"idx": 49, "hash": "29ad70f211fd9c1f81a58631cbdcab3c68915ca5", "short": "29ad70f", "date": "2026-08-10", "msg": "esp32: fix build optimization (-Og -> -O2) for 2-4x board nps; disable PIE kernel (PSRAM-bound, scalar -O2 wins); keep truncation semantics, WDT yield gate, hash 6MB; guard NNUE/deep perft on ESP32; add wrapper.py cutechess serial bridge + board tool timeouts"}, {"idx": 50, "hash": "3748495829a79e4708acf60b7af0e712b1f3153c", "short": "3748495", "date": "2026-08-10", "msg": "esp32: re-enable PIE SIMD eval kernel (+31% board nps, refutes 29ad70f claim)"}, {"idx": 51, "hash": "f15cf90f87ce8b9ee4424a45443c722679fe8bea", "short": "f15cf90", "date": "2026-08-11", "msg": "esp32: move search hot path into IRAM + bump I-cache to 32KB (+25% board nps)"}, {"idx": 52, "hash": "e267756b217e91c59547825f4e618b08a5703238", "short": "e267756", "date": "2026-08-11", "msg": "esp32: feed task WDT from UCI loop; deterministic highest-weight book pick"}, {"idx": 53, "hash": "e8cfefef3777ad56598e761dc326be0989fbb7fd", "short": "e8cfefe", "date": "2026-08-11", "msg": "fix native build: eval.cpp now includes main.h for IRAM_ATTR fallback"}, {"idx": 54, "hash": "ee6d41c045bb76c1ec1ea83a1f57357a0d570782", "short": "ee6d41c", "date": "2026-08-11", "msg": "esp32: drop broken UCI-loop WDT feed; include FreeRTOS headers directly in search.cpp"}, {"idx": 55, "hash": "2f9429527dcb0e8b51b8ea48152b655c99f745c4", "short": "2f94295", "date": "2026-08-11", "msg": "docs: mark all 6 HARDWARE_READINESS action items done with evidence"}, {"idx": 56, "hash": "ea843cf1f13377f8a5f2576fd1d2063ecf8c7d88", "short": "ea843cf", "date": "2026-08-11", "msg": "Board: IRAM hot functions, text-section literals, honest single-threaded bench"}, {"idx": 57, "hash": "26fe2f19545f773d77012fc7ee78eae0983750fa", "short": "26fe2f1", "date": "2026-08-12", "msg": "Perf: compute pinned pieces once per node, pass into legality check"}, {"idx": 58, "hash": "d8e30892feb97a66cc4c17fc34e4eef526b3f9ce", "short": "d8e3089", "date": "2026-08-13", "msg": "Perf: kindergarten shared-table sliding attacks (fill attacks + file-attacks combo)"}, {"idx": 59, "hash": "999271c5bc1ed976f7e331d4dfb1074e848aa3a7", "short": "999271c", "date": "2026-08-13", "msg": "Perf: IRAM is_insufficient_material_draw (called every node from alpha_beta/qs)"}, {"idx": 60, "hash": "ef20dfef876cde13e2b6407e3e530047343339bf", "short": "ef20dfe", "date": "2026-08-13", "msg": "Make serial bridge executable + commit the board-vs-native match runner"}, {"idx": 61, "hash": "9fef4629cc79f0550e217ef3283b51db96f3cc77", "short": "9fef462", "date": "2026-08-13", "msg": "Board fix (was never committed): per-go 24KB pthread + serialized UCI console writes"}, {"idx": 62, "hash": "b79feabd95109c305c2fa031ba0ade77f679775f", "short": "b79feab", "date": "2026-08-13", "msg": "Docs: add BUILD_PLAN.md and REQUIREMENTS.md (MaxtheDog-S3 project docs)"}, {"idx": 63, "hash": "096b85e1011e74694d01d7815f5f0dc0fb707c4d", "short": "096b85e", "date": "2026-08-13", "msg": "Docs: correct speed-gap and NNUE-placement record (5,167/8,015/366,390 nps measured; 45.7x gap; weights in flash rodata; second core busy; no 768->32 layer)"}, {"idx": 64, "hash": "c7b9b81c4137b766cb993eae4b9fe3e850fbd40b", "short": "c7b9b81", "date": "2026-08-13", "msg": "Docs: A2 desktop-reference verification (1 thread both sides, 2.5s window, same code path, 343k-500k spread) + A4 WDT gate analysis (4.8% overhead, 1.5s period fix) + 64KB DCache rejected (removes 32KB internal heap > 31.7KB headroom)"}, {"idx": 65, "hash": "2dd15a93b213431e28302301dd5a17b866d82c70", "short": "2dd15a9", "date": "2026-08-13", "msg": "A3 C1: -DNDEBUG measured +0.0% (5,100/5,071 vs 5,078 baseline), bench gate fail, reverted - verdict in results.log"}, {"idx": 66, "hash": "90ef99e2087b22ffd8a1bdb20c9f09c590366e63", "short": "90ef99e", "date": "2026-08-13", "msg": "Harness: book-in-RAM, TUI thread removed at boot, 40-move time horizon, USB-JTAG TX race patched, wrapper bestmove repair - anchor match invalidated (40/40 clock forfeits), games now complete at 2+0.02"}, {"idx": 67, "hash": "6ff140261c89d3c562839ed81f73eb2c4a5cf569", "short": "6ff1402", "date": "2026-08-13", "msg": "A3 C2: WDT gate period 250ms -> 1.5s, bench 5,248 vs 5,079 (+3.3%), 3-game gate clean, commit with verdict"}, {"idx": 68, "hash": "88a5a8da4895977ac77150d055e427050b0dd852", "short": "88a5a8d", "date": "2026-08-13", "msg": "A3 C4: QIO flash at runtime (bootloader-configured; ROM quad-boot needs eFuse, rejected), bench 6,739 vs 5,079 (+32.7%), 3-game gate clean"}, {"idx": 69, "hash": "d87caf4ed44630cc2dda52d7f1f43cf2adf36c34", "short": "d87caf4", "date": "2026-08-13", "msg": "A3 C5: kill per-node heap allocs (depth-indexed per-thread scratch), bench 6,945 vs 6,739 (+3.1%), 3-game gate clean"}, {"idx": 70, "hash": "f6d8e3b85d09e217e1d3b7efae3ba2a8af4d3b3c", "short": "f6d8e3b", "date": "2026-08-14", "msg": "REVERT C4 (88a5a8d): QIO unstable (2-thread 12-min hang), +32.7% was clean-rebuild artifact, DIO stable at 6,857 nps"}, {"idx": 71, "hash": "4155a4ab2a29046e3154b3aa06c3c8f69eb7b5e9", "short": "4155a4a", "date": "2026-08-14", "msg": "C5 fix: qs() scratch clamp collision (qsdepth >= 24 shared slot 23, clobbering live parent's move list - 2-thread long-run hang); local fallback for deep qs frames"}, {"idx": 72, "hash": "fd19ae0fa7fb1921ddbfbd9a4f4643d6a1adfcef", "short": "fd19ae0", "date": "2026-08-14", "msg": "Tier-1 final 40-game match: 0-40-0 clean (no stalls/forfeits), A5 split-brain TT DROPPED (Elo gate -440 failed), final DIO bench 6,857"}, {"idx": 73, "hash": "81de390ee56a0ce621cda180f016feb4d2ab07d2", "short": "81de390", "date": "2026-08-14", "msg": "Phase B item 2: razoring - static eval far below alpha at depth<=3 -> qs only. Desktop: nodes -1%/-5%/-23% at fixed depth, 200-game +12.2 Elo (LOS 78.5%) vs baseline"}, {"idx": 74, "hash": "ee91952d1ace67a886dd719e1154cee2687a227c", "short": "ee91952", "date": "2026-08-14", "msg": "Phase B item 3: check extension - all moves at in-check nodes keep depth (+1), preserved through LMR; forced moves extended. Desktop 200-game: +86.9 Elo (LOS 100%) vs baseline"}, {"idx": 75, "hash": "6e3a69c565a085009eb5d62377f17b39989a2bb4", "short": "6e3a69c", "date": "2026-08-14", "msg": "Phase B items 1-6 results: razoring + check extension accepted (+86.9 Elo cumulative), killers/LMR/aspiration/TT variants rejected"}, {"idx": 76, "hash": "30f8e562e42a8345ceed9bb92b8d20b98812812e", "short": "30f8e56", "date": "2026-08-14", "msg": "Phase B item 7: qs SEE pruning - skip SEE<0 captures (TT move exempt, never in check). Desktop 200-game: +29.6 Elo (LOS 98.0%); cumulative +116.5 vs Tier-1"}, {"idx": 77, "hash": "bdae54956f766d356a44061e13b94629d2e56294", "short": "bdae549", "date": "2026-08-14", "msg": "Phase B continuation results: qs SEE pruning accepted (+29.6, cumulative +116.5), blind singular extension rejected (mate sweep)"}, {"idx": 78, "hash": "50e53e3506653ca6f0ecf96cf8451f0761ecd584", "short": "50e53e3", "date": "2026-08-14", "msg": "Phase B board port: razor + check ext + qs SEE on the board, 3-game gate clean, bench 7,128 nps (+3.9%)"}, {"idx": 79, "hash": "9bd2c6860937c021c5d595eb0b09bac97667e3f6", "short": "9bd2c68", "date": "2026-08-14", "msg": "Phase B final: +150 push probes all rejected (null-move R5 -6.9, razor depth2 -3.5, razor 300+120d -27.9); settled at +116.5 Elo"}, {"idx": 80, "hash": "75e6d102009b7db4e68e13142fd4da40f789ba44", "short": "75e6d10", "date": "2026-08-14", "msg": "README: refresh for Tier-1 + Phase B state (board 6,857->7,128 nps, +116.5 Elo accepted set, current rejected list, 18/18 suite, wrapper adapter, invalidated anchors)"}, {"idx": 81, "hash": "be50af3e5ba91eb00c3d20b639166821ce0a942c", "short": "be50af3", "date": "2026-08-14", "msg": "Quick start: prebuilt release (v0.1-prebuilt: Dog-native + board-flash.zip) + ESP-IDF v5.3 setup script + README instructions"}, {"idx": 82, "hash": "177a82433f806393073da22fb65b1e84df771d27", "short": "177a824", "date": "2026-08-14", "msg": "AGENTS.md: agent instructions - commit+push every change, gate workflow (18-test unit gate, 200-game strength gates, 3-game board gates), repo facts (DIO only, symlink tree, submodule restore, untracked binaries)"}, {"idx": 83, "hash": "d95627f636d6aba97c3e3cd322090e69e9014c4c", "short": "d95627f", "date": "2026-08-15", "msg": "board time mgmt: floor moves_to_go horizon at 30 on ESP32 only"}, {"idx": 84, "hash": "ad79aebe50c6291e434f93159b8235d3eba62f1a", "short": "ad79aeb", "date": "2026-08-16", "msg": "Add internal pondering (search predicted opponent reply during opponent's think time, TT-warmed)"}, {"idx": 85, "hash": "8968f14c3783c8bcb1bb268713e779fbb41aec3f", "short": "8968f14", "date": "2026-08-16", "msg": "Ponder hygiene: 5-min ponder time cap + stop ponder at quit paths"}, {"idx": 86, "hash": "c423a06d08265b5455a58ad92f8c85388400d961", "short": "c423a06", "date": "2026-08-16", "msg": "ruk512: fix NNUE perspective wiring (bit-exact vs trainer), definitively REJECT the 512 net"}, {"idx": 87, "hash": "79f2a1c6be2990f1e03a2295aba7984aac83c311", "short": "79f2a1c", "date": "2026-08-17", "msg": "ruk256: parameterized ruk loader for 768->256 net (RukChess 4.0.0), REJECT"}, {"idx": 88, "hash": "e3ba559730922e44e5702ee8014f7137296a898d", "short": "e3ba559", "date": "2026-08-17", "msg": "bench2: eval-machinery microbench with inline cntvct/monotonic ground truth; log desktop clock discovery (gettimeofday vDSO inflates deltas up to 1000x on this board; inline clocks agree with wall time; desktop absolute nps garbage, relative comparisons valid)"}, {"idx": 89, "hash": "b1bf03b3f68031956c4fdc3be3c3f852e513ffe9", "short": "b1bf03b", "date": "2026-08-17", "msg": "bench2+probes: CCOUNT-truthful board eval profile. esp_timer_get_time deltas inflate ~1000x from the console task (cross-core lock contention with searcher threads, ~1.85ms/call); search-side timing is truthful (7,369 nps real). Real costs: make+unmake 667cyc, full op 21,214cyc, eval updates 31ns/int16 (74% of op), PIE dot 2.9us. PIE add_feature/remove_feature is the board speedup target (~48% of node)."}, {"idx": 90, "hash": "26f55512496bce262020a392fcdd928225b396f0", "short": "26f5551", "date": "2026-08-17", "msg": "revert PIE add/remove attempt (S3 PIE lacks VADD/VSUB - reduced dot-product subset; updates memory-bound at 3.1 cyc/elem warm, near-optimal). Remove TEMP nnue_debug_bench probes; keep bench2 CCOUNT truth lines. Log PIE dead-end + profile conclusions."}, {"idx": 91, "hash": "33100ddfe2e34079b43ae4795e27f96012d061b0", "short": "33100dd", "date": "2026-08-17", "msg": "log lazy-SEE qs experiment verdict (REJECT: Elo -24.4, LOS 6.8%) + CCOUNT search profile; esp_timer poisoning is bidirectional"}, {"idx": 92, "hash": "c05d097c4d43c203c35b7728b1e70b91f43baf2b", "short": "c05d097", "date": "2026-08-17", "msg": "board speed: weights in PSRAM at boot (-11% full-op cycles, bench +17.5% nodes, bit-exact; 3-game gate PASS)"}, {"idx": 93, "hash": "c848eda333c230f7baf014b0c5d647a900a5aaf5", "short": "c848eda", "date": "2026-08-17", "msg": "results: log cached-checkers_to neutral verdict (reverted)"}, {"idx": 94, "hash": "efe32229c9b628d7e223a6cec73f3423386ec57f", "short": "efe3222", "date": "2026-08-17", "msg": "results: log incremental-xray-SEE neutral verdict (reverted)"}, {"idx": 95, "hash": "97df0515db32bf616e33821a721983f5af5528f3", "short": "97df051", "date": "2026-08-17", "msg": "results: log search tuning round probes (LMR 0.75, qs SEE -40: both rejected)"}, {"idx": 96, "hash": "930340bf647b590b8fc3640fbca39bcbb67240f6", "short": "930340b", "date": "2026-08-17", "msg": "results: log qs subtree profile verdict (at floor, NPS R&D complete)"}, {"idx": 97, "hash": "e0fe293f55890749eb1a73ce1ea6e9ba21d78a07", "short": "e0fe293", "date": "2026-08-17", "msg": "tools: fix wrapper boot-banner drain race (45s deadline), tighten select to 0.005; log serial-fix verdict"}, {"idx": 98, "hash": "2c000fc66c9224c5625e510e6f2df3278c22b2cc", "short": "2c000fc", "date": "2026-08-18", "msg": "search: recapture extension (+1 ply recapturing on the previous capture square); log +57.8 Elo gate verdict"}, {"idx": 99, "hash": "84cb59206186457f14ce89816674091ef0686f92", "short": "84cb592", "date": "2026-08-18", "msg": "results: log recapture-extension board port (flashed, bench OK, 3-game gate clean)"}, {"idx": 100, "hash": "d7f63e4821bc44f5aa7a6463e73e46fbd0b6c5b3", "short": "d7f63e4", "date": "2026-08-18", "msg": "fix: 8 bugs - Bitboard{0} a1-phantom defaults/returns, %u/%lu format mismatches on uint64_t/int32_t, invalid munmap length, unused var, Dog target missing nnue.cpp (link failure)"}, {"idx": 101, "hash": "8e31f607b77049de73e8f7ad0dd3818160e9a5ae", "short": "8e31f60", "date": "2026-08-18", "msg": "remove qs TT probe; fix stats exporter startup order"}, {"idx": 102, "hash": "9c3a7a99ddf360d98c32af84ae47d50a0b263a5e", "short": "9c3a7a9", "date": "2026-08-18", "msg": "results: log bug hunt and qs TT removal verdicts"}, {"idx": 103, "hash": "50685dc0eaba7074745e6025d1cb797b30cbec95", "short": "50685dc", "date": "2026-08-18", "msg": "book: prune 148 leaky opening lines (leaky exits 16.8% -> 0.9%)"}, {"idx": 104, "hash": "ac0026cf3697cf1835c78057a27b5f3d1f2c30b9", "short": "ac0026c", "date": "2026-08-18", "msg": "results: log time-management probe (no change verdict)"}, {"idx": 105, "hash": "548bf80338eab83c55d36e246c920e4873d5e050", "short": "548bf80", "date": "2026-08-18", "msg": "stats: remove dead qs TT probe counters (qtt_query/hit/cutoff)"}, {"idx": 106, "hash": "014edb40ef0161a9fbf44534ddcd0fcda70729ac", "short": "014edb4", "date": "2026-08-19", "msg": "time: ESP32-only: spend the full adaptive budget (drop search_time/2)"}, {"idx": 107, "hash": "b7608a466a260a57b4768b21cd79c1b14a70700b", "short": "b7608a4", "date": "2026-08-19", "msg": "results: log 30+0.1 anchor after the ESP32 time fix (0-12-0, unchanged)"}, {"idx": 108, "hash": "58efea63667d1793e7c32eb4e5818fe2105b9be1", "short": "58efea6", "date": "2026-08-19", "msg": "docs: add gui-plan.md - portable web-playable chess companion (SoftAP + web GUI)"}, {"idx": 109, "hash": "2f3e28507a511baa058b1c2bf3185da18572cc3a", "short": "2f3e285", "date": "2026-08-19", "msg": "web: Phase 0 - SoftAP + httpd on the board (DOG-CHESS @ 192.168.4.1)"}, {"idx": 110, "hash": "b2aa9025fee646d2389278e92830e860f07b9108", "short": "b2aa902", "date": "2026-08-19", "msg": "web: Phase 0 fixes - PSRAM go-thread stack + wrapper hardening"}, {"idx": 111, "hash": "e171f3a0739d263315c4290ac6e3a3d82f797c89", "short": "e171f3a", "date": "2026-08-19", "msg": "docs: mark Phase 0 done in gui-plan.md (verification + findings)"}, {"idx": 112, "hash": "bab5e4795e53b6d319d32b462deee4f66be5f425", "short": "bab5e47", "date": "2026-08-19", "msg": "web: Phase 1 - engine bridge over HTTP (same handlers as serial UCI)"}, {"idx": 113, "hash": "ad34a1bffcf5c8b6591d06c5139f8a948e0863d8", "short": "ad34a1b", "date": "2026-08-19", "msg": "docs: mark Phase 1 done in gui-plan.md (bridge + stability findings)"}, {"idx": 114, "hash": "30a2fa91ea3a4ad063333e373e47dfa81a9227e0", "short": "30a2fa9", "date": "2026-08-20", "msg": "web: deep-verification fixes - /new UAF, stale-result guard, by-value timeout path, terminal-position game_over"}, {"idx": 115, "hash": "85a93dcc9cdabb6b700bc0c5d249ada71a251672", "short": "85a93dc", "date": "2026-08-20", "msg": "docs: Phase 1 deep-verification findings in gui-plan.md"}, {"idx": 116, "hash": "be670940c3211e7bd99168b1118c7ae1b2887643", "short": "be67094", "date": "2026-08-20", "msg": "web: Phase 2 - full chess GUI on the board (page, session clocks, legal-move snapshot, state-mutex bridge)"}, {"idx": 117, "hash": "df2d91dac2ceb228ec1ca374dad15a8d10f27273", "short": "df2d91d", "date": "2026-08-20", "msg": "web: Phase 2 deep-verification fixes - engineToMove side normalization, board orientation, idempotent /move, game-over log, engine-reply mate"}, {"idx": 118, "hash": "7bf18b6cd2f03da1c65a1ec2ed84ee01f5dc6f9f", "short": "7bf18b6", "date": "2026-08-20", "msg": "web: Phase 3 - spectator stale game-over fix, soak + long-search verification, docs"}, {"idx": 119, "hash": "fbc99851102e50da8ddf89529f9136f68cc5b724", "short": "fbc9985", "date": "2026-08-20", "msg": "docs: Phase 3 2h power-bank soak PASSED (253 games, 6909 plies, 0 errors, no resets)"}, {"idx": 120, "hash": "2f65a986c9bbbd9823761cdb67e503053cc0e871", "short": "2f65a98", "date": "2026-08-21", "msg": "Phase 3 deep verification: WDT PANIC on, yield-gate fix (both searchers feed IDLE), book dead-code fix, 3-fold/2-client verified"}, {"idx": 121, "hash": "613b655cbf1e22bf2d96d8d97a9edcb60fa9ea50", "short": "613b655", "date": "2026-08-21", "msg": "web: server-authoritative continuous clocks + audit fixes"}, {"idx": 122, "hash": "16e9ab89a76b3e57d675eb0364fa691d0e987d46", "short": "16e9ab8", "date": "2026-08-21", "msg": "docs: phases 1-3 audit results in gui-plan"}, {"idx": 123, "hash": "c678b4a990d120887624e5e63f764fb4bdfa5884", "short": "c678b4a", "date": "2026-08-21", "msg": "docs: battery calibration N/A (USB power bank only, user decision)"}, {"idx": 124, "hash": "ba0f4f4d5c112bad37df77c3791bae552269a328", "short": "ba0f4f4", "date": "2026-08-21", "msg": "web: captive portal + one-seat/waitlist multi-player"}, {"idx": 125, "hash": "1822ec157f8c58044b9c2eef989bf7cea318788b", "short": "1822ec1", "date": "2026-08-21", "msg": "web: captive portal lands on an instructions page (/welcome)"}, {"idx": 126, "hash": "06aa7d19c6ae232faf066b08ab6c2b25766ccdc9", "short": "06aa7d1", "date": "2026-08-21", "msg": "web: spectator mode for 0-move games, start screen after yielding seat"}, {"idx": 127, "hash": "08580468b298e310c00bb66550759d4692902838", "short": "0858046", "date": "2026-08-21", "msg": "web: portal URL shows http:// prefix; casual difficulty ladder 0.3s-30s"}, {"idx": 128, "hash": "d245d583e80b08f1100fe283a6d2a0b83cd2c525", "short": "d245d58", "date": "2026-08-21", "msg": "web: 30-minute casual clocks (was 10)"}, {"idx": 129, "hash": "8a56cbdd2d6aec6b65dcd1a2e154243818e3f6f6", "short": "8a56cbd", "date": "2026-08-21", "msg": "web: fix dead touch input - piece selection compared 'w' vs 'white'"}, {"idx": 130, "hash": "6be12c213662ca0a5e13d6f35377702f0e10108f", "short": "6be12c2", "date": "2026-08-22", "msg": "web: polish pass + fix httpd death and board blob"}, {"idx": 131, "hash": "70a259ee0d21283cdcfae378d43c320ab1544b97", "short": "70a259e", "date": "2026-08-22", "msg": "web: fix board grid, pawn style and game-over flow (images 1-5)"}, {"idx": 132, "hash": "0e28952c3aa4bce61b12cf7243b78dba5298dcc8", "short": "0e28952", "date": "2026-08-22", "msg": "docs: require unslop skill for all text edits"}, {"idx": 133, "hash": "f5a76c98f01c7a7df40fa2dd8402fd919e677dec", "short": "f5a76c9", "date": "2026-08-22", "msg": "docs: move AGENTS.md to project root chess2/"}, {"idx": 134, "hash": "9029e01e328e02f20f74af02fc2cd277177f54c9", "short": "9029e01", "date": "2026-08-22", "msg": "docs: restore AGENTS.md copy in engine/ (keep both roots)"}, {"idx": 135, "hash": "65bae2fbd1cdfce22ae6d8030e8d501ded6ec8df", "short": "65bae2f", "date": "2026-08-22", "msg": "fix: 7 bugs - format, polyglot promo, heap msg, settings buf, yield gate, shm unlock, stats div0"}, {"idx": 136, "hash": "b0879f42fb1cb34de9182fd97db9481b7f79680d", "short": "b0879f4", "date": "2026-08-22", "msg": "web: use ejgfv PNG pieces, remove unicode glyphs"}, {"idx": 137, "hash": "d22579393b9b4cd90691ac5970eb8eb05fb55a81", "short": "d225793", "date": "2026-08-22", "msg": "web: widen difficulty slider to 0.3s-120s"}, {"idx": 138, "hash": "955a81acc9fd15e3744bada0b347dbdba4b091b4", "short": "955a81a", "date": "2026-08-22", "msg": "web: set difficulty slider to 5s-120s"}, {"idx": 139, "hash": "ac27c9a0e46e2c071ca7546cb1750d72899573ce", "short": "ac27c9a", "date": "2026-08-22", "msg": "web: fix flip board and give-up button"}, {"idx": 140, "hash": "44350666d168b9073aa02fe419e062b7cab0c7a6", "short": "4435066", "date": "2026-08-22", "msg": "web: mobile-first layout"}, {"idx": 141, "hash": "a15fdcbc133aa16a5bf277e01d7736e352b6f319", "short": "a15fdcb", "date": "2026-08-23", "msg": "web: kill double-tap zoom on move taps"}, {"idx": 142, "hash": "21848f6ca02739af714df04f6040a6498dab182a", "short": "21848f6", "date": "2026-08-23", "msg": "web: send Cache-Control no-cache for served files"}, {"idx": 143, "hash": "c9eef5355d9b7b55016d2f5b44637dee3f160f86", "short": "c9eef53", "date": "2026-08-23", "msg": "docs: rewrite README for web play and current engine state"}, {"idx": 144, "hash": "661ae9ae5b92a5608ab19c7fc71a2ccbedc35734", "short": "661ae9a", "date": "2026-08-24", "msg": "docs: add BRAG.md - exhaustive record of the fork's work over upstream Dog"}, {"idx": 145, "hash": "1fdedaaa593760bbbcbc95fd0eeb42f6c49ac4a7", "short": "1fdedaa", "date": "2026-08-24", "msg": "docs: drop the losses section from BRAG.md"}, {"idx": 146, "hash": "d4d79a2d9f2f83b0d9b4796cd5ee7be53c076b13", "short": "d4d79a2", "date": "2026-08-24", "msg": "web: pin move-list height so the phone board stops shrinking"}, {"idx": 147, "hash": "31be6d382e5b16557e9e68329424bbe8bdcd7980", "short": "31be6d3", "date": "2026-08-24", "msg": "nnue: paired-fused evaluator - 1.8x board throughput, bit-exact desktop"}, {"idx": 148, "hash": "c0505d031747a1c988b708908cb021084d2175e8", "short": "c0505d0", "date": "2026-08-25", "msg": "nnue: stage the output layer in internal SRAM - +6% board node throughput, bit-exact"}, {"idx": 149, "hash": "6cb959f5b5415f06f80bd9f78758c7dd510970b0", "short": "6cb959f", "date": "2026-08-25", "msg": "board: fix the test-suite abort - 16 KB pthread default, 28 KB searcher stacks, graceful degradation"}, {"idx": 150, "hash": "9ca4ed008dad6d6693214ecaa0ce1e8d56108569", "short": "9ca4ed0", "date": "2026-08-25", "msg": "docs: corrhist postmortem, staging notes, bench-doctrine update; results.log"}, {"idx": 151, "hash": "4749c021b11b0bb161e33459b7ae770f02736e10", "short": "4749c02", "date": "2026-08-25", "msg": "brag: dates and commit count current through Aug 25"}, {"idx": 152, "hash": "4739cd8c8d633f306f6619eaa5790e8e578442fd", "short": "4739cd8", "date": "2026-08-25", "msg": "search: move-ordering rebuild - capture/butterfly/continuation history"}, {"idx": 153, "hash": "7b010b89970bb99b195b31501a1992956538a077", "short": "7b010b8", "date": "2026-08-26", "msg": "results.log: phase 2 campaign - all four projects gated and reverted"}, {"idx": 154, "hash": "b681774fe2c176c49e14ff11af7a83c8d3507cd2", "short": "b681774", "date": "2026-08-26", "msg": "docs: phase 2 campaign in the graveyard - four gated rejections with lessons"}, {"idx": 155, "hash": "8ae1c2921b05ac59991629d0bb051166292179ad", "short": "8ae1c29", "date": "2026-08-26", "msg": "docs: phase-2 rejects noted in readme, brag counters current"}, {"idx": 156, "hash": "bd50ae398ab8c0782c46accb505f6f2ad3f00481", "short": "bd50ae3", "date": "2026-08-26", "msg": "results.log: move-ordering speed campaign - fresh profile + bit-exact attempt rejected, locality verdict"}, {"idx": 157, "hash": "262f488e6c5f61fd3c66d22c4a9e10b571d47fb4", "short": "262f488", "date": "2026-08-26", "msg": "docs: note Aug 26 ordering read-tax re-profile and bit-exact no-ship"}, {"idx": 158, "hash": "d0a4d1074bff1fd2e9abb86bd4f6f28bcbb54f11", "short": "d0a4d10", "date": "2026-08-27", "msg": "search: persistent shared correction history + experience table in PSRAM (1MB+1MB)"}, {"idx": 159, "hash": "bd7bd1159c8e43c7a54dbc4f75ca9b10ed0e649f", "short": "bd7bd11", "date": "2026-08-27", "msg": "Revert \"search: persistent shared correction history + experience table in PSRAM (1MB+1MB)\""}, {"idx": 160, "hash": "d40104b68fa18751fed07ae3445cdfdeb56fb749", "short": "d40104b", "date": "2026-08-27", "msg": "results.log: persistent corrhist+exp 200-game gate -19.1 Elo reject"}, {"idx": 161, "hash": "eed09c4beaeee79ad66824d872fed13ec76ce76a", "short": "eed09c4", "date": "2026-08-27", "msg": "docs: record persistent corrhist and experience rejection"}, {"idx": 162, "hash": "40bc55910f2ea07000cf2d80b84a26617a2ca39d", "short": "40bc559", "date": "2026-08-27", "msg": "docs: point prebuilt instructions to latest release"}, {"idx": 163, "hash": "1d38015178b5debc1ab3f070cdf8c2dcd2d400ee", "short": "1d38015", "date": "2026-08-28", "msg": "build: enforce DIO flash mode in tracked sdkconfig"}, {"idx": 164, "hash": "254962d01494cb18b8e8785a17030ed8e6be0eb7", "short": "254962d", "date": "2026-08-28", "msg": "docs: point prebuilt references to v0.4"}, {"idx": 165, "hash": "948240bce471a1342dc547aa72f9735deed7606d", "short": "948240b", "date": "2026-08-28", "msg": "test: record board release smoke results"}, {"idx": 166, "hash": "47c8ac23d6bc2c4fc7f24db1d3a29e76ac4cb177", "short": "47c8ac2", "date": "2026-08-28", "msg": "docs: identify native release architecture"}, {"idx": 167, "hash": "97879a6a440566e2af21072d0585e3b15018316c", "short": "97879a6", "date": "2026-08-28", "msg": "test: make board serial wrapper reliable"}, {"idx": 168, "hash": "0237ce02386d89e1ab3573eddcd303702981b310", "short": "0237ce0", "date": "2026-08-28", "msg": "gui: make board larger on phones, keep squares square in landscape"}, {"idx": 169, "hash": "11d5020197388d822745bfb754859829a142b47c", "short": "11d5020", "date": "2026-08-28", "msg": "gui: Fischer clocks (bullet/blitz/rapid/classical)"}, {"idx": 170, "hash": "7278324e4f9a4f4e6a266d3def7bd2c632a97694", "short": "7278324", "date": "2026-08-28", "msg": "docs: describe Fischer time controls"}, {"idx": 171, "hash": "bf2d8f85e1117975ef441a1d2900165b4d909f3c", "short": "bf2d8f8", "date": "2026-08-28", "msg": "docs: invoke bro skill on standalone bro"}, {"idx": 172, "hash": "3e04c4fc08e5ae7c5bca01743322f2d3ec6aad30", "short": "3e04c4f", "date": "2026-08-28", "msg": "gui: fix Return to main menu after game over"}, {"idx": 173, "hash": "8b8cda02480e75b1cc23835fd651269a4f64f4ec", "short": "8b8cda0", "date": "2026-08-28", "msg": "gui: make Return to main menu reliable"}, {"idx": 174, "hash": "d727198ae1ce59be2d4b75fe7b6dd2e338b88f4c", "short": "d727198", "date": "2026-08-29", "msg": "results.log: probcut 100/150/200 200-game gates -520 to -655 Elo reject"}, {"idx": 175, "hash": "1efb667539f4effca554d173fba66af5a4bf41c2", "short": "1efb667", "date": "2026-08-29", "msg": "docs: record ProbCut 100/150/200 rejection (-655/-552/-520 Elo)"}, {"idx": 176, "hash": "2a6bcdcd99d43b37857c496a66188419f4e0c30c", "short": "2a6bcdc", "date": "2026-08-29", "msg": "docs: point prebuilt references to v0.5-prebuilt (1efb667)"}, {"idx": 177, "hash": "705764deb9dea6d51c1d452929fe39de324006c2", "short": "705764d", "date": "2026-08-29", "msg": "C8: IRAM the rest of the per-node hot path"}, {"idx": 178, "hash": "4f4be7d2c2b6ced93e683a9fcc2ac3637f4d3e3f", "short": "4f4be7d", "date": "2026-08-29", "msg": "Docs: mark C8 shipped and record its numbers"}, {"idx": 179, "hash": "b7fc6b235696e4417112fa8417e86c7080e770cd", "short": "b7fc6b2", "date": "2026-08-29", "msg": "Log rejected cache-line 16B experiment in results.log"}, {"idx": 180, "hash": "f6fe3175b013782259e2c7d7a0f288b2e4e963a3", "short": "f6fe317", "date": "2026-08-29", "msg": "Document the rejected 16B cache-line experiment and sdkconfig precedence"}, {"idx": 181, "hash": "d772c452508d893a326c2bf39fbb6c7ce2a53f14", "short": "d772c45", "date": "2026-08-29", "msg": "Record commit style: no co-author footer"}, {"idx": 182, "hash": "154d61abf29b5ae0bef5e7b5e9f96dc76df91b4e", "short": "154d61a", "date": "2026-08-30", "msg": "Record PSRAM-120M and pin-searchers rejects in results.log"}];
+const detailsMap = {"23a02e1": {"delta": 25.8, "err": 20.0, "los": 99.4, "tc": "5+0.05", "verdict": "ACCEPT H1 llr 3.04"}, "56d30e5": {"delta": 56.5, "err": null, "los": null, "tc": "5+0.05 / 2+0.02", "verdict": "ACCEPT bundle: TT aging +36.7 (99.6%) + MDP +19.8 (98.2%)", "note": "SEE+QS ordering + futility keep (inconclusive) bundled, no separate Elo"}, "e2dda8e": {"delta": 34.6, "err": 29.4, "los": 98.9, "tc": "2+0.02", "verdict": "ACCEPT H1 llr 2.2"}, "81de390": {"delta": 12.2, "err": null, "los": 78.5, "tc": "2+0.02 200g", "verdict": "ACCEPT LOS 78.5%"}, "ee91952": {"delta": 74.7, "err": null, "los": 100.0, "tc": "2+0.02 200g", "verdict": "ACCEPT, 86.9 cumulative vs Tier-1 (marginal ~74.7 vs razor)"}, "30f8e56": {"delta": 29.6, "err": null, "los": 98.0, "tc": "2+0.02 200g", "verdict": "ACCEPT, cumulative +116.5 vs Tier-1"}, "2c000fc": {"delta": 57.8, "err": 29.0, "los": 99.0, "tc": "2+0.02 200g srand42", "verdict": "ACCEPT biggest since check ext"}, "8e31f60": {"delta": 34.9, "err": 32.3, "los": 98.2, "tc": "2+0.02 200g srand42", "verdict": "ACCEPT, qs TT hit 2.65% stale"}, "4739cd8": {"delta": 24.6, "err": 22.6, "los": 98.4, "tc": "2+0.02 800g SPRT 481g H1", "verdict": "ACCEPT llr 2.21, rep +16.5 800g KEEP"}, "705764d": {"delta": 15.6, "err": 34.6, "los": 81.2, "tc": "2+0.02 200g", "verdict": "KEEP (not H1) 56-47-97 vs pre-C8 HEAD; IRAM + grow-only bit-exact"}};
+// cumulative points for stepped line
+const stepped = [{"x": 1, "y": 0}, {"x": 2, "y": 0}, {"x": 3, "y": 0}, {"x": 4, "y": 0}, {"x": 5, "y": 0}, {"x": 6, "y": 0}, {"x": 7, "y": 0}, {"x": 8, "y": 0}, {"x": 9, "y": 0}, {"x": 10, "y": 0}, {"x": 11, "y": 0}, {"x": 12, "y": 0}, {"x": 13, "y": 0}, {"x": 14, "y": 0}, {"x": 15, "y": 0}, {"x": 16, "y": 0}, {"x": 17, "y": 0}, {"x": 18, "y": 0}, {"x": 19, "y": 0}, {"x": 20, "y": 0}, {"x": 21, "y": 0}, {"x": 22, "y": 0}, {"x": 23, "y": 0}, {"x": 24, "y": 0}, {"x": 25, "y": 0}, {"x": 26, "y": 0}, {"x": 27, "y": 0}, {"x": 28, "y": 25.8}, {"x": 29, "y": 25.8}, {"x": 30, "y": 25.8}, {"x": 31, "y": 25.8}, {"x": 32, "y": 25.8}, {"x": 33, "y": 82.3}, {"x": 34, "y": 82.3}, {"x": 35, "y": 82.3}, {"x": 36, "y": 82.3}, {"x": 37, "y": 82.3}, {"x": 38, "y": 82.3}, {"x": 39, "y": 82.3}, {"x": 40, "y": 116.9}, {"x": 41, "y": 116.9}, {"x": 42, "y": 116.9}, {"x": 43, "y": 116.9}, {"x": 44, "y": 116.9}, {"x": 45, "y": 116.9}, {"x": 46, "y": 116.9}, {"x": 47, "y": 116.9}, {"x": 48, "y": 116.9}, {"x": 49, "y": 116.9}, {"x": 50, "y": 116.9}, {"x": 51, "y": 116.9}, {"x": 52, "y": 116.9}, {"x": 53, "y": 116.9}, {"x": 54, "y": 116.9}, {"x": 55, "y": 116.9}, {"x": 56, "y": 116.9}, {"x": 57, "y": 116.9}, {"x": 58, "y": 116.9}, {"x": 59, "y": 116.9}, {"x": 60, "y": 116.9}, {"x": 61, "y": 116.9}, {"x": 62, "y": 116.9}, {"x": 63, "y": 116.9}, {"x": 64, "y": 116.9}, {"x": 65, "y": 116.9}, {"x": 66, "y": 116.9}, {"x": 67, "y": 116.9}, {"x": 68, "y": 116.9}, {"x": 69, "y": 116.9}, {"x": 70, "y": 116.9}, {"x": 71, "y": 116.9}, {"x": 72, "y": 116.9}, {"x": 73, "y": 129.1}, {"x": 74, "y": 203.8}, {"x": 75, "y": 203.8}, {"x": 76, "y": 233.4}, {"x": 77, "y": 233.4}, {"x": 78, "y": 233.4}, {"x": 79, "y": 233.4}, {"x": 80, "y": 233.4}, {"x": 81, "y": 233.4}, {"x": 82, "y": 233.4}, {"x": 83, "y": 233.4}, {"x": 84, "y": 233.4}, {"x": 85, "y": 233.4}, {"x": 86, "y": 233.4}, {"x": 87, "y": 233.4}, {"x": 88, "y": 233.4}, {"x": 89, "y": 233.4}, {"x": 90, "y": 233.4}, {"x": 91, "y": 233.4}, {"x": 92, "y": 233.4}, {"x": 93, "y": 233.4}, {"x": 94, "y": 233.4}, {"x": 95, "y": 233.4}, {"x": 96, "y": 233.4}, {"x": 97, "y": 233.4}, {"x": 98, "y": 291.2}, {"x": 99, "y": 291.2}, {"x": 100, "y": 291.2}, {"x": 101, "y": 326.1}, {"x": 102, "y": 326.1}, {"x": 103, "y": 326.1}, {"x": 104, "y": 326.1}, {"x": 105, "y": 326.1}, {"x": 106, "y": 326.1}, {"x": 107, "y": 326.1}, {"x": 108, "y": 326.1}, {"x": 109, "y": 326.1}, {"x": 110, "y": 326.1}, {"x": 111, "y": 326.1}, {"x": 112, "y": 326.1}, {"x": 113, "y": 326.1}, {"x": 114, "y": 326.1}, {"x": 115, "y": 326.1}, {"x": 116, "y": 326.1}, {"x": 117, "y": 326.1}, {"x": 118, "y": 326.1}, {"x": 119, "y": 326.1}, {"x": 120, "y": 326.1}, {"x": 121, "y": 326.1}, {"x": 122, "y": 326.1}, {"x": 123, "y": 326.1}, {"x": 124, "y": 326.1}, {"x": 125, "y": 326.1}, {"x": 126, "y": 326.1}, {"x": 127, "y": 326.1}, {"x": 128, "y": 326.1}, {"x": 129, "y": 326.1}, {"x": 130, "y": 326.1}, {"x": 131, "y": 326.1}, {"x": 132, "y": 326.1}, {"x": 133, "y": 326.1}, {"x": 134, "y": 326.1}, {"x": 135, "y": 326.1}, {"x": 136, "y": 326.1}, {"x": 137, "y": 326.1}, {"x": 138, "y": 326.1}, {"x": 139, "y": 326.1}, {"x": 140, "y": 326.1}, {"x": 141, "y": 326.1}, {"x": 142, "y": 326.1}, {"x": 143, "y": 326.1}, {"x": 144, "y": 326.1}, {"x": 145, "y": 326.1}, {"x": 146, "y": 326.1}, {"x": 147, "y": 326.1}, {"x": 148, "y": 326.1}, {"x": 149, "y": 326.1}, {"x": 150, "y": 326.1}, {"x": 151, "y": 326.1}, {"x": 152, "y": 350.7}, {"x": 153, "y": 350.7}, {"x": 154, "y": 350.7}, {"x": 155, "y": 350.7}, {"x": 156, "y": 350.7}, {"x": 157, "y": 350.7}, {"x": 158, "y": 350.7}, {"x": 159, "y": 350.7}, {"x": 160, "y": 350.7}, {"x": 161, "y": 350.7}, {"x": 162, "y": 350.7}, {"x": 163, "y": 350.7}, {"x": 164, "y": 350.7}, {"x": 165, "y": 350.7}, {"x": 166, "y": 350.7}, {"x": 167, "y": 350.7}, {"x": 168, "y": 350.7}, {"x": 169, "y": 350.7}, {"x": 170, "y": 350.7}, {"x": 171, "y": 350.7}, {"x": 172, "y": 350.7}, {"x": 173, "y": 350.7}, {"x": 174, "y": 350.7}, {"x": 175, "y": 350.7}, {"x": 176, "y": 350.7}, {"x": 177, "y": 366.3}, {"x": 178, "y": 366.3}, {"x": 179, "y": 366.3}, {"x": 180, "y": 366.3}, {"x": 181, "y": 366.3}, {"x": 182, "y": 366.3}];
+
+// Build lookup for details by short
+// Prepare datasets
+const cumulativeData = stepped.map(p => ({x: p.x, y: p.y}));
+
+// rejected scatter: show attempted deltas as faint points at same x but y = cumulative before + attempted (so you see how negative they were, but line stays flat)
+// We'll place them at y = cumulative before attempt + delta (what it would have been), as red dots, not connected
+const rejectScatter = [];
+const rejectList = [
+  {idx:17, delta:13.9, label:"killer moves (inconclusive, reverted) +13.9 ±33.1 LOS79.5%"},
+  {idx:34, delta:-25.2, label:"TT generation cycle REJECT -25.2 ±34.7"},
+  {idx:41, delta:-21.0, label:"static-null 100 REJECT -21.0 ±32.8"},
+  {idx:41, delta:-57.8, label:"futility 110 REJECT -57.8 ±49.3 (second variant at same commit, jittered)"},
+  {idx:42, delta:-338, label:"RukChess delta REJECT -338 (not plotted to scale)"},
+  {idx:91, delta:-24.4, label:"lazy-SEE qs -24.4 ±32.0 LOS6.8% REJECT"},
+  {idx:95, delta:-33.1, label:"qs SEE -40 REJECT -33.1 ±33.2"},
+  {idx:152, delta:-28.8, label:"order v3b REJECT -28.8 ±36.6"},
+  {idx:153, delta:-2.8, label:"staged picker -2.8 ±20.7 REJECT"},
+  {idx:154, delta:-8.6, label:"time mgmt -8.6 REJECT"},
+  {idx:154, delta:-5.0, label:"easy move -5.0 REJECT (second at same idx)"},
+  {idx:155, delta:-6.5, label:"singular -6.5 ±23.6 REJECT"},
+  {idx:156, delta:-9.7, label:"TT widen -9.7 ±25.9 REJECT"},
+  {idx:160, delta:-19.1, label:"persistent corrhist+exp -19.1 ±32.5 REJECT"},
+  {idx:174, delta:-520, label:"ProbCut -520 ±88 REJECT (capped, not to scale)"},
+];
+// compute y for rejects: they would have gone to cum_before + delta, but we cap extremes for display
+let cumByIdx = {};
+let cur=0;
+const deltasByIdx = {};
+// build map of accepted deltas per idx for cum
+const acceptDeltas = {"28":25.8,"33":56.5,"40":34.6,"73":12.2,"74":74.7,"76":29.6,"98":57.8,"101":34.9,"152":24.6,"177":15.6};
+for(let i=1;i<=182;i++){
+  if(acceptDeltas[i]) cur += acceptDeltas[i];
+  cumByIdx[i]=cur;
+}
+rejectList.forEach(r=>{
+  let base = cumByIdx[r.idx -1] || 0;
+  // for second entry at same idx, jitter x slightly
+  let x = r.idx;
+  if(rejectScatter.some(p=>p.x===r.idx)) x = r.idx + 0.35;
+  let y = base + r.delta;
+  // cap huge negatives for display so chart stays readable
+  if(y < -100) y = -60 + (Math.random()*10);
+  rejectScatter.push({x, y, label: r.label, delta: r.delta});
+});
+
+// Stockfish anchors
+const anchors = [
+  {x:1, y:-301.3, label:"Anchor vs Stockfish 17 at fork: -301.3 ±57.9 (200g) "},
+  {x:43, y:-56.1, label:"Anchor vs Stockfish 17 at #43 (after LMR): -56.1 ±43.4 (63-95-42)"},
+];
+// For display we will not plot anchors on same y scale as internal, because internal is 0..366. So we add a second y axis idea: show them as annotations on a separate overlay note, or map them to internal scale offset?
+// Instead we keep anchors as table-only and as annotation text. Don't plot on same scale to avoid confusion.
+
+// Build chart
+const ctx = document.getElementById('hill').getContext('2d');
+const hill = new Chart(ctx, {
+  type: 'line',
+  data: {
+    datasets: [
+      {
+        label: 'Cumulative Elo (internal SPRT sum)',
+        data: cumulativeData,
+        borderColor: '#0a8a4a',
+        backgroundColor: 'rgba(10,138,74,0.08)',
+        borderWidth: 2.2,
+        pointRadius: (c)=> {
+          const idx = c.raw.x;
+          return acceptDeltas[idx] ? 4 : 0;
+        },
+        pointBackgroundColor: '#0a8a4a',
+        pointBorderColor: '#fff',
+        pointBorderWidth: 1.5,
+        stepped: 'after',
+        fill: true,
+        tension: 0,
+      },
+      {
+        label: 'Rejected attempts (would-be Elo, line stays flat)',
+        data: rejectScatter,
+        type: 'scatter',
+        borderColor: '#c33',
+        backgroundColor: '#c33',
+        pointRadius: 4,
+        pointStyle: 'crossRot',
+        showLine: false,
+      }
+    ]
+  },
+  options: {
+    responsive: true,
+    maintainAspectRatio: false,
+    interaction: { mode: 'nearest', intersect: false, axis: 'x' },
+    scales: {
+      x: {
+        type: 'linear',
+        min: 1,
+        max: 182,
+        ticks: {
+          stepSize: 10,
+          callback: (v)=> v===1 ? '1' : (v%10===0 || v===182 ? String(v) : ''),
+          maxRotation: 0,
+        },
+        title: { display: true, text: 'Commits since fork (182, equally spaced, commit order)' },
+        grid: { color: '#efefef' }
+      },
+      y: {
+        min: -70,
+        max: 380,
+        ticks: { stepSize: 50 },
+        title: { display: true, text: 'Cumulative Elo vs fork baseline (internal SPRT, 2+0.02 Hash8)' },
+        grid: { color: '#efefef' }
+      }
+    },
+    plugins: {
+      legend: { display: true, position: 'top' },
+      tooltip: {
+        callbacks: {
+          title: (items)=>{
+            if(!items.length) return '';
+            const x = items[0].parsed.x;
+            const c = commits.find(k=>k.idx===Math.round(x));
+            if(!c) return 'Commit '+x;
+            return '#'+c.idx+' '+c.short+' '+c.date;
+          },
+          label: (item)=>{
+            const x = Math.round(item.parsed.x);
+            const c = commits.find(k=>k.idx===x);
+            const y = item.parsed.y;
+            if(item.datasetIndex===1){
+              return ' ' + item.raw.label + ' (rejected, not added)';
+            }
+            // main dataset
+            let lines = [];
+            if(c) lines.push(' '+c.msg);
+            const d = acceptDeltas[x];
+            if(d) {
+              const det = detailsMap[c.short] || {};
+              let s = ' delta '+(d>0?'+':'')+d.toFixed(1);
+              if(det.err) s += ' ±'+det.err;
+              if(det.los) s += ' LOS '+det.los+'%';
+              lines.push(s);
+            } else {
+              // check if this commit has a reject attempted at same idx for info
+              const rej = rejectScatter.find(r=>Math.round(r.x)===x);
+              if(rej) lines.push(' attempted '+rej.label);
+              else lines.push(' delta 0, cumulative '+y.toFixed(1));
+            }
+            lines.push(' cumulative '+y.toFixed(1)+' Elo');
+            return lines;
+          }
+        }
+      },
+      annotation: {
+        annotations: {
+          bigNet: { type:'line', xMin:28, xMax:28, borderColor:'#0a6', borderWidth:1, borderDash:[4,4], label:{display:true, content:'big net +25.8', position:'start', backgroundColor:'#0a6', color:'#fff', font:{size:10}} },
+          lmr: { type:'line', xMin:40, xMax:40, borderColor:'#0a6', borderWidth:1, borderDash:[4,4] },
+          check: { type:'line', xMin:74, xMax:74, borderColor:'#0a6', borderWidth:1, borderDash:[4,4], label:{display:true, content:'check ext +74.7', position:'center', backgroundColor:'#0a6', color:'#fff', font:{size:10}} },
+          recapture: { type:'line', xMin:98, xMax:98, borderColor:'#0a6', borderWidth:1, borderDash:[4,4], label:{display:true, content:'recapture +57.8', position:'center', backgroundColor:'#0a6', color:'#fff', font:{size:10}} },
+          moveOrder: { type:'line', xMin:152, xMax:152, borderColor:'#0a6', borderWidth:1, borderDash:[4,4], label:{display:true, content:'move-order +24.6', position:'end', backgroundColor:'#0a6', color:'#fff', font:{size:10}} },
+          zeroLine: { type:'line', yMin:0, yMax:0, borderColor:'#999', borderWidth:1, borderDash:[2,3] },
+        }
+      }
+    }
+  }
+});
+
+// Fill tables
+const stepsBody = document.querySelector('#steps tbody');
+const order = [
+  {idx:28, short:'23a02e1', delta:25.8, err:20.0, los:99.4, note:'big net 768x256'},
+  {idx:33, short:'56d30e5', delta:56.5, err:null, los:null, note:'TT aging 36.7 + MDP 19.8 (bundle)'},
+  {idx:40, short:'e2dda8e', delta:34.6, err:29.4, los:98.9, note:'LMR recalibrated mul 0.65'},
+  {idx:73, short:'81de390', delta:12.2, err:null, los:78.5, note:'razoring 350+150*d depth<=3'},
+  {idx:74, short:'ee91952', delta:74.7, err:null, los:100.0, note:'check extension marginal, 86.9 cumulative vs Tier-1'},
+  {idx:76, short:'30f8e56', delta:29.6, err:null, los:98.0, note:'qs SEE pruning'},
+  {idx:98, short:'2c000fc', delta:57.8, err:29.0, los:99.0, note:'recapture extension'},
+  {idx:101, short:'8e31f60', delta:34.9, err:32.3, los:98.2, note:'qs TT probe removal (hit 2.65% stale)'},
+  {idx:152, short:'4739cd8', delta:24.6, err:22.6, los:98.4, note:'move-ordering rebuild capture/butterfly/continuation'},
+  {idx:177, short:'705764d', delta:15.6, err:34.6, los:81.2, note:'C8 IRAM rest of hot path, KEEP'},
+];
+let cumStep=0;
+order.forEach(o=>{
+  cumStep += o.delta;
+  const c = commits.find(k=>k.short===o.short);
+  const tr = document.createElement('tr');
+  tr.innerHTML = `<td>${o.idx}</td><td class="mono">${o.short}</td><td>${c ? c.date : ''}</td><td>${o.note}</td><td>+${o.delta.toFixed(1)}${o.err ? ' ±'+o.err : ''}</td><td>${cumStep.toFixed(1)}</td><td>${o.los ? o.los+'%' : ''}</td>`;
+  stepsBody.appendChild(tr);
+});
+
+// All commits table
+const allBody = document.querySelector('#all tbody');
+let cur2=0;
+commits.forEach(c=>{
+  const d = acceptDeltas[c.idx] || 0;
+  cur2 += d;
+  let effect = '';
+  let cls='docs';
+  if(d>0) { effect = `<span class="tag accept">+${d.toFixed(1)} accept</span>`; cls='accept'; }
+  else {
+    const rej = rejectScatter.find(r=>Math.round(r.x)===c.idx);
+    if(rej) effect = `<span class="tag reject">reject ${rej.delta>0?'+':''}${rej.delta}</span> <span class="small">${rej.label}</span>`;
+    else {
+      // check if docs or infra
+      if(c.msg.startsWith('search:') || c.msg.startsWith('tt:') || c.msg.startsWith('item')) {
+        // might be reject bundle already handled
+      }
+      effect = `<span class="tag docs">0</span>`;
+    }
+  }
+  const tr=document.createElement('tr');
+  tr.innerHTML = `<td>${c.idx}</td><td class="mono">${c.short}</td><td>${c.date}</td><td>${c.msg}</td><td>${effect}</td><td>${cur2.toFixed(1)}</td>`;
+  allBody.appendChild(tr);
+});
+</script>
+</body>
+</html>
