@@ -5,6 +5,12 @@
 CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_240=y
 
 # --- PSRAM: enable, octal mode @80MHz, auto-detect (8 MB on the Plus) ---
+# 120M probe (2026-08-29) REJECTED at config time, no flash needed: S3 Kconfig
+# gates SPIRAM_SPEED_120M behind SPIRAM_MODE_QUAD || IDF_EXPERIMENTAL_FEATURES,
+# and octal 120M is documented temperature-drift-sensitive (~20 C) - the same
+# instability class that killed QIO under sustained 2-thread load. A silent
+# fallback to 40M (worse than baseline) also occurs if the symbol is forced
+# without its dependency. Do not re-probe without a heatsink/enclosure change.
 CONFIG_SPIRAM=y
 CONFIG_SPIRAM_SPEED_80M=y
 CONFIG_SPIRAM_MODE_OCT=y
