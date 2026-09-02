@@ -216,8 +216,61 @@ void permute_rows_in_place(std::int16_t *a)
 
 } // namespace
 
+// ---------------------------------------------------------------------------
+// C9: square-major locality — cluster feature rows by square so the PSRAM
+// stream hits fewer DCache lines per position. Plain 768 net has no king
+// square, so we cluster by the piece square itself: new order is
+//   new_k = sq*12 + piece*2 + color   (12 = 6 pieces * 2 colors)
+// Permuting the 768 rows and remapping the index in push_delta keeps
+// evaluation bit-exact. Paired layout still follows — we reorder the flat
+// 768 rows first, then pair.
+// ---------------------------------------------------------------------------
+namespace {
+alignas(64) static int g_perm_square[768];
+alignas(64) static int g_inv_perm_square[768];
+static bool g_perm_square_inited = false;
+inline void init_perm_square() {
+	if (g_perm_square_inited) return;
+	// 768 paired rows: p = k*2+half where k=piece*64+sq (0..383), half 0/1
+	// Cluster by square: new_p = sq*12 + piece*2 + half (12 = 6*2)
+	for (int k = 0; k < 384; k++) {
+		int piece = k / 64;
+		int sq = k % 64;
+		for (int half = 0; half < 2; half++) {
+			int p = k * 2 + half;
+			int new_p = sq * 12 + piece * 2 + half;
+			g_perm_square[p] = new_p;
+		}
+	}
+	for (int k = 0; k < 768; k++) g_inv_perm_square[g_perm_square[k]] = k;
+	g_perm_square_inited = true;
+}
+inline void reorder_by_square_in_place(int16_t *a) {
+	// a is 768*HIDDEN_SIZE int16, row-major 768 rows.
+	// Out-of-place via a PSRAM temp buffer — 768 rows is 393KB, cycle-based
+	// in-place is fiddly; a one-time PSRAM alloc at boot is cheap and obviously correct.
+	init_perm_square();
 #if defined(ESP32)
+	int16_t *tmp = (int16_t*)heap_caps_malloc(768 * HIDDEN_SIZE * sizeof(int16_t), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+	if (!tmp) return;
+	for (int k = 0; k < 768; k++) {
+		int new_k = g_perm_square[k];
+		memcpy(tmp + new_k * HIDDEN_SIZE, a + k * HIDDEN_SIZE, HIDDEN_SIZE * sizeof(int16_t));
+	}
+	memcpy(a, tmp, 768 * HIDDEN_SIZE * sizeof(int16_t));
+	heap_caps_free(tmp);
+#else
+	alignas(64) static int16_t tmp[768 * HIDDEN_SIZE];
+	for (int k = 0; k < 768; k++) {
+		int new_k = g_perm_square[k];
+		memcpy(tmp + new_k * HIDDEN_SIZE, a + k * HIDDEN_SIZE, HIDDEN_SIZE * sizeof(int16_t));
+	}
+	memcpy(a, tmp, 768 * HIDDEN_SIZE * sizeof(int16_t));
+#endif
+}
+} // namespace
 
+#if defined(ESP32)
 namespace nnue_k {
 
 bool pie_ok = true;
@@ -614,8 +667,10 @@ void IRAM_ATTR nnue_load_weights_to_psram()
 
 	g_paired = static_cast<std::int16_t *>(mem);
 	permute_rows_in_place(g_paired);
+	init_perm_square();
+	reorder_by_square_in_place(g_paired);
 
-	printf("# weights in PSRAM, paired layout: %u bytes\n", unsigned(n));
+	printf("# weights in PSRAM, square+paired layout: %u bytes\n", unsigned(n));
 
 	nnue_stage_output_layer();
 }
@@ -643,7 +698,9 @@ void ensure_init()
 	std::call_once(once, [] {
 		alignas(64) static std::int16_t paired_store[2 * 384 * HIDDEN_SIZE];
 		g_paired = paired_store;
-		permute_rows(g_paired, reinterpret_cast<const std::int16_t *>(weights_data));
+		permute_rows(g_paired, reinterpret_cast<const int16_t *>(weights_data));
+		init_perm_square();
+		reorder_by_square_in_place(g_paired);
 	});
 }
 #endif
@@ -716,13 +773,17 @@ void IRAM_ATTR Eval::push_delta(nnue_k::Delta *deltas, int &n, const int piece, 
 	const int k         = 64 * piece + (is_white ? square : flipped);
 	const int half_own  = is_white ? 0 : 1;
 
-	const size_t off_w = (size_t)(k * 2 + half_own) * HIDDEN_SIZE;
-	const size_t off_b = (size_t)(k * 2 + (1 - half_own)) * HIDDEN_SIZE;
-
 	auto & d = deltas[n++];
 	if (g_paired != nullptr) {
-		d.a = g_paired + off_w;
-		d.b = g_paired + off_b;
+		// C9: square-major reordering — the 768 paired rows were permuted
+		// at boot to cluster by square (sq*12+piece*2+half). Remap here.
+		init_perm_square();
+		int p_w = k * 2 + half_own;
+		int p_b = k * 2 + (1 - half_own);
+		p_w = g_perm_square[p_w];
+		p_b = g_perm_square[p_b];
+		d.a = g_paired + (size_t)p_w * HIDDEN_SIZE;
+		d.b = g_paired + (size_t)p_b * HIDDEN_SIZE;
 	}
 	else {
 		// Flat-blob fallback (board boot without PSRAM). Pair j stores
