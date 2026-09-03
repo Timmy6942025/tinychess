@@ -25,6 +25,9 @@ class tt
 {
 private:
 	tt_entry *entries { nullptr };
+	// C11 L0: small SRAM front cache (128 KB, 2-way) in front of the PSRAM TT
+	tt_entry *l0 { nullptr };
+	static constexpr uint64_t L0_ENTRIES = 16384;
 	uint8_t   generation { 1 };  // incremented per ID iteration; ages TT entries
 #if defined(ESP32)
 #define ESP32_TT_RAM_SIZE 98304

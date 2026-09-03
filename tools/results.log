@@ -8774,3 +8774,10 @@ Score of BoardXS3 vs DogNative: 0 - 2 - 0  [0.000] 2
 Score of BoardXS3 vs DogNative: 0 - 3 - 0  [0.000] 3
 Elo difference: -inf +/- nan, LOS: 4.2 %, DrawRatio: 0.0 %
 [2026-09-03 17:43:14] BOARD C10-revert: reflashed HEAD (post-revert), bench 17,548 nps (matches C9 17,609 cool-board; C9 gain intact), board-vs-native 3-game clean, no stalls/forfeits/illegals
+[22:19:40] FINGERPRINT A=board(wrapper,port=/dev/ttyACM0)  B=/home/timmy/chess2/engine/app/src/linux-windows/build/Dog-native 2b4faa43eb30cd133e4db16df436574f
+[22:19:51] MATCH board-vs-native-20260903-221940  A=board(port=/dev/ttyACM0, wrapper)  B=/home/timmy/chess2/engine/app/src/linux-windows/build/Dog-native  tc=2+0.02 games=3 adj=yes
+Score of BoardXS3 vs DogNative: 0 - 1 - 0  [0.000] 1
+Score of BoardXS3 vs DogNative: 0 - 2 - 0  [0.000] 2
+Score of BoardXS3 vs DogNative: 0 - 3 - 0  [0.000] 3
+Elo difference: -inf +/- nan, LOS: 4.2 %, DrawRatio: 0.0 %
+[2026-09-03 22:19:55] VERDICT C11 L0 SRAM TT: KEEP +5.2 +/-31.8 LOS 62.6% (200 games 2+0.02 Threads=1, A=/tmp/Dog-C11-new e40b0083 vs B=/tmp/Dog-C11-base 2b4faa43, score 45-42-113) - 128KB SRAM 2-way front cache, unit 18 OK, board bench 14,382 nps warm, 3-game clean

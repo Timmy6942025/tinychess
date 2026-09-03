@@ -33,6 +33,7 @@ tt::tt()
 tt::~tt()
 {
 	free(entries);
+	free(l0);
 }
 
 void tt::debug_helper()
@@ -46,6 +47,15 @@ void tt::debug_helper()
 
 void tt::allocate()
 {
+	// C11 L0: 128 KB SRAM front cache. Plain malloc = internal RAM on ESP32.
+	// Optional: a null l0 just disables the front cache, the PSRAM TT works alone.
+	free(l0);
+	l0 = nullptr;
+	l0 = reinterpret_cast<tt_entry *>(malloc(L0_ENTRIES * sizeof(tt_entry)));
+	if (l0)
+		printf("Using %zu bytes of SRAM for L0 TT\n", size_t(L0_ENTRIES * sizeof(tt_entry)));
+	else
+		printf("# L0 TT malloc failed, PSRAM TT only\n");
 #if defined(ESP32)
 	size_t requested = n_entries * sizeof(tt_entry);
 	size_t psram_size = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
@@ -118,6 +128,8 @@ void tt::reset()
 		return;
 
 	memset(entries, 0x00, sizeof(tt_entry) * n_entries);
+	if (l0)
+		memset(l0, 0x00, sizeof(tt_entry) * L0_ENTRIES);
 }
 
 // see https://lemire.me/blog/2016/06/27/a-fast-alternative-to-the-modulo-reduction/
@@ -136,19 +148,45 @@ inline uint64_t fastrange64(uint64_t word, uint64_t p)
 #define fastrange fastrange64
 #endif
 
+static inline tt_entry * replace_slot(tt_entry *const slots, const uint16_t hash16, const uint8_t generation);
+
 std::optional<tt_entry> IRAM_ATTR tt::lookup(const uint64_t hash)
 {
 	if (entries == nullptr)
 		return { };
 
+	// C11 L0 first: SRAM hit avoids the PSRAM round trip entirely
+	if (l0) {
+		uint64_t   l0index = fastrange(hash, L0_ENTRIES / 2);
+		tt_entry & l0e0    = l0[l0index * 2];
+		tt_entry & l0e1    = l0[l0index * 2 + 1];
+
+		if (l0e0.hash == uint16_t(hash))
+			return l0e0;
+		if (l0e1.hash == uint16_t(hash))
+			return l0e1;
+	}
+
 	uint64_t   index = fastrange(hash, n_entries / 2);
 	tt_entry & e0    = entries[index * 2];
 	tt_entry & e1    = entries[index * 2 + 1];
 
-	if (e0.hash == uint16_t(hash))
+	if (e0.hash == uint16_t(hash)) {
+		if (l0) {
+			uint64_t   l0index = fastrange(hash, L0_ENTRIES / 2);
+			tt_entry * slots = &l0[l0index * 2];
+			*replace_slot(slots, uint16_t(hash), generation) = e0;
+		}
 		return e0;
-	if (e1.hash == uint16_t(hash))
+	}
+	if (e1.hash == uint16_t(hash)) {
+		if (l0) {
+			uint64_t   l0index = fastrange(hash, L0_ENTRIES / 2);
+			tt_entry * slots = &l0[l0index * 2];
+			*replace_slot(slots, uint16_t(hash), generation) = e1;
+		}
 		return e1;
+	}
 
 	return { };
 }
@@ -218,6 +256,13 @@ void IRAM_ATTR tt::store(const uint64_t hash, const tt_entry_flag f, const int d
 	cur->M     = libchessmove_to_uint(m);
 	cur->hash  = uint16_t(hash);
 	cur->age   = generation;
+
+	// C11 L0 mirror: every store lands in SRAM too
+	if (l0) {
+		uint64_t   l0index = fastrange(hash, L0_ENTRIES / 2);
+		tt_entry * l0slots = &l0[l0index * 2];
+		*replace_slot(l0slots, uint16_t(hash), generation) = *cur;
+	}
 }
 
 void IRAM_ATTR tt::store(const uint64_t hash, const tt_entry_flag f, const int d, const int score)
@@ -238,6 +283,13 @@ void IRAM_ATTR tt::store(const uint64_t hash, const tt_entry_flag f, const int d
 	cur->flags = f;
 	cur->hash  = uint16_t(hash);
 	cur->age   = generation;
+
+	// C11 L0 mirror
+	if (l0) {
+		uint64_t   l0index = fastrange(hash, L0_ENTRIES / 2);
+		tt_entry * l0slots = &l0[l0index * 2];
+		*replace_slot(l0slots, uint16_t(hash), generation) = *cur;
+	}
 }
 
 void tt::new_search()
