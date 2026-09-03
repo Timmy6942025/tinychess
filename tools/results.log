@@ -8766,3 +8766,11 @@ Elo difference: -inf +/- nan, LOS: 4.2 %, DrawRatio: 0.0 %
 [2026-09-02 13:28:51] VERDICT C5 sort-stack: REJECT -6.9 +/-25.9 LOS 30.0% (200 games 2+0.02, A=/tmp/Dog-C5-new vs B=/tmp/Dog-C5-baseline) - revert, no Elo
 [2026-09-02 14:20:17] VERDICT C7 insertion-sort: REJECT -33.1 +/-29.0 LOS 1.3% (200 games 2+0.02, A=/tmp/Dog-C7-new vs B=/tmp/Dog-C7-baseline) - revert, insertion sort hurts ordering
 [2026-09-02 14:50:50] VERDICT C9 square-major: KEEP +6.9 +/-30.9 LOS 67.1% (200 games 2+0.02, A=/tmp/Dog-C9-new2 vs B=/tmp/Dog-C9-baseline) - square clustering, board bench 14,213->17,609 (+24% cold, >2% gate, 3-game clean)
+[2026-09-03 17:35:11] VERDICT C10 split-brain TT: REJECT -29.6 +/-31.8 LOS 3.4% (200 games 2+0.02 Threads=1, A=/tmp/Dog-C10-new 676ac604 vs B=/tmp/Dog-C10-base 953986c8, score 35-52-113) - revert; 1-thread split inactive yet negative, shared-TT knowledge loss not worth it, peer-probe fallback did not save it
+[17:42:49] FINGERPRINT A=board(wrapper,port=/dev/ttyACM0)  B=/home/timmy/chess2/engine/app/src/linux-windows/build/Dog-native 52e07339fddc9dfb3e114645401b2e48
+[17:42:58] MATCH board-vs-native-20260903-174248  A=board(port=/dev/ttyACM0, wrapper)  B=/home/timmy/chess2/engine/app/src/linux-windows/build/Dog-native  tc=2+0.02 games=3 adj=yes
+Score of BoardXS3 vs DogNative: 0 - 1 - 0  [0.000] 1
+Score of BoardXS3 vs DogNative: 0 - 2 - 0  [0.000] 2
+Score of BoardXS3 vs DogNative: 0 - 3 - 0  [0.000] 3
+Elo difference: -inf +/- nan, LOS: 4.2 %, DrawRatio: 0.0 %
+[2026-09-03 17:43:14] BOARD C10-revert: reflashed HEAD (post-revert), bench 17,548 nps (matches C9 17,609 cool-board; C9 gain intact), board-vs-native 3-game clean, no stalls/forfeits/illegals
