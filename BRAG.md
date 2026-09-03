@@ -1,8 +1,8 @@
 # BRAG.md
 
-A complete record of what this fork did on top of [Dog](https://github.com/folkertvanheusden/Dog) by Folkert van Heusden (MIT). Three weeks of work, August 3 to 29, 2026, 154 commits. The result ships as TinyChess (`Timmy6942025/tinychess`): one source tree that builds both a desktop UCI engine and ESP32-S3 firmware, a board that broadcasts its own WiFi and plays against a phone browser, and an experiment log with a number attached to every decision.
+A complete record of what this fork did on top of [Dog](https://github.com/folkertvanheusden/Dog) by Folkert van Heusden (MIT). Four weeks of work, August 3 to September 3, 2026, 189 commits. The result ships as TinyChess (`Timmy6942025/tinychess`): one source tree that builds both a desktop UCI engine and ESP32-S3 firmware, a board that broadcasts its own WiFi and plays against a phone browser, and an experiment log with a number attached to every decision.
 
-Every figure below comes from `tools/results.log` (5,700+ lines), `tools/bench.csv`, or a named doc in the repo. Nothing here is recalled from memory.
+Every figure below comes from `tools/results.log` (8,700+ lines), `tools/bench.csv`, or a named doc in the repo. Nothing here is recalled from memory.
 
 ## Where we started
 
@@ -13,13 +13,13 @@ Credit where due. Upstream Dog at the fork point (`9549c3c`) gave us a working e
 | | fork point | today |
 |---|---|---|
 | Desktop vs Stockfish 17, 2+0.02, 200 games | -301.3 +/- 57.9 | **-56.1 +/- 43.4** (63-95-42) |
-| Gated search gains stacked after Tier-1 | 0 | **~+230 Elo** (last item: move-ordering rebuild, +24.6 accepted then +16.5 replicated) |
-| Board bench | ~4,300 to 5,079 nps | **~18,800 nps** avg over the startpos bench (17.7k same-day before the last speed item) |
+| Gated search gains stacked after Tier-1 | 0 | **~+242 Elo** (last items: C9 square-major +6.9, C11 L0 SRAM +5.2) |
+| Board bench | ~4,300 to 5,079 nps | **~17.6k cool / ~14.2k warm** on the startpos bench (silicon drifts ~15% with temperature, compare same-session pairs) |
 | Board speed gain from the evaluator rebuild | 0 | **+174 +/- 34 Elo**, measured, see the paired-fused section |
 | Board absolute strength | unmeasured | **~2800-2900** on the SF17 scale (slow TC anchor) |
 | Who can play it | people with a serial cable | **anyone with a phone in WiFi range** |
-| Unit tests | 12 | **21**, plus fuzzers |
-| Documented experiments | 0 | **~45 accepts and rejects**, all with numbers |
+| Unit tests | 12 | **18**, plus fuzzers |
+| Documented experiments | 0 | **~50 accepts and rejects**, all with numbers |
 
 The board rating deserves context. It loses every game against Stockfish 17 at any time control, and we say so in the anchors section. On the human scale it beats virtually every sub-2000 player, which is the scale that matters for a pocket chess computer.
 
@@ -40,8 +40,10 @@ Accepted, in order:
 - **Recapture extension** (+57.8, LOS ~99%). Capturing back on the previous capture square gets a ply. Biggest single accepted gain since the check extension.
 - **Qsearch TT probe removal** (+34.9, LOS 98.2%). The stats prober showed a 2.65% hit rate, and the hits were stale horizon-context scores cutting real evals. Sometimes the improvement is deleting code.
 - **Move-ordering rebuild** (+24.6, llr crossed H1 at 481 games; +16.5 +/- 16.3 on an 800-game replication). Capture history `[side][piece][to][victim]`, butterfly from-to history, and a one-ply continuation table, all int16 with the same gravity rule as the old history, fed by cutoff bonuses and maluses exactly like the quiet path always did. Captures blend it into MVV-LVA; quiets sum all three tables. Biggest single search win since the recapture extension. Known trade-off: about ten fewer WAC puzzle solves at fixed 1000 ms, roughly half of that the ~6% speed tax. Design notes in `docs/move-ordering-rebuild.md`.
+- **Square-major weight layout, C9** (+6.9, LOS 67.1%, 200 games). The 768 feature rows permute at load by square (`sq*12+piece*2+half`) before pairing, so the PSRAM stream stays local. Bit-exact by construction. Board bench moved 14,213 to 17,609 cool (+24%).
+- **L0 SRAM transposition table, C11** (+5.2, LOS 62.6%, 200 games). A 128 KB 2-way SRAM front cache: lookups check SRAM first, PSRAM hits backfill it, every store mirrors to both. Same entries, same age policy, graceful fallback to PSRAM-only if the allocation loses.
 
-That last stretch puts the post-Tier-1 cumulative at **~+230 gated Elo**, all logged in `results.log` with fingerprints.
+That last stretch puts the post-Tier-1 cumulative at **~+242 gated Elo**, all logged in `results.log` with fingerprints.
 
 ### Rating anchors
 
@@ -52,7 +54,7 @@ That last stretch puts the post-Tier-1 cumulative at **~+230 gated Elo**, all lo
 
 ## The graveyard
 
-About 36 ideas were tried, measured, and killed. Each entry has numbers. This section is the actual brag: the discipline is the product.
+About 40 ideas were tried, measured, and killed. Each entry has numbers. This section is the actual brag: the discipline is the product.
 
 Search ideas:
 
@@ -80,15 +82,16 @@ Search ideas:
 - Proper singular extensions (phase 2): exclusion search at depth/2 around tt_value - 2*depth, non-PV only, start depth 8, LOWERBOUND entries only, per-line budget of 4, TT ordering kept but cutoffs suppressed inside the subtree. -6.5 +/- 23.6. On the way in, an unpreflighted variant became the fifth implementation killed by the two-rook ladder sweep: in a +30-pawn position every alternative fails low, so without requiring a LOWERBOUND entry everything extends and the horizon falls apart. At 7-11 ply there is no population of singular nodes worth the verification cost.
 - TT key widening (phase 2): 16 -> 32 bit signatures in 12-byte entries, aging policy untouched. -9.7 +/- 25.9 at Hash=8. Capacity is the whole story: 699k entries vs 1.00M, and at blitz node counts a collided entry wastes a probe or gets rejected by legality rather than losing material. Should flip where tables actually fill (long TCs, big hashes); do not re-gate at bullet with small hashes.
 - ProbCut verification pruner (Aug 29): `depth>=5 && !is_pv && !in_check && beta in [-max_non_mate,max_non_mate] && !is_root`, `probBeta=beta+margin`, `rd=depth-4`, verification `search(rd, -probBeta, -probBeta+1)`. Margins 100, 150, 200 gated at 2+0.02 Hash=8 vs fd8cef65, 200 games each: -655.2 +/-181.1, -552.1 +/-127.1, -520.9 +/-88.4, all LOS 0.0%. Bench depth 15 to 13 in 2.5s. Verification prunes real defenses and adds overhead on top of already-optimal RFP/razoring/futility margins. Do not retry without a capture-gated or eval-gated redesign.
+- September speed-campaign gates (all 200 games at 2+0.02, reverted): `-DNDEBUG` -19.1 +/-30.7 LOS 11.1% (asserts were already free; the flag changed codegen for the worse). Per-node sort-stack scores (C5) -6.9 +/-25.9 LOS 30.0%. Selection-to-insertion sort (C7) -33.1 +/-29.0 LOS 1.3%: the lists are not sorted enough for insertion to win. Split-brain per-core TT (C10) -29.6 +/-31.8 LOS 3.4%, 35-52-113: halved shared knowledge beat the coherence savings, peer-probe fallback did not save it.
 - RukChess nets, see the nets section. Definitively.
 
 Platform and speed ideas:
 
-- `-DNDEBUG`: +0.0% nps. The asserts were register checks in IRAM; their cost was already nothing. Reverted with a fresh-flash A/B to prove the negative was real.
-- 64 KB data cache: the Kconfig trades 32 KB of internal heap for it, and largest free block was 31.7 KB. Rejected on arithmetic before flashing.
+- `-DNDEBUG`: +0.0% nps on an early speed probe (asserts were register checks in IRAM; cost already nothing), then -19.1 +/-30.7 LOS 11.1% on a September 200-game strength gate. Reverted twice, second time with numbers.
+- 64 KB data cache (C3): the Kconfig trades 32 KB of internal heap for it, and largest free block was 31.7 KB. Rejected on arithmetic before flashing. C11's 128 KB SRAM L0 TT shipped instead, a better use of the same budget.
 - 16 B data cache lines (Aug 29): the hypothesis was one TT bucket pair per line, zero dead fetch. Measured the opposite of that: 14,198 -> 12,005 to 12,092 nps (-15%), reverted. Smaller lines halve the bytes per cache-fill, so the streaming NNUE weight rows need 2x fills at a fixed per-fill PSRAM command cost, and the TT's random access does not offset. The 32 B line is the local optimum on this axis; do not retry either direction without a streaming-aware design.
 - QIO flash: claimed +32.7%, then we caught the claim as a clean-rebuild artifact, then the mode hung a 2-thread session at 12 minutes. Reverted. Flash is DIO and stays DIO.
-- Split-brain TT (per-core tables to dodge the non-coherent PSRAM cache): we wrote falsifiable predictions first. Throughput gate passed, Elo gate failed badly, hypothesis dropped by its own rules. This is how you kill a darling.
+- Split-brain TT (per-core tables to dodge the non-coherent PSRAM cache): we wrote falsifiable predictions first. The early attempt passed throughput and failed Elo badly. The September re-probe (C10, halved shared table plus peer-probe fallback, pinned searchers) went straight to a 200-game gate and lost 29.6 +/-31.8, LOS 3.4%. Hypothesis dropped twice by its own rules. This is how you kill a darling.
 - PIE vectorized accumulator updates: the S3's PIE is a reduced dot-product subset. `EE.VADD.S16` does not exist in this silicon (full add/sub PIE is S2-only). Proven with CCOUNT probes, documented, closed. **Correction, August 24:** closed on the wrong generalization. No wrapping int16 vector add exists, but exact mod-2^16 adds do: zero-widen each 128-bit chunk to s32 with `EE.VZIP.16` against a fresh zero register, combine with `EE.VADDS/VSUBS.S32` (a handful of widened rows cannot reach 2^31, so saturation never fires), narrow back with `EE.VUNZIP.16`, whose even elements are exactly the low 16 bits of each widened lane. The paired-fused rebuild below ships this. The original CCOUNT conclusion was right that a naive saturating add changes semantics; it was wrong that nothing could.
 - Serial-aware time budget (subtract the 50 ms serial floor): saves forfeits, costs 1.5 to 2 plies, a net wash that cannot pass a gate. Emergency clamp variant: +25 estimated against +/-32 gate noise, ungateable. No change.
 - Moves-to-go floor on desktop: -76 regression. Kept ESP32-only, and the desktop gate that caught the regression is recorded next to the fix.
@@ -128,6 +131,8 @@ The board is where compute actually binds, and there the same change is worth a 
 The move-ordering rebuild added its own tax. An Aug 26 re-profile (tools/results.log) put it at 5.7% desktop and 3.3% board (alternating-flash 18,916 -> 18,283). A bit-exact reclaim was tried — victim reuse, bounds cleanup, and a per-node hoist that added 768 bytes to the 28 KB searcher stack and hung the board — the safe subset saved 0.40% of instructions and ~0% on the board. The naive 2 MB merged butterfly/continuation layout does not fit the 33 KB PSRAM budget per searcher, so no layout ship. The tax stands.
 
 After the reopen, the map file showed four per-node callees still XIP-resident: the two non-pawn movegen generators, `is_legal_move`, and `nnue_k::apply`, plus a per-node `std::vector::resize` call whose zero-fill was overwritten before anyone read it. All four functions moved into IRAM and the resize went grow-only. The board startpos bench moved 14,027 -> 14,198 nps (+1.2%) and a 200-game gate measured +15.6 +/- 34.6, LOS 81.2% against the prior state. Small, safe, bit-exact by construction.
+
+September added two more keeps from the `docs/SPEEDUP_PLAN.md` tier list. C9 permutes the 768 feature rows square-major before pairing (+6.9 Elo desktop, +24% board bench cool). C11 puts a 128 KB 2-way SRAM TT in front of the PSRAM table (+5.2 Elo, board parity warm). The rejected siblings (C1, C5, C7, C10) are in the graveyard with numbers. Still untouched: the C6 ordering variant (TT score before static eval) and the 64 KB DCache (blocked on heap arithmetic).
 
 Not everything survived. Correction history - the technique behind Stockfish's 2024 gains - got the full treatment: six configurations, roughly 1,900 gated games, including one variant that looked like +12 at 200 games and measured -33 when replicated at 600. A later attempt made the tables shared and persistent across games, then lost 19 Elo over 200 games. Persistence did not rescue the idea. Within-game learning volume is too small for the original tables to separate signal from noise here, and the razor/RFP/futility margins are tuned tighter than any useful deflection. The whole line was reverted with a do-not-retry note (`docs/correction-history.md`). Two more designs died before implementation cost anything: certified-interval evaluation failed on envelope arithmetic, and an offline recalibration map failed stability checks across position populations.
 
@@ -190,10 +195,10 @@ Web stack, most of it found by driving the real page:
 The original goal was a chess engine on a microcontroller. Somewhere along the way the board learned to host the game itself.
 
 - SoftAP `DOG-CHESS` at `192.168.4.1`. Join from a phone, a captive-portal sign-in sheet pops (DNS responder plus a wildcard httpd catch-all 302s the probes from Apple, Google, and Microsoft), and you land on instructions, then the game. No app, no internet, no cables.
-- The web page is one self-contained HTML file, about 40 KB with the ejgfv PNG piece set included, served from SPIFFS. Offline-capable, mobile-first, container-query board sizing, two-pane landscape, safe-area insets, no CDN.
-- Full chess UX: tap-tap and drag moves with a floating piece, promotion chooser, last-move and check highlights, FLIP move animation, captured-piece bars with material lead, sounds and haptics, flip board, resign, formatted history (`e4xd5`, `e8=Q`), rematch flow.
-- Server-authoritative continuous clocks with a difficulty ladder from 5 s to 120 s per move, 30-minute casual base clocks.
-- Multiplayer for a table: one seat, spectator view for everyone else, joinable waitlist, abandoned seats self-heal after 3 idle minutes, holder can rematch or give up the board. Two simultaneous games are ruled out on purpose; one engine instance uses both cores and one TT.
+- The web page is one self-contained HTML file, about 79 KB with the ejgfv PNG piece set included, served from SPIFFS. Offline-capable, mobile-first, container-query board sizing, two-pane landscape, safe-area insets, no CDN.
+- Full chess UX: tap-tap and drag moves with a floating piece, promotion chooser, last-move and check highlights, FLIP move animation, captured-piece bars with material lead, sounds and haptics with a persisted toggle, flip board, pause and resume with frozen clocks, resign, formatted history (`e4xd5`, `e8=Q`), PGN copy, rematch flow. The thinking indicator is a masked sweep animation; an offline banner appears when the board drops.
+- Server-authoritative continuous clocks with Fischer time controls (`1+0` through `30+0`). Pause shifts the turn anchor so frozen time is never charged.
+- Multiplayer for a table: one seat, spectator view for everyone else with a live presence count and per-move toasts, joinable waitlist with takeover countdown, abandoned seats self-heal after 3 idle minutes, holder can rematch or give up the board. Async moves publish the human ply instantly so spectators stay within one poll. Two simultaneous games are ruled out on purpose; one engine instance uses both cores and one TT.
 - The web path calls the exact same UCI handlers as the serial path. Proof by construction: `/move`, serial UCI, and the desktop binary return the identical move for identical positions.
 - Stability earned, not assumed: a 15-minute scripted soak (29 games, 783 plies, 0 errors) and a 2-hour power-bank session (253 games, 6,909 plies, 0 errors, 0 resets, uptime continuous at 7,571 s).
 - Real-phone playtesting humbled us twice, and the lessons are recorded: release the seat and clear session state after any multi-player testing, and first-timers learning a UI need longer clocks than enthusiasts think.
@@ -206,13 +211,13 @@ The original goal was a chess engine on a microcontroller. Somewhere along the w
 - `epd_test.py` plus a 300-position WAC suite, `native_check.sh` for one-shot clean build and full tests, `board_check.sh` and `board_vs_native.sh` for the flash-and-match loop.
 - `gen_lmr_table.py`, `gen_attack_tables.py`, `net_convert.py`, `setup_esp_idf.sh`.
 - A Linux CI workflow building and running the unit suite on push.
-- Test count grew 12 to 21, including NNUE incremental-update fuzzing, TT round-trip fuzzing, a mate-in-N depth sweep, deep perft, and a SIMD kernel test pinning the saturating semantics.
+- Test count grew 12 to 18, including NNUE incremental-update fuzzing, TT round-trip fuzzing, a mate-in-N depth sweep, deep perft, and a SIMD kernel test pinning the saturating semantics.
 - `openings.epd`, 28 balanced mainlines, expanded after the first SPRT book proved too thin.
 - The opening book itself got audited: every branch walked and depth-8 scored, 148 leaky lines pruned, leaky exits down from 16.8% to 0.9%, mean exit value up from +75.5 to +119.3.
 
 ## Process that made the numbers mean something
 
-- Every change passes the desktop build, the unit gate, then either a 200-game strength match or the board flash plus 3-game gate plus bench. The workflow lives in AGENTS.md and was followed for all 143 commits.
+- Every change passes the desktop build, the unit gate, then either a 200-game strength match or the board flash plus 3-game gate plus bench. The workflow lives in AGENTS.md and was followed for all 189 commits.
 - Platform-conditional fixes are a deliberate pattern: when a fix helps the board and regresses desktop, the desktop gate decides, and the fix ships guarded with both measurements recorded.
 - Housekeeping counted too: libchess vendored into the tree (three local fixes: `pseudo_legal_move_list_into`, FEN en-passant validation, `go st`), upstream cruft removed (Docker packaging, RPM spec, historic versions, a 3D-printed box), stale docs archived.
 - The latest published prebuilt release (`v0.5-prebuilt`, built from `1efb667`) ships the desktop binary and a flashable board image so a new owner needs Python and a cable, nothing else.

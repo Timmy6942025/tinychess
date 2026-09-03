@@ -73,9 +73,10 @@ This file tells coding agents how to work in this repo.
 - Board bench: compare same-session pairs only - absolute nps swings ~15% with
   board temperature. Cool-board anchors: ~18,800 staged vs ~17,700 control
   (output-layer staging era, Aug 25); hot-board anchors: ~15,500 vs ~14,600
-  same night. History: ~8,300 pre-paired-fused rebuild, 6,857 at Tier-1.
-  Keep this dev Pi off DOG-CHESS while benching (its httpd client load costs
-  real nps).
+  same night. C9 era (Sep 2-3): 17,609 cool vs 14,213 warm same firmware;
+  C11 reflash measured 14,382 warm. History: ~8,300 pre-paired-fused rebuild,
+  6,857 at Tier-1. Keep this dev Pi off DOG-CHESS while benching (its httpd
+  client load costs real nps).
 - Desktop native bench: roughly 350k-590k nps via the bench protocol depending on
   machine load, LTO build, big net. The evaluator is
   memory-latency-bound on desktop; instruction-count profiles mislead.
@@ -101,6 +102,17 @@ This file tells coding agents how to work in this repo.
   libstdc++ `_M_default_append` flash call. Search tree bit-identical. Board
   startpos bench 14,198 vs 14,027 (+1.2%); strength gate +15.6 +/- 34.6,
   LOS 81.2% vs pre-C8 HEAD: KEEP; 18/18 unit; board-vs-native 3-game clean.
+- September speed campaign (docs/SPEEDUP_PLAN.md tiers, one gate each):
+  C9 square-major weight layout KEEP (+6.9 +/-30.9, LOS 67.1%, 200 games;
+  `sq*12+piece*2+half` permute before pairing, bit-exact); C11 128 KB SRAM
+  2-way L0 TT KEEP (+5.2 +/-31.8, LOS 62.6%, 45-42-113; SRAM-first lookup,
+  PSRAM backfill, mirrored stores). Cumulative post-Tier-1 is now ~+242 Elo.
+  REJECTED, do not retry without a new design: C1 `-DNDEBUG` (-19.1 +/-30.7,
+  LOS 11.1%), C5 sort-stack scores (-6.9 +/-25.9), C7 insertion sort
+  (-33.1 +/-29.0, ordering got worse), C10 split-brain per-core TT
+  (-29.6 +/-31.8, LOS 3.4%, 35-52-113; halved shared knowledge beat the
+  coherence savings). Still untried: C6 ordering variant (TT score before
+  static eval; the eval-cache form was SPRT-rejected).
 - Board pthread stacks default to 16 KB (`sdkconfig`, was 32 KB): internal SRAM
   got too tight for the old 96 KB peak demand during `test`. `allocate_threads`
   degrades to fewer searchers instead of aborting, and the stack protector

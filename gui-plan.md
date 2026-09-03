@@ -416,6 +416,14 @@ input wedge is a dev-env quirk, serial output is readable).
   open network + failed-portal marking keeps phones from preferring it.
 - Flash the final image, document the usage one-liner in README.
 
+## Recent web work (Aug 30–Sep 3, after Phase 4)
+
+- **Pause and resume** (`b6292ce`): `POST /pause` and `POST /resume`, owner only. The server shifts the turn anchor so frozen time is never charged; `/state` reports `paused`, the seat cannot be taken while paused, moves are rejected with 409.
+- **Async moves for multi-device** (`b6292ce`): `POST /move` with `async:true` publishes the human ply instantly and returns `{searching:true}`, freeing the single httpd task. The search runs on a detached worker that books clocks on landing. Spectators see the move within one poll. Sync path kept for automated gates. `/state` carries `searching` and client count.
+- **Thinking indicator**: the status line uses a masked sweep animation over the word `Thinking...`, shown on every device while `boardThinking || serverSearching`.
+- **Polish pass** (`3899539`, `0d4ea43`): CSS variables, presence pill, per-move spectator toasts, waitlist takeover countdown, PGN copy, persisted sound toggle, offline banner, adaptive polling (350 ms active / 250 ms thinking / 1200 ms idle with jitter and hidden-tab backoff), render skip on unchanged state hash. Page is ~79 KB, board colors `f0d9b5`/`b58863`.
+- Clocks stay Fischer (`1+0` through `30+0`) and server-authoritative throughout; pause composes with them by anchor shift.
+
 ## Risks & mitigations
 
 - **Internal RAM pressure (WiFi + httpd vs ~31.7 KB largest free block)**:

@@ -162,6 +162,9 @@ retraining, NNUE outputs bit-identical, constraints respected. Elo assumed
 - Expectation: +2-4% nps (~+10-15 Elo). Effort: 1 CMake line. Risk: none
   (40-game gate catches any misdiagnosis).
 - RAM: 0.
+- DONE Sep 1 2026: REJECT. 200-game gate at 2+0.02 measured -19.1 +/-30.7,
+  LOS 11.1%. The asserts were already free; the flag changed codegen for the
+  worse. Reverted.
 
 **C2. WDT yield gate: raise period 250 ms -> 1500 ms**
 - Mechanism: gate fires every 250 ms with 10 ms double-block = ~4% wall loss;
@@ -191,6 +194,10 @@ retraining, NNUE outputs bit-identical, constraints respected. Elo assumed
   + qsearch call sites). Risk: medium (child_pv ownership/aliasing - careful
   with the `pv->clear()` and parent-PV-copy logic; gate after).
 - RAM: ~0 (stack instead of heap).
+- DONE Sep 2 2026: REJECT. Gated as stack-allocated sort scores in
+  `MoveList::sort` (the main/qsearch scorers already used scratch buffers, so
+  this was the remaining per-node heap). 200-game gate at 2+0.02 measured
+  -6.9 +/-25.9, LOS 30.0%. Reverted.
 
 Tier 1 combined upper bound: ~+15-30% nps -> game path ~9,200-10,400 nps,
 ~+65-125 Elo. Individual gains are gated per-step.
@@ -207,6 +214,10 @@ before static eval where the TT already has a bound). Expectation: +1-3%.
 are the common case after MVV/LVA-ish scoring; ~465 comparisons -> ~60 in the
 common case). Expectation: +1-3%. Effort: small. Risk: low.
 
+DONE Sep 2 2026: REJECT. Gated in both `search()` and `qs()` (full pre-sort,
+then linear play). 200-game gate at 2+0.02 measured -33.1 +/-29.0, LOS 1.3%:
+the lists are not sorted enough for insertion to win. Reverted.
+
 **C8. IRAM the remaining per-node flash callees** (libstdc++ vector ops die
 with C5; then re-measure PMC I-cache misses and IRAM the next hot symbols).
 Expectation: +1-3% after C5. Effort: small (map-file driven).
@@ -218,8 +229,9 @@ delta dispatcher); grow-only scores resize killed the per-node libstdc++
 _M_default_append flash call and its zero-fill (scores always overwritten
 below n_moves). Board startpos bench 14,198 vs 14,027 (+1.2%); strength gate
 +15.6 +/- 34.6, LOS 81.2% vs pre-C8 HEAD: KEEP. Unit 18/18, board-vs-native
-3-game clean. Still open from this scope: C7 insertion sort (the node sort is
-still O(n^2) selection sort) and the WDT yield-gate reduction.
+3-game clean. Closed since: C7 insertion sort was gated and rejected (-33.1),
+C2 WDT gate (250 ms -> 1.5 s) shipped earlier. The node sort stays selection
+sort: measured optimum.
 
 **C9. Weight-layout locality**: order NNUE feature rows by king square so the
 streamed rows cluster in the DCache. Bit-identical math, different memory
@@ -227,16 +239,32 @@ layout. Expectation: +2-4% on eval-bound nodes. Effort: build-time reorder +
 re-generated blob (no retraining; same values). Risk: low-medium (must keep
 weights in sync with the board).
 
+DONE Sep 2 2026: KEEP. Shipped as square-major (`sq*12+piece*2+half`, this net
+has no king-relative features so the piece square is the cluster key),
+permuted before pairing on both targets with an index remap in `push_delta`.
+200-game gate at 2+0.02 measured +6.9 +/-30.9, LOS 67.1%. Board bench moved
+14,213 -> 17,609 cool (+24%). Unit 18/18, 3-game clean.
+
 ### Tier 3: audacious (see section 4)
 
 **C10. Split-brain TT (audacious headline)**: per-core private TT + core
 pinning + small shared PV hint in SRAM. See section 4.
+
+DONE Sep 3 2026: REJECT. Gated as halved shared table (per-core halves of one
+array, peer-probe fallback, pinned searchers). 200-game gate at 2+0.02
+measured -29.6 +/-31.8, LOS 3.4% (35-52-113). Halved shared knowledge beat
+the coherence savings. Reverted by its own rules.
 
 **C11. L0 TT in internal SRAM**: 128-256 KB private L0 (high-ply-reuse
 entries) in SRAM (~2-5 cycle access vs 30-45 PSRAM). Cheaper than C10,
 smaller payoff (only the ~20% tt_hit traffic benefits), and it composes with
 C10. Expectation: +2-5%. Effort: moderate. Risk: low-medium (SRAM budget:
 dram0 data+bss ~45 KB today; ~200 KB free internal).
+
+DONE Sep 3 2026: KEEP. Shipped as a 128 KB 2-way SRAM front cache (16,384
+entries): SRAM-first lookup, PSRAM-hit backfill, mirrored stores, same age
+policy, PSRAM-only fallback. 200-game gate at 2+0.02 measured +5.2 +/-31.8,
+LOS 62.6% (45-42-113). Board bench 14,382 warm (parity band), 3-game clean.
 
 ### Rejected (with reason)
 - **PIE for the feature transformer**: PIE lacks an elementwise add; row
