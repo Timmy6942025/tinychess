@@ -712,50 +712,64 @@ class UCIService {
         std::vector<std::string> searchmoves;
         bool filling_searchmoves = false;
         std::string tmp;
+        // Tolerant number reader: a float clock from a buggy sender
+        // ("btime 5039.88") must not abort the line, and a garbage value
+        // must not poison the stream for later fields. Prefix-parseable
+        // input ("5039.88" -> 5039) still works; anything else is skipped.
+        // Every path consumes input or exits, so no infinite loop: a
+        // missing value fails at EOF and the loop condition ends it.
+        auto read_num = [&line_stream](auto &out) -> bool {
+            if (line_stream >> out)
+                return true;
+            line_stream.clear();
+            std::string skip;
+            line_stream >> skip;
+            return false;
+        };
         while (line_stream >> tmp) {
             if (tmp == "nodes") {
                 std::uint64_t nodes = 0;
-                if (line_stream >> nodes) {
+                if (read_num(nodes)) {
                     nodes_opt = nodes;
                 }
             } else if (tmp == "movetime") {
                 int movetime = 0;
-                if (line_stream >> movetime) {
+                if (read_num(movetime)) {
                     movetime_opt = movetime;
                 }
             } else if (tmp == "st") {
                 int st_seconds = 0;
-                if (line_stream >> st_seconds) {
+                if (read_num(st_seconds)) {
                     movetime_opt = st_seconds * 1000;
                 }
             } else if (tmp == "depth") {
                 int depth = 0;
-                if (line_stream >> depth) {
+                if (read_num(depth)) {
                     depth_opt = depth;
                 }
             } else if (tmp == "wtime") {
                 int wtime = 0;
-                if (line_stream >> wtime) {
+                if (read_num(wtime)) {
                     wtime_opt = wtime;
                 }
             } else if (tmp == "winc") {
                 int winc = 0;
-                if (line_stream >> winc) {
+                if (read_num(winc)) {
                     winc_opt = winc;
                 }
             } else if (tmp == "btime") {
                 int btime = 0;
-                if (line_stream >> btime) {
+                if (read_num(btime)) {
                     btime_opt = btime;
                 }
             } else if (tmp == "binc") {
                 int binc = 0;
-                if (line_stream >> binc) {
+                if (read_num(binc)) {
                     binc_opt = binc;
                 }
             } else if (tmp == "movestogo") {
                 int movestogo = 0;
-                if (line_stream >> movestogo) {
+                if (read_num(movestogo)) {
                     movestogo_opt = movestogo;
                 }
             } else if (tmp == "infinite") {
@@ -769,7 +783,12 @@ class UCIService {
                 searchmoves.push_back(tmp);
                 continue;
             } else {
-                break;
+                // Unknown token (e.g. a float remainder ".0" after a
+                // prefix-parsed clock): skip it, don't abort the line -
+                // aborting drops every later field (observed: float btime
+                // silently zeroed the whole clock and the search ran
+                // unbounded). See tools/results.log 2026-09-04.
+                continue;
             }
             filling_searchmoves = false;
         }

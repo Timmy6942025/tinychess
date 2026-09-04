@@ -1254,6 +1254,17 @@ void main_task()
 				// search instead of falling through to "infinite".
 				int raw_ms = is_white ? w_time : b_time;
 				int ms     = raw_ms > 0 ? std::max(1, raw_ms - MOVE_OVERHEAD_MS) : 0;
+				if (ms == 0 && (is_white ? a_w_time.has_value() : a_b_time.has_value())) {
+					// Clock token present but zero (buggy sender, torn serial):
+					// never run unbounded here - with think_time_max == 0 no
+					// timer is armed and the soft stop is disabled, so the
+					// search only ends at the GUI's "stop" (observed: 21-47 s
+					// thinks on 5-30 s clocks). A 1 ms budget answers off the
+					// first iteration. Absent clocks keep the legacy unbounded
+					// path (`go infinite`, analysis). See tools/results.log
+					// 2026-09-04.
+					ms = 1;
+				}
 				int ms_opponent  = is_white ? b_time : w_time;
 
 				if (ms > 0) {
