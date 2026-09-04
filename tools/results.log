@@ -8781,3 +8781,4 @@ Score of BoardXS3 vs DogNative: 0 - 2 - 0  [0.000] 2
 Score of BoardXS3 vs DogNative: 0 - 3 - 0  [0.000] 3
 Elo difference: -inf +/- nan, LOS: 4.2 %, DrawRatio: 0.0 %
 [2026-09-03 22:19:55] VERDICT C11 L0 SRAM TT: KEEP +5.2 +/-31.8 LOS 62.6% (200 games 2+0.02 Threads=1, A=/tmp/Dog-C11-new e40b0083 vs B=/tmp/Dog-C11-base 2b4faa43, score 45-42-113) - 128KB SRAM 2-way front cache, unit 18 OK, board bench 14,382 nps warm, 3-game clean
+[2026-09-04 15:12:51] VERDICT C6 TT-score-before-static-eval: REJECT -34.9 +/-31.2 LOS 1.5% (200 games 2+0.02 Threads=1, A=/tmp/Dog-C6-new 6ea90ab9 vs B=/tmp/Dog-C6-base d02fd76b, score 32-52-116) - revert; TT bounds are search-contextual, using them as static eval distorts null/razor/futility margins
