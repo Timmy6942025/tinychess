@@ -65,6 +65,13 @@ cutechess-cli -engine name=board proto=uci cmd="python3 tools/wrapper.py /dev/tt
 
 ### Option B. Build from source
 
+Clone with `--recursive` (required: the submodules hold the Syzygy prover and the book sources):
+
+```sh
+git clone --recursive https://github.com/Timmy6942025/tinychess.git
+cd tinychess/engine
+```
+
 Native, gcc or g++ 14 or newer:
 
 ```sh
