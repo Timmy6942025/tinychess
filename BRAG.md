@@ -213,14 +213,14 @@ The original goal was a chess engine on a microcontroller. Somewhere along the w
 - `gen_lmr_table.py`, `gen_attack_tables.py`, `net_convert.py`, `setup_esp_idf.sh`.
 - A Linux CI workflow building and running the unit suite on push.
 - Test count grew 12 to 18, including NNUE incremental-update fuzzing, TT round-trip fuzzing, a mate-in-N depth sweep, deep perft, and a SIMD kernel test pinning the saturating semantics.
-- `openings.epd`, 28 balanced mainlines, expanded after the first SPRT book proved too thin.
+- `openings.epd`, 28 balanced mainlines, expanded after the first SPRT book proved too thin. Sep 4: two corrupt lines repaired (a 17-piece position that aborted the engine on `position fen`, a 7-column rank).
 - The opening book itself got audited: every branch walked and depth-8 scored, 148 leaky lines pruned, leaky exits down from 16.8% to 0.9%, mean exit value up from +75.5 to +119.3.
 
 ## Process that made the numbers mean something
 
 - Every change passes the desktop build, the unit gate, then either a 200-game strength match or the board flash plus 3-game gate plus bench. The workflow lives in AGENTS.md and was followed for all 198 commits.
 - Platform-conditional fixes are a deliberate pattern: when a fix helps the board and regresses desktop, the desktop gate decides, and the fix ships guarded with both measurements recorded.
-- Housekeeping counted too: libchess vendored into the tree (four local fixes: `pseudo_legal_move_list_into`, FEN en-passant validation, `go st`, tolerant `go`-line numbers plus a 1 ms floor on present-but-zero clocks), upstream cruft removed (Docker packaging, RPM spec, historic versions, a 3D-printed box), stale docs archived.
+- Housekeeping counted too: libchess vendored into the tree (five local fixes: `pseudo_legal_move_list_into`, FEN en-passant validation, `go st`, tolerant `go`-line numbers plus a 1 ms floor on present-but-zero clocks, refusal of piece-count-illegal FENs), upstream cruft removed (Docker packaging, RPM spec, historic versions, a 3D-printed box), stale docs archived.
 - The latest published prebuilt release (`v0.6-prebuilt`, built from `490a633`) ships the desktop binary and a flashable board image so a new owner needs Python and a cable, nothing else.
 
 The fork keeps the MIT license and the link back to Folkert's project. The engine name inside the code is still Dog. Most of what is good here stands on his work; what broke along the way was ours, and it is all written down above.
