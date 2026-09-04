@@ -90,6 +90,7 @@
 bool with_syzygy = false;
 #endif
 #include "test.h"
+#include "time_policy.h"
 #include "tt.h"
 #include "tui.h"
 #include "web.h"
@@ -291,6 +292,16 @@ bool allow_minimal         = false;
 auto allow_minimal_handler = [](const bool value) {
 	allow_minimal = value;
 };
+
+// Adaptive time policy UCI handlers — each writes one field of time_policy::Params.
+auto tm_inc_max_handler = [](const int v){ auto p=time_policy::get_params(); p.inc_weight_max_pm=v; time_policy::set_params(p); };
+auto tm_inc_min_handler = [](const int v){ auto p=time_policy::get_params(); p.inc_weight_min_pm=v; time_policy::set_params(p); };
+auto tm_cpx_handler     = [](const int v){ auto p=time_policy::get_params(); p.complexity_weight_pm=v; time_policy::set_params(p); };
+auto tm_opp_handler     = [](const int v){ auto p=time_policy::get_params(); p.opp_react_weight_pm=v; time_policy::set_params(p); };
+auto tm_scale_lt2s_handler   = [](const int v){ auto p=time_policy::get_params(); p.scale_lt2s_pm=v; time_policy::set_params(p); };
+auto tm_scale_lt5s_handler   = [](const int v){ auto p=time_policy::get_params(); p.scale_lt5s_pm=v; time_policy::set_params(p); };
+auto tm_scale_lt15s_handler  = [](const int v){ auto p=time_policy::get_params(); p.scale_lt15s_pm=v; time_policy::set_params(p); };
+auto tm_scale_gte15s_handler = [](const int v){ auto p=time_policy::get_params(); p.scale_gte15s_pm=v; time_policy::set_params(p); };
 
 inbuf i;
 std::istream is(&i);
@@ -1047,6 +1058,7 @@ void main_task()
 	auto ucinewgame_handler = [&global_cs](std::istringstream&) {
 		my_trace("# ucinewgame\n");
 		stop_ponder();
+		time_policy::g_opp_hist.reset();
 		for(auto & i: sp) {
 			memset(i->history, 0x00, history_malloc_size);
 			memset(i->capture_history, 0x00, capture_history_malloc_size);
@@ -1281,14 +1293,16 @@ void main_task()
 					ms = 1;
 				}
 				int ms_opponent  = is_white ? b_time : w_time;
+				int raw_ms_opp = is_white ? b_time : w_time;
+				int ms_opp_for_hist = raw_ms_opp > 0 ? std::max(1, raw_ms_opp - MOVE_OVERHEAD_MS) : 0;
 
 				if (ms > 0) {
-					// Use the same moves_to_go horizon whether the GUI sent
-					// `movestogo` or not. A fixed ms/10 assumption over-spends
-					// per move at incremental time controls (2+0.02 -> ~40
-					// moves to go) and forfeits both engines on the clock.
-					think_time_max = ms / moves_to_go + time_inc * 2 / 3;
-					think_time_min = ms / std::max(1, moves_to_go * 3) + time_inc / 2;
+					// Track opponent clock for reaction (Fischer: infer used = prev - cur + inc)
+					if (ms_opp_for_hist > 0)
+						time_policy::g_opp_hist.observe(ms_opp_for_hist, time_inc_opp);
+					auto budget = time_policy::compute_budget(sp.at(0)->pos, ms, time_inc, ms_opp_for_hist, time_inc_opp, moves_to_go);
+					think_time_min = budget.first;
+					think_time_max = budget.second;
 #if defined(ESP32)
 					// Bullet-clock slack: at fast TC the search rides its hard
 					// cap far more often than the desktop (slower nodes skip
@@ -1308,6 +1322,10 @@ void main_task()
 					// of 0 would disable the timeout timer entirely)
 					think_time_max = std::max(1, think_time_max);
 					think_time_min = std::max(1, think_time_min);
+					double cpx = time_policy::compute_complexity(sp.at(0)->pos);
+					double rf = time_policy::remaining_scale_for_ms(ms, time_policy::get_params());
+					double of = time_policy::opp_factor_from_history();
+					my_trace("# TM policy: cpx=%.3f rem_scale=%.3f opp_f=%.3f budget %d..%d ms\n", cpx, rf, of, think_time_min, think_time_max);
 				}
 
 				my_trace("# My time: %d ms, inc: %d ms, opponent time: %d ms, inc: %d ms, full: %d, half: %d, moves_to_go: %d, tt: %d\n", ms, time_inc, ms_opponent, time_inc_opp, sp.at(0)->pos.fullmoves(), sp.at(0)->pos.halfmoves(), moves_to_go, tti.get_per_mille_filled());
@@ -1499,6 +1517,26 @@ void main_task()
 	libchess::UCISpinOption hash_size_option("Hash", 6, 1, 8, hash_size_handler);
 	uci_service->register_option(hash_size_option);
 #endif
+	// Adaptive time policy — hill-climbable (defaults = parity with old fixed logic)
+	{
+		auto p = time_policy::get_params();
+		libchess::UCISpinOption tm_inc_max_opt("TM_IncMax", p.inc_weight_max_pm, 0, 2000, tm_inc_max_handler);
+		libchess::UCISpinOption tm_inc_min_opt("TM_IncMin", p.inc_weight_min_pm, 0, 2000, tm_inc_min_handler);
+		libchess::UCISpinOption tm_cpx_opt("TM_ComplexityWeight", p.complexity_weight_pm, 0, 1000, tm_cpx_handler);
+		libchess::UCISpinOption tm_opp_opt("TM_OppReactWeight", p.opp_react_weight_pm, 0, 1000, tm_opp_handler);
+		libchess::UCISpinOption tm_s2_opt("TM_ScaleLT2s", p.scale_lt2s_pm, 200, 2000, tm_scale_lt2s_handler);
+		libchess::UCISpinOption tm_s5_opt("TM_ScaleLT5s", p.scale_lt5s_pm, 200, 2000, tm_scale_lt5s_handler);
+		libchess::UCISpinOption tm_s15_opt("TM_ScaleLT15s", p.scale_lt15s_pm, 200, 2000, tm_scale_lt15s_handler);
+		libchess::UCISpinOption tm_sge_opt("TM_ScaleGTE15s", p.scale_gte15s_pm, 200, 2000, tm_scale_gte15s_handler);
+		uci_service->register_option(tm_inc_max_opt);
+		uci_service->register_option(tm_inc_min_opt);
+		uci_service->register_option(tm_cpx_opt);
+		uci_service->register_option(tm_opp_opt);
+		uci_service->register_option(tm_s2_opt);
+		uci_service->register_option(tm_s5_opt);
+		uci_service->register_option(tm_s15_opt);
+		uci_service->register_option(tm_sge_opt);
+	}
 	libchess::UCICheckOption allow_ponder_option("Ponder", allow_ponder, allow_ponder_handler);
 	uci_service->register_option(allow_ponder_option);
 	libchess::UCICheckOption allow_tracing_option("Trace", trace_enabled, allow_tracing_handler);
