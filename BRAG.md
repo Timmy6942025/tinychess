@@ -220,6 +220,6 @@ The original goal was a chess engine on a microcontroller. Somewhere along the w
 - Every change passes the desktop build, the unit gate, then either a 200-game strength match or the board flash plus 3-game gate plus bench. The workflow lives in AGENTS.md and was followed for all 191 commits.
 - Platform-conditional fixes are a deliberate pattern: when a fix helps the board and regresses desktop, the desktop gate decides, and the fix ships guarded with both measurements recorded.
 - Housekeeping counted too: libchess vendored into the tree (three local fixes: `pseudo_legal_move_list_into`, FEN en-passant validation, `go st`), upstream cruft removed (Docker packaging, RPM spec, historic versions, a 3D-printed box), stale docs archived.
-- The latest published prebuilt release (`v0.5-prebuilt`, built from `1efb667`) ships the desktop binary and a flashable board image so a new owner needs Python and a cable, nothing else.
+- The latest published prebuilt release (`v0.6-prebuilt`, built from `490a633`) ships the desktop binary and a flashable board image so a new owner needs Python and a cable, nothing else.
 
 The fork keeps the MIT license and the link back to Folkert's project. The engine name inside the code is still Dog. Most of what is good here stands on his work; what broke along the way was ours, and it is all written down above.
