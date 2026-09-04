@@ -209,10 +209,10 @@ const hill = new Chart(ctx, {
       x: {
         type: 'linear',
         min: 1,
-        max: 203,
+        max: 200,
         ticks: {
           stepSize: 10,
-          callback: (v)=> v===1 ? '1' : (v%10===0 || v===199 ? String(v) : ''),
+          callback: (v)=> v===1 ? '1' : (v%10===0 ? String(v) : ''),
           maxRotation: 0,
         },
         title: { display: true, text: 'Commits since fork (199, equally spaced, commit order)' },
@@ -267,10 +267,10 @@ const hill = new Chart(ctx, {
       },
       annotation: {
         annotations: {
-          bigNet: { type:'line', xMin:28, xMax:28, borderColor:'#0a6', borderWidth:1, borderDash:[4,4], label:{display:true, content:'big net +25.8', position:'start', backgroundColor:'#0a6', color:'#fff', font:{size:10}} },
+          bigNet: { type:'line', xMin:28, xMax:28, borderColor:'#0a6', borderWidth:1, borderDash:[4,4], label:{display:true, content:'big net +25.8', position:'end', backgroundColor:'#0a6', color:'#fff', font:{size:10}} },
           lmr: { type:'line', xMin:40, xMax:40, borderColor:'#0a6', borderWidth:1, borderDash:[4,4] },
-          check: { type:'line', xMin:74, xMax:74, borderColor:'#0a6', borderWidth:1, borderDash:[4,4], label:{display:true, content:'check ext +74.7', position:'center', backgroundColor:'#0a6', color:'#fff', font:{size:10}} },
-          recapture: { type:'line', xMin:98, xMax:98, borderColor:'#0a6', borderWidth:1, borderDash:[4,4], label:{display:true, content:'recapture +57.8', position:'center', backgroundColor:'#0a6', color:'#fff', font:{size:10}} },
+          check: { type:'line', xMin:74, xMax:74, borderColor:'#0a6', borderWidth:1, borderDash:[4,4], label:{display:true, content:'check ext +74.7', position:'end', backgroundColor:'#0a6', color:'#fff', font:{size:10}} },
+          recapture: { type:'line', xMin:98, xMax:98, borderColor:'#0a6', borderWidth:1, borderDash:[4,4], label:{display:true, content:'recapture +57.8', position:'end', yAdjust:30, backgroundColor:'#0a6', color:'#fff', font:{size:10}} },
           moveOrder: { type:'line', xMin:152, xMax:152, borderColor:'#0a6', borderWidth:1, borderDash:[4,4], label:{display:true, content:'move-order +24.6', position:'end', backgroundColor:'#0a6', color:'#fff', font:{size:10}} },
           zeroLine: { type:'line', yMin:0, yMax:0, borderColor:'#999', borderWidth:1, borderDash:[2,3] },
         }
