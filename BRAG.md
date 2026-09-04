@@ -1,6 +1,6 @@
 # BRAG.md
 
-A complete record of what this fork did on top of [Dog](https://github.com/folkertvanheusden/Dog) by Folkert van Heusden (MIT). Four weeks of work, August 3 to September 4, 2026, 191 commits. The result ships as TinyChess (`Timmy6942025/tinychess`): one source tree that builds both a desktop UCI engine and ESP32-S3 firmware, a board that broadcasts its own WiFi and plays against a phone browser, and an experiment log with a number attached to every decision.
+A complete record of what this fork did on top of [Dog](https://github.com/folkertvanheusden/Dog) by Folkert van Heusden (MIT). Four weeks of work, August 3 to September 4, 2026, 198 commits. The result ships as TinyChess (`Timmy6942025/tinychess`): one source tree that builds both a desktop UCI engine and ESP32-S3 firmware, a board that broadcasts its own WiFi and plays against a phone browser, and an experiment log with a number attached to every decision.
 
 Every figure below comes from `tools/results.log` (8,780+ lines), `tools/bench.csv`, or a named doc in the repo. Nothing here is recalled from memory.
 
@@ -16,7 +16,7 @@ Credit where due. Upstream Dog at the fork point (`9549c3c`) gave us a working e
 | Gated search gains stacked after Tier-1 | 0 | **~+242 Elo** (last items: C9 square-major +6.9, C11 L0 SRAM +5.2) |
 | Board bench | ~4,300 to 5,079 nps | **~17.6k cool / ~14.2k warm** on the startpos bench (silicon drifts ~15% with temperature, compare same-session pairs) |
 | Board speed gain from the evaluator rebuild | 0 | **+174 +/- 34 Elo**, measured, see the paired-fused section |
-| Board absolute strength | unmeasured | **~2800-2900** on the SF17 scale (slow TC anchor) |
+| Board absolute strength | 0-40-0 vs SF18, 30+0.1 | **~2800-2900**, confirmed (below resolution: >= ~440 under SF18) |
 | Who can play it | people with a serial cable | **anyone with a phone in WiFi range** |
 | Unit tests | 12 | **18**, plus fuzzers |
 | Documented experiments | 0 | **~50 accepts and rejects**, all with numbers |
@@ -50,6 +50,7 @@ That last stretch puts the post-Tier-1 cumulative at **~+242 gated Elo**, all lo
 - Desktop vs Stockfish 17, 200 games at 2+0.02: **-301.3 +/- 57.9** before the tuning pass, **-56.1 +/- 43.4** after it. A +245 Elo swing measured directly against a fixed external reference, not inferred from internal matches.
 - Board vs desktop, 40 games at 2+0.02: 0-40-0, completed clean, roughly -523. The 45.7x nps gap is the price of a 240 MHz microcontroller, and the doubling math some of us hoped for (+390 Elo for 48x) was optimistic. Real port cost: about 500 to 550.
 - Board vs Stockfish 17: 0-201-0 at 2+0.02, 1-23-0 at 10+0.1, 0-12-0 at 30+0.1. Conclusion drawn and recorded: more time does not lift the board at any TC. Absolute estimate ~2800-2900.
+- Board vs Stockfish 18, 40 games at 30+0.1, Sep 4 (Mac serial harness, ponder off, alternating colors): 0-40-0, all mates, zero infra, ~41 moves a side. Below resolution: at least ~440 under SF18. Confirms the 2800-2900 band; 3000+ rejected by measurement. The campaign caught a real bug on the way in: a Mac harness sent float clocks, the vendored `go` parser aborted the line at the first float remainder, Black's clock read 0 ms, and with no timer armed the search ran unbounded (21-47 s thinks, 6 of 6 Black games forfeited). Fix: the parser skips unknown tokens and a present-but-zero clock clamps to 1 ms. Gated desktop 18/18, flashed, proven on-device with a deliberate float-clock game.
 - Desktop control, same code as the board, 20 games vs SF17: 9-6-5 (+53). The engine logic punches near its anchor; hardware is the ceiling.
 
 ## The graveyard
@@ -217,9 +218,9 @@ The original goal was a chess engine on a microcontroller. Somewhere along the w
 
 ## Process that made the numbers mean something
 
-- Every change passes the desktop build, the unit gate, then either a 200-game strength match or the board flash plus 3-game gate plus bench. The workflow lives in AGENTS.md and was followed for all 191 commits.
+- Every change passes the desktop build, the unit gate, then either a 200-game strength match or the board flash plus 3-game gate plus bench. The workflow lives in AGENTS.md and was followed for all 198 commits.
 - Platform-conditional fixes are a deliberate pattern: when a fix helps the board and regresses desktop, the desktop gate decides, and the fix ships guarded with both measurements recorded.
-- Housekeeping counted too: libchess vendored into the tree (three local fixes: `pseudo_legal_move_list_into`, FEN en-passant validation, `go st`), upstream cruft removed (Docker packaging, RPM spec, historic versions, a 3D-printed box), stale docs archived.
+- Housekeeping counted too: libchess vendored into the tree (four local fixes: `pseudo_legal_move_list_into`, FEN en-passant validation, `go st`, tolerant `go`-line numbers plus a 1 ms floor on present-but-zero clocks), upstream cruft removed (Docker packaging, RPM spec, historic versions, a 3D-printed box), stale docs archived.
 - The latest published prebuilt release (`v0.6-prebuilt`, built from `490a633`) ships the desktop binary and a flashable board image so a new owner needs Python and a cable, nothing else.
 
 The fork keeps the MIT license and the link back to Folkert's project. The engine name inside the code is still Dog. Most of what is good here stands on his work; what broke along the way was ours, and it is all written down above.
