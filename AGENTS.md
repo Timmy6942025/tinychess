@@ -111,8 +111,10 @@ This file tells coding agents how to work in this repo.
   LOS 11.1%), C5 sort-stack scores (-6.9 +/-25.9), C7 insertion sort
   (-33.1 +/-29.0, ordering got worse), C10 split-brain per-core TT
   (-29.6 +/-31.8, LOS 3.4%, 35-52-113; halved shared knowledge beat the
-  coherence savings). Still untried: C6 ordering variant (TT score before
-  static eval; the eval-cache form was SPRT-rejected).
+  coherence savings), C6 TT-score-before-static-eval (-34.9 +/-31.2, LOS 1.5%,
+  32-52-116; searched bounds distort the pruning margins). The tier list is
+  now fully gated: nothing untried except 64 KB DCache (blocked on heap
+  arithmetic) and QIO (never again).
 - Board pthread stacks default to 16 KB (`sdkconfig`, was 32 KB): internal SRAM
   got too tight for the old 96 KB peak demand during `test`. `allocate_threads`
   degrades to fewer searchers instead of aborting, and the stack protector

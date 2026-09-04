@@ -210,6 +210,12 @@ keyed on accumulator fingerprint failed on desktop (evalcache, SPRT reject) -
 do NOT retry that exact design. Alternative: cheaper ordering (probe TT score
 before static eval where the TT already has a bound). Expectation: +1-3%.
 
+DONE Sep 4 2026: REJECT. Gated as TT-bound substitution (`eval_from_tt` in
+place of `nnue_evaluate` on any TT hit, same null/razor/futility consumers).
+200-game gate at 2+0.02 measured -34.9 +/-31.2, LOS 1.5% (32-52-116). TT
+bounds carry search context and distort the margins instead of approximating
+the static score. Reverted.
+
 **C7. Replace selection sort with insertion sort** (nearly-sorted move lists
 are the common case after MVV/LVA-ish scoring; ~465 comparisons -> ~60 in the
 common case). Expectation: +1-3%. Effort: small. Risk: low.

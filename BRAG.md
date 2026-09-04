@@ -1,8 +1,8 @@
 # BRAG.md
 
-A complete record of what this fork did on top of [Dog](https://github.com/folkertvanheusden/Dog) by Folkert van Heusden (MIT). Four weeks of work, August 3 to September 3, 2026, 189 commits. The result ships as TinyChess (`Timmy6942025/tinychess`): one source tree that builds both a desktop UCI engine and ESP32-S3 firmware, a board that broadcasts its own WiFi and plays against a phone browser, and an experiment log with a number attached to every decision.
+A complete record of what this fork did on top of [Dog](https://github.com/folkertvanheusden/Dog) by Folkert van Heusden (MIT). Four weeks of work, August 3 to September 4, 2026, 191 commits. The result ships as TinyChess (`Timmy6942025/tinychess`): one source tree that builds both a desktop UCI engine and ESP32-S3 firmware, a board that broadcasts its own WiFi and plays against a phone browser, and an experiment log with a number attached to every decision.
 
-Every figure below comes from `tools/results.log` (8,700+ lines), `tools/bench.csv`, or a named doc in the repo. Nothing here is recalled from memory.
+Every figure below comes from `tools/results.log` (8,780+ lines), `tools/bench.csv`, or a named doc in the repo. Nothing here is recalled from memory.
 
 ## Where we started
 
@@ -54,7 +54,7 @@ That last stretch puts the post-Tier-1 cumulative at **~+242 gated Elo**, all lo
 
 ## The graveyard
 
-About 40 ideas were tried, measured, and killed. Each entry has numbers. This section is the actual brag: the discipline is the product.
+About 41 ideas were tried, measured, and killed. Each entry has numbers. This section is the actual brag: the discipline is the product.
 
 Search ideas:
 
@@ -82,7 +82,7 @@ Search ideas:
 - Proper singular extensions (phase 2): exclusion search at depth/2 around tt_value - 2*depth, non-PV only, start depth 8, LOWERBOUND entries only, per-line budget of 4, TT ordering kept but cutoffs suppressed inside the subtree. -6.5 +/- 23.6. On the way in, an unpreflighted variant became the fifth implementation killed by the two-rook ladder sweep: in a +30-pawn position every alternative fails low, so without requiring a LOWERBOUND entry everything extends and the horizon falls apart. At 7-11 ply there is no population of singular nodes worth the verification cost.
 - TT key widening (phase 2): 16 -> 32 bit signatures in 12-byte entries, aging policy untouched. -9.7 +/- 25.9 at Hash=8. Capacity is the whole story: 699k entries vs 1.00M, and at blitz node counts a collided entry wastes a probe or gets rejected by legality rather than losing material. Should flip where tables actually fill (long TCs, big hashes); do not re-gate at bullet with small hashes.
 - ProbCut verification pruner (Aug 29): `depth>=5 && !is_pv && !in_check && beta in [-max_non_mate,max_non_mate] && !is_root`, `probBeta=beta+margin`, `rd=depth-4`, verification `search(rd, -probBeta, -probBeta+1)`. Margins 100, 150, 200 gated at 2+0.02 Hash=8 vs fd8cef65, 200 games each: -655.2 +/-181.1, -552.1 +/-127.1, -520.9 +/-88.4, all LOS 0.0%. Bench depth 15 to 13 in 2.5s. Verification prunes real defenses and adds overhead on top of already-optimal RFP/razoring/futility margins. Do not retry without a capture-gated or eval-gated redesign.
-- September speed-campaign gates (all 200 games at 2+0.02, reverted): `-DNDEBUG` -19.1 +/-30.7 LOS 11.1% (asserts were already free; the flag changed codegen for the worse). Per-node sort-stack scores (C5) -6.9 +/-25.9 LOS 30.0%. Selection-to-insertion sort (C7) -33.1 +/-29.0 LOS 1.3%: the lists are not sorted enough for insertion to win. Split-brain per-core TT (C10) -29.6 +/-31.8 LOS 3.4%, 35-52-113: halved shared knowledge beat the coherence savings, peer-probe fallback did not save it.
+- September speed-campaign gates (all 200 games at 2+0.02, reverted): `-DNDEBUG` -19.1 +/-30.7 LOS 11.1% (asserts were already free; the flag changed codegen for the worse). Per-node sort-stack scores (C5) -6.9 +/-25.9 LOS 30.0%. Selection-to-insertion sort (C7) -33.1 +/-29.0 LOS 1.3%: the lists are not sorted enough for insertion to win. Split-brain per-core TT (C10) -29.6 +/-31.8 LOS 3.4%, 35-52-113: halved shared knowledge beat the coherence savings, peer-probe fallback did not save it. TT-score-before-static-eval (C6) -34.9 +/-31.2 LOS 1.5%, 32-52-116: TT bounds are search-contextual, so they distort null, razor, and futility margins instead of approximating the static score.
 - RukChess nets, see the nets section. Definitively.
 
 Platform and speed ideas:
@@ -217,7 +217,7 @@ The original goal was a chess engine on a microcontroller. Somewhere along the w
 
 ## Process that made the numbers mean something
 
-- Every change passes the desktop build, the unit gate, then either a 200-game strength match or the board flash plus 3-game gate plus bench. The workflow lives in AGENTS.md and was followed for all 189 commits.
+- Every change passes the desktop build, the unit gate, then either a 200-game strength match or the board flash plus 3-game gate plus bench. The workflow lives in AGENTS.md and was followed for all 191 commits.
 - Platform-conditional fixes are a deliberate pattern: when a fix helps the board and regresses desktop, the desktop gate decides, and the fix ships guarded with both measurements recorded.
 - Housekeeping counted too: libchess vendored into the tree (three local fixes: `pseudo_legal_move_list_into`, FEN en-passant validation, `go st`), upstream cruft removed (Docker packaging, RPM spec, historic versions, a 3D-printed box), stale docs archived.
 - The latest published prebuilt release (`v0.5-prebuilt`, built from `1efb667`) ships the desktop binary and a flashable board image so a new owner needs Python and a cable, nothing else.
