@@ -1063,6 +1063,21 @@ void main_task()
 #endif
 		stop_ponder();
 		sp.at(0)->pos = libchess::Position { position_parameters.fen() };
+		// Reject piece-count-illegal FENs before they reach the evaluator:
+		// Eval::set() stages one delta per piece into a 32-slot buffer, so
+		// a 17-piece side overflows the stack and aborts (found via a
+		// corrupt openings.epd line with Bf8 and Bg7 at once). Keep the
+		// previous position, same as illegal moves below.
+		{
+			const int w_n = sp.at(0)->pos.color_bb(libchess::constants::WHITE).popcount();
+			const int b_n = sp.at(0)->pos.color_bb(libchess::constants::BLACK).popcount();
+			const int w_k = sp.at(0)->pos.piece_type_bb(libchess::constants::KING, libchess::constants::WHITE).popcount();
+			const int b_k = sp.at(0)->pos.piece_type_bb(libchess::constants::KING, libchess::constants::BLACK).popcount();
+			if (w_n > 16 || b_n > 16 || w_k != 1 || b_k != 1) {
+				printf("# illegal FEN (W%d/B%d units, kings %d/%d), keeping previous position\n", w_n, b_n, w_k, b_k);
+				return;
+			}
+		}
 		init_move(sp.at(0)->nnue_eval, sp.at(0)->pos);
 		if (position_parameters.move_list()) {
 			for (auto & move_str : position_parameters.move_list()->move_list()) {

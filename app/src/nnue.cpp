@@ -732,14 +732,14 @@ void Eval::set(const libchess::Position & pos)
 
 	for (libchess::PieceType type : libchess::constants::PIECE_TYPES) {
 		libchess::Bitboard bb = pos.piece_type_bb(type, libchess::constants::WHITE);
-		while (bb) {
+		while (bb && n < 32) {
 			libchess::Square sq = bb.forward_bitscan();
 			bb.forward_popbit();
 			push_delta(deltas, n, type, sq.value(), true, true);
 		}
 
 		bb = pos.piece_type_bb(type, libchess::constants::BLACK);
-		while (bb) {
+		while (bb && n < 32) {
 			libchess::Square sq = bb.forward_bitscan();
 			bb.forward_popbit();
 			push_delta(deltas, n, type, sq.value(), false, true);
