@@ -61,10 +61,16 @@ def parse_cutechess_output(txt: str):
     # Score line: Score of A vs B: 58 - 42 - 100  [0.540] 200
     elo = err = los = None
     wins = losses = draws = None
-    m = re.search(r"Elo difference:\s*([-0-9.]+)\s*\+/-\s*([0-9.]+).*LOS:\s*([0-9.]+)", txt)
+    # Use last occurrence — cutechess prints running scores, we want final
+    ms = list(re.finditer(r"Elo difference:\s*([-0-9.]+)\s*\+/-\s*([0-9.]+).*LOS:\s*([0-9.]+)", txt))
+    m = ms[-1] if ms else None
     if m:
         elo = float(m.group(1)); err = float(m.group(2)); los = float(m.group(3))
-    m2 = re.search(r"Score of .*?:\s*(\d+)\s*-\s*(\d+)\s*-\s*(\d+)\s*\[([0-9.]+)\]", txt)
+    m2s = list(re.finditer(r"Score of .*?:\s*(\d+)\s*-\s*(\d+)\s*-\s*(\d+)\s*\[([0-9.]+)\].*?(\d+)\s*$", txt, re.MULTILINE))
+    # fallback to any score line
+    if not m2s:
+        m2s = list(re.finditer(r"Score of .*?:\s*(\d+)\s*-\s*(\d+)\s*-\s*(\d+)\s*\[([0-9.]+)\]", txt))
+    m2 = m2s[-1] if m2s else None
     if m2:
         wins = int(m2.group(1)); losses = int(m2.group(2)); draws = int(m2.group(3))
         score = float(m2.group(4))
