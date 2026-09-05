@@ -65,16 +65,41 @@ objective; random search wastes the 200-game budget. The inner loop is
 `run_match(candidate_opts, baseline_opts)` via cutechess-cli with the same
 openings, adjudication and concurrency the rest of the repo uses.
 
-A 200-game bullet match has ~30 Elo error; the climber treats any
-positive Elo as a direction signal and expects the human to re-prove the
-final point at 800+ games before committing (same gate as any engine
-change). The tight overhead handling (`MOVE_OVERHEAD_MS = 100` plus the
-ESP32 25/10 ms bullet trim) is preserved; the policy multiplies the already
-trimmed budget.
+A 200-game bullet match has ~34 Elo error, so the accept bar is LOS >=
+75% (about +23 Elo at 50% draws), not bare Elo > 0. The lax bar ratchets
+on noise: opposite directions of one param once both read +5.2. Every
+accept is reverse-confirmed (the losing direction must actually lose).
+
+Two hard lessons from the Sep 5 climb. First, only tune what the gate TC
+exercises. At 2+0.02 the clock never reaches the 5s/15s+ buckets, so
+`TM_ScaleLT15s`/`TM_ScaleGTE15s` readings there are pure noise by
+construction; both "accepts" were reverted to parity. An untested bucket
+value that is a no-op at bullet would still change behavior at real TCs,
+so parity is the only safe default for unreachable buckets. Second,
+2-second bullet is forfeit-noisy (up to ~9% of games end on time in a
+200-game match), which inflates variance past the Elo error bars. Check
+the forfeit balance (`Player: A/B ... loses on time`) in every match file
+before trusting a verdict; the Sep 5 accepts that survived all had net
+forfeit margins near zero. The tight overhead handling
+(`MOVE_OVERHEAD_MS = 100` plus the ESP32 25/10 ms bullet trim) is
+preserved; the policy multiplies the already trimmed budget.
 
 Bookkeeping: every trial writes `tools/runs/hill-<ts>.txt` and `.pgn` plus
 md5 fingerprints, exactly like `tools/fast_sprt.sh`. The final accepted
 point is copied into `app/src/time_policy.h` defaults and committed.
+
+## Sep 5 2026 result (committed)
+Final point after 5 accepting passes, ~30 measured 200-game matches plus
+an 800-game proof: `TM_ComplexityWeight=300`, `TM_ScaleLT2s=1300`,
+everything else at parity (`OppReact=0`, `IncMax=667`, `IncMin=500`,
+all other scales 1000). Proof vs all-defaults same binary, 800 games at
+2+0.02: 221-128-451, +40.6 +/- 15.9 Elo, LOS 100%. A lost 16 games on
+time and won 0 that way, so the margin already pays the policy's own
+2% forfeit cost at extreme bullet. `tools/results.log` has the full
+verdict with fingerprints; match files under
+`tools/runs/hill-*` and `tools/runs/proof-tm-20260905-105651.*`.
+Open follow-ups: `TM_IncMin=600` (+10.4/74.1%, just under the bar),
+re-tune of the 5s/15s+ buckets at a longer TC where they are reachable.
 
 ## Implementation notes
 * `app/src/time_policy.h` is header-only; no new translation unit, no
