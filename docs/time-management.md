@@ -88,16 +88,21 @@ Bookkeeping: every trial writes `tools/runs/hill-<ts>.txt` and `.pgn` plus
 md5 fingerprints, exactly like `tools/fast_sprt.sh`. The final accepted
 point is copied into `app/src/time_policy.h` defaults and committed.
 
-## Sep 5 2026 result (committed)
-Final point after 5 accepting passes, ~30 measured 200-game matches plus
-an 800-game proof: `TM_ComplexityWeight=300`, `TM_ScaleLT2s=1300`,
-everything else at parity (`OppReact=0`, `IncMax=667`, `IncMin=500`,
-all other scales 1000). Proof vs all-defaults same binary, 800 games at
-2+0.02: 221-128-451, +40.6 +/- 15.9 Elo, LOS 100%. A lost 16 games on
-time and won 0 that way, so the margin already pays the policy's own
-2% forfeit cost at extreme bullet. `tools/results.log` has the full
-verdict with fingerprints; match files under
-`tools/runs/hill-*` and `tools/runs/proof-tm-20260905-105651.*`.
+## Sep 5 2026 result (committed, then REVERTED same day)
+Hill climb found `TM_ComplexityWeight=300`, `TM_ScaleLT2s=1300`
+(+40.6 +/- 15.9 over 800 games at 2+0.02, LOS 100%). The transfer audit
+killed it: -145.1 @1+0.01 (56 forfeits to 3), -49.0 @5+0.05 (31 to 3).
+Root cause is structural, not noise: the budget fractions *remaining*
+time with no income anchor, and the `40-fullmoves` horizon collapses to
+whole-clock budgets late in the game. Move-level accounting: at 5s the
+candidate spends ~169ms/move vs ~163 sustainable; at 2s 57 vs 65, just
+sustainable, which is the entire +40. Non-forfeit games at 5s still
+favored the candidate (~0.53), so the complexity signal is real and the
+pacing is what is broken. Defaults are back at parity until an
+income-anchored redesign (horizon floor + capped complexity extension)
+passes the `--confirm` gate at two TCs. Full trail in
+`tools/results.log`; matches under `tools/runs/hill-*`,
+`tools/runs/proof-tm-20260905-105651.*`, `tools/runs/audit*`.
 Open follow-ups: `TM_IncMin=600` (+10.4/74.1%, just under the bar),
 re-tune of the 5s/15s+ buckets at a longer TC where they are reachable.
 
