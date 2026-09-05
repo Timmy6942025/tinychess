@@ -150,7 +150,8 @@ def trial_param(param, delta, games, tc, opponent, concurrency, verbose=False):
 
 def hill_climb_full(games, tc, opponent, concurrency, verbose, dry_run=False):
     global current
-    order = list(PARAMS.keys())
+    # High-leverage first: complexity + opp + time buckets, increment last (already near optimum)
+    order = ["TM_ComplexityWeight","TM_OppReactWeight","TM_ScaleLT2s","TM_ScaleLT5s","TM_ScaleLT15s","TM_ScaleGTE15s","TM_IncMax","TM_IncMin"]
     improved = True
     passes = 0
     best_history = []
@@ -164,21 +165,22 @@ def hill_climb_full(games, tc, opponent, concurrency, verbose, dry_run=False):
                 print(f"  would try {param} +/-{step} vs current {current[param]}")
                 continue
             results = trial_param(param, step, games=games, tc=tc, opponent=opponent, concurrency=concurrency, verbose=verbose)
-            # pick best improvement: Elo > 0 and LOS > 50 (or score > 0.5 if LOS noisy at 200g)
+            # Accept bar: at 200g the error is ~34 Elo, so Elo>0 alone
+            # ratchets on noise (seen: two opposite directions both +5.2).
+            # Require LOS >= 75% (about +23 Elo at 50% draws) so only real
+            # direction signals move the baseline. Finalists still get an
+            # 800g re-proof before any commit.
             best_val = None
             best_elo = -9999
             for val, res in results.items():
                 elo = res.get("elo")
                 if elo is None: continue
-                # Accept on positive Elo; at 200g the error is ~30 Elo so we
-                # also accept the direction with higher Elo even if within error,
-                # because the hill will be re-proved with a larger game count
-                # before a commit. The user is expected to run a final 800g check.
                 if elo > best_elo:
                     best_elo = elo
                     best_val = val
                     best_res = res
-            if best_val is not None and best_res["elo"] is not None and best_res["elo"] > 0:
+            los_ok = best_val is not None and (best_res.get("los") or 0) >= 75.0
+            if best_val is not None and best_res["elo"] is not None and best_res["elo"] > 0 and los_ok:
                 print(f"  ** accept {param}: {current[param]} -> {best_val}  (Elo {best_res['elo']:+.1f} LOS {best_res['los']:.1f}%)")
                 current[param] = best_val
                 best_history.append((param, best_val, best_res))
