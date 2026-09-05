@@ -31,7 +31,9 @@ struct Params {
 
     // position complexity -> extra time multiplier (per-mille)
     // think *= 1 + complexity * weight_pm/1000   complexity in [0,1]
-    int complexity_weight_pm = 300;  // hill-climbed Sep 5 2026 (0/100/200/300 sweep, peak at 300, 400 rejected)
+    int complexity_weight_pm = 0;  // REVERTED Sep 5 2026: +40.6@2s did not transfer
+    // (-145@1s with 56 forfeits, -49@5s with 31; pacing has no income anchor).
+    // Keep at parity until the income-anchored redesign is gated.
 
     // opponent reaction -> extra time multiplier (per-mille)
     // opp_factor in [-1,1] : positive when opp spent long last move
@@ -40,7 +42,7 @@ struct Params {
 
     // remaining-time curve: per-bucket multiplier (per-mille, 1000 = 1.0)
     // Buckets are on *our* remaining ms after overhead deduction.
-    int scale_lt2s_pm   = 1300;    // ms <  2 000, hill-climbed Sep 5 2026 (1000->1150->1300, 1450 rejected, reverse -40)
+    int scale_lt2s_pm   = 1000;    // ms <  2 000, REVERTED Sep 5 2026 with complexity (see above)
     int scale_lt5s_pm   = 1000;    // ms <  5 000
     int scale_lt15s_pm  = 1000;    // ms < 15 000
     int scale_gte15s_pm = 1000;    // ms >=15 000

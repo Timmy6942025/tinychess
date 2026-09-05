@@ -79,14 +79,15 @@ def parse_cutechess_output(txt: str):
     return wins, losses, draws, elo, err, los, score
 
 def run_match(candidate_opts: dict, baseline_opts: dict, games: int, tc: str,
-              opponent: str | None, concurrency: int, verbose=False):
+              opponent: str | None, concurrency: int, verbose=False,
+              tag_prefix="hill", timeout=3600):
     """
     candidate_opts / baseline_opts : dict param->value for A / B.
     If opponent is None, B is same Dog binary with baseline_opts.
     Returns parsed result tuple.
     """
     assert DOG.exists(), f"Dog-native not found at {DOG} - build first"
-    tag = f"hill-{int(time.time())}"
+    tag = f"{tag_prefix}-{int(time.time())}"
     out_path = ENGINE_DIR / f"tools/runs/{tag}.txt"
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -120,7 +121,7 @@ def run_match(candidate_opts: dict, baseline_opts: dict, games: int, tc: str,
     ]
     if verbose:
         print("  cmd:", " ".join(shlex.quote(c) for c in cmd))
-    r = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=3600)
+    r = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=timeout)
     txt = r.stdout
     out_path.write_text(txt)
     wins, losses, draws, elo, err, los, score = parse_cutechess_output(txt)
@@ -203,6 +204,43 @@ def hill_climb_full(games, tc, opponent, concurrency, verbose, dry_run=False):
     else:
         return 1
 
+def confirm_candidate(candidate: dict, baseline: dict, tcs: list, opponent, concurrency, verbose=False):
+    """
+    Two-stage gate, stage 2: verify a bullet-screened point across TCs.
+    tcs = [(tc, games), ...]. CONFIRM iff pooled score > 0.5 AND no TC is a
+    significant regression (elo + 2*err < 0 vetoes). Returns 0/1.
+    """
+    import math
+    results = []
+    for tc, games in tcs:
+        print(f"  confirm tc={tc} games={games} ...", flush=True)
+        # generous timeout: longer TCs need hours (10+0.1 120g ~= 5h)
+        res = run_match(candidate, baseline, games=games, tc=tc, opponent=opponent,
+                        concurrency=concurrency, verbose=verbose,
+                        tag_prefix="confirm", timeout=max(3600, games * 240))
+        elo_str = f"{res['elo']:+.1f}+/-{res['err']:.1f}" if res['elo'] is not None else "?"
+        print(f"    {tc}: {res['wins']}-{res['losses']}-{res['draws']} [{res['score']:.3f}] Elo {elo_str} tag={res['tag']}")
+        results.append(((tc, games), res))
+    W = sum(r["wins"] for _, r in results if r["wins"] is not None)
+    L = sum(r["losses"] for _, r in results if r["losses"] is not None)
+    D = sum(r["draws"] for _, r in results if r["draws"] is not None)
+    N = W + L + D
+    pooled = (W + D / 2) / N if N else 0.5
+    pooled_elo = -400 * math.log10(1 / pooled - 1) if 0 < pooled < 1 else 0.0
+    veto = [(tc, r["elo"], r["err"]) for (tc, _), r in results
+            if r["elo"] is not None and r["elo"] + 2 * r["err"] < 0]
+    print(f"  pooled: {W}-{L}-{D} [{pooled:.3f}] Elo {pooled_elo:+.1f}")
+    if veto:
+        for tc, elo, err in veto:
+            print(f"  VETO: regression at {tc} ({elo:+.1f}+/-{err:.1f})")
+        print("REVERT: significant regression at one TC");
+        return 1
+    if pooled > 0.5:
+        print(f"CONFIRM: stronger across TCs (pooled Elo {pooled_elo:+.1f})");
+        return 0
+    print("REVERT: pooled score <= 0.5");
+    return 1
+
 def main():
     ap = argparse.ArgumentParser(description="Hill-climb the adaptive time policy (W/D/L only).")
     ap.add_argument("--param", choices=list(PARAMS.keys()), help="single param to probe")
@@ -216,6 +254,8 @@ def main():
     ap.add_argument("--start", help="JSON file or inline JSON with starting point")
     ap.add_argument("--verbose", action="store_true")
     ap.add_argument("--apply", action="store_true", help="rewrite app/src/time_policy.h defaults to current best (after a run)")
+    ap.add_argument("--confirm", help="JSON point to verify across TCs (stage-2 gate); baseline is --start or parity")
+    ap.add_argument("--confirm-tcs", default="2+0.02:400,5+0.05:200", help="comma-separated tc:games list for --confirm")
     args = ap.parse_args()
 
     global current
@@ -233,6 +273,19 @@ def main():
         if args.apply and rc == 0:
             print("\napply: rewriting defaults in app/src/time_policy.h ... (manual verify before commit)")
         return rc
+
+    if args.confirm:
+        try:
+            candidate = json.loads(args.confirm) if not os.path.exists(args.confirm) else json.loads(pathlib.Path(args.confirm).read_text())
+        except Exception as e:
+            print(f"bad --confirm: {e}", file=sys.stderr); return 1
+        baseline = dict(current)  # --start overrides parity when given
+        tcs = []
+        for item in args.confirm_tcs.split(","):
+            tc, g = item.split(":")
+            tcs.append((tc.strip(), int(g)))
+        print(f"Confirming {json.dumps(candidate, sort_keys=True)} vs {json.dumps(baseline, sort_keys=True)}")
+        return confirm_candidate(candidate, baseline, tcs, args.opponent, args.concurrency, args.verbose)
 
     if args.param:
         delta = args.delta if args.delta is not None else PARAMS[args.param][3]
