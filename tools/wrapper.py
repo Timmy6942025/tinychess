@@ -14,6 +14,18 @@ can wedge this USB-JTAG device's input endpoint. Opening the tty without
 touching the control lines lets the wrapper read the boot stream or prompt
 that is already present.
 
+Repair policy: a bestmove with a dropped byte is rebuilt from the last
+seen pv move. The pv is cleared on every position command and after every
+bestmove, so a repair can never come from the wrong position. Checkmate and
+stalemate ("bestmove (none)") pass through untouched. With no pv available
+the wrapper logs to stderr and sends "bestmove 0000": the game is lost but
+the protocol stays alive. The firmware helps by sending an info pv line
+even for instant book moves.
+
+If the console prompt never arrives the input endpoint is wedged and the
+wrapper pulses a control-line reset (raw ioctl, never pyserial) and retries
+twice before giving up.
+
 Why select(0.005): the select timeout is the dominant per-move latency in
 board-vs-native matches at ultra-fast TC. At 0.5 s the round trip
 (cutechess -> wrapper -> board -> wrapper -> cutechess) added up to ~1 s per
@@ -95,21 +107,63 @@ def serial_read(size):
 # After a quiet boot window, a newline asks the console to print that prompt
 # again. Never forward anything before the prompt: boot logs and console
 # chatter would make cutechess reject the UCI engine.
-buf = b""
-last_data = time.time()
-deadline = time.time() + 120
-prompt_probe_sent = False
-while time.time() < deadline and BANNER_END not in buf.decode("utf-8", "replace"):
-    chunk = serial_read(4096)
-    if chunk:
-        buf += chunk
-        last_data = time.time()
-    elif time.time() - last_data > 5.0 and not prompt_probe_sent:
-        try:
-            serial_write(b"\n")
-            prompt_probe_sent = True
+def wait_for_prompt(timeout):
+    buf = b""
+    last_data = time.time()
+    deadline = time.time() + timeout
+    prompt_probe_sent = False
+    while time.time() < deadline and BANNER_END not in buf.decode("utf-8", "replace"):
+        chunk = serial_read(4096)
+        if chunk:
+            buf += chunk
             last_data = time.time()
+        elif time.time() - last_data > 5.0 and not prompt_probe_sent:
+            try:
+                serial_write(b"\n")
+                prompt_probe_sent = True
+                last_data = time.time()
+            except OSError:
+                break
+    return buf
+
+
+def pulse_reset(port):
+    # Reboot the board through the control lines only (TIOCMSET ioctl on a
+    # raw fd). Never pyserial here: its constructor pulses DTR/RTS on open
+    # and wedges this USB-JTAG device's input endpoint. Bulk writes during
+    # boot wedge it too, so the caller must only write after the prompt.
+    import fcntl
+    import struct
+    TIOCMGET, TIOCMSET, TIOCM_DTR, TIOCM_RTS = 0x5415, 0x5418, 0x002, 0x004
+    fd = os.open(port, os.O_RDWR | os.O_NOCTTY | os.O_NONBLOCK)
+    try:
+        cur = struct.unpack("I", fcntl.ioctl(fd, TIOCMGET, struct.pack("I", 0)))[0]
+        fcntl.ioctl(fd, TIOCMSET, struct.pack("I", (cur & ~TIOCM_DTR) | TIOCM_RTS))
+        time.sleep(0.5)
+        fcntl.ioctl(fd, TIOCMSET, struct.pack("I", (cur & ~TIOCM_RTS) | TIOCM_DTR))
+    finally:
+        os.close(fd)
+
+
+buf = wait_for_prompt(60)
+if BANNER_END not in buf.decode("utf-8", "replace"):
+    # No prompt: the input endpoint may be wedged from an earlier session.
+    # A control-line reset reboots the board without any bulk writes.
+    for attempt in range(2):
+        sys.stderr.write("wrapper: no prompt, pulsing reset (%d/2)\n" % (attempt + 1,))
+        try:
+            pulse_reset(args.port)
+        except OSError as e:
+            sys.stderr.write("wrapper: reset failed: %s\n" % (e,))
+            break
+        try:
+            os.close(serial_fd)
         except OSError:
+            pass
+        time.sleep(12)  # reboot + wifi init before the prompt returns
+        serial_fd = open_port(args.port)
+        buf = wait_for_prompt(90)
+        if BANNER_END in buf.decode("utf-8", "replace"):
             break
 if BANNER_END not in buf.decode("utf-8", "replace"):
     sys.stderr.write("wrapper: board did not reach the console prompt\n")
@@ -136,6 +190,10 @@ while True:
         line = os.read(sys.stdin.fileno(), 65536)
         if not line:
             break
+        # A new position invalidates any pv seen before: repairing a dropped
+        # byte with a stale pv would play a move from the wrong position.
+        if line.startswith(b"position") or line.startswith(b"ucinewgame"):
+            last_pv = None
         serial_write(line)
     if serial_fd in r:
         data = serial_read(65536)
@@ -154,9 +212,17 @@ while True:
                     last_pv = pv_tokens[0]
             elif line.startswith(b"bestmove"):
                 move = line.split(None, 2)
-                if len(move) >= 2 and not MOVE_RE.match(move[1]):
+                if len(move) >= 2 and not MOVE_RE.match(move[1]) and move[1] != b"(none)":
                     if last_pv is not None:
                         line = b"bestmove " + last_pv + b"\n"
+                    else:
+                        # No pv to repair from (book moves used to send none;
+                        # firmware now sends one, this is the last resort).
+                        # 0000 loses the game but keeps the protocol alive.
+                        sys.stderr.write("wrapper: unrepairable bestmove %r, sending 0000\n" % (move[1],))
+                        line = b"bestmove 0000\n"
+                # The pv is spent: the next move needs fresh info lines.
+                last_pv = None
             if UCI_RESP_RE.match(line):
                 os.write(sys.stdout.fileno(), line)
         sys.stdout.flush()

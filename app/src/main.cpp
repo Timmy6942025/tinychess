@@ -1365,6 +1365,11 @@ void main_task()
 			auto book_move = pb.query(sp.at(0)->pos, false);
 			if (book_move.has_value()) {
 				my_trace("# book suggestion: %s\n", book_move.value().to_str().c_str());
+				// A pv line for the serial wrapper: book moves skip the search,
+				// so no info line precedes their bestmove, leaving a TX-dropped
+				// byte unrepairable (observed: "e2e4" -> "e2e" illegal move).
+				// Plain UCI, ignored by GUIs that do not need it.
+				printf("info depth 1 pv %s\n", book_move.value().to_str().c_str());
 				best_move = book_move.value();
 				has_best  = true;
 			}
@@ -1588,7 +1593,8 @@ void main_task()
 #if defined(ESP32)
 		else if (line.substr(0, 3) == "bps") {
 			int bps = std::stoi(line.substr(4));
-			printf("Set baudrate to %d bps\n", bps);
+			// USB CDC ignores line coding: this only affects the TTL UART.
+			printf("Set baudrate to %d bps (TTL UART only, USB ignores this)\n", bps);
 			ESP_ERROR_CHECK(uart_set_baudrate(uart_num, bps));
 			FILE *fh = fopen(uart_settings_file, "w");
 			if (fh) {

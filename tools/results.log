@@ -8822,3 +8822,23 @@ Elo difference: -inf +/- nan, LOS: 4.2 %, DrawRatio: 0.0 %
 - Board: IDF 5.3 build from the same tree, esptool flash OK (DIO, 16 MB). Bench 14,315 nps warm (C11-era 14,382 same territory); depth-8 nodes 33,117 match the desktop tree shape. 3-game board-vs-native 2+0.02 gate: second run 3/3 clean (49/24/27 plies, adjudication losses). First run 2/3 + 1 instant book-move TX truncation ("e2e4"->"e2e", no pv line so wrapper could not repair) - known USB-JTAG infra, engine thought correctly, not a gate failure of the firmware.
 - Serial note: pyserial's constructor DTR/RTS pulse wedges this board's USB-JTAG input (later writes block, reads silent); wrapper.py's raw os.open with no line touching + post-prompt writes is the safe pattern. Recovered via control-line reset + esptool hard reset, no power cycle needed.
 - Assets (sha256): Dog-native f6cfaaf624421d8b2fe7cc5398168795ba95c625dffc58634a4263ebd1889290, board-flash.zip 85f7730ad3e51dd72c820156c0a14d554fc7c05f6da63769bc5b45a9f22fe15f, plus SHA256SUMS.txt.
+
+[2026-09-17 USB SERIAL HARDENING] Four fixes for the board's USB-JTAG quirks (all observed today on the v0.7*/
+/HEAD tree; TM-v3 WIP untouched):
+- Firmware book path now emits `info depth 1 pv <move>` before bestmove. Book moves skipped the search so no pv
+  preceded them, leaving a TX-dropped byte unrepairable (v0.7 gate game 1: "e2e4"->"e2e" illegal move, 0-second
+  game, engine thought correctly). Proven on-device: `info depth 1 pv e2e4` + `bestmove e2e4`. Plain UCI.
+  Syzygy path already emitted a pv line; book was the only gap.
+- Wrapper repairs only from a current pv: last_pv clears on every `position`/`ucinewgame` and after every
+  bestmove (a stale pv once risked playing another position's move). `(none)` passes through. Garbage with no
+  pv now logs to stderr and sends `bestmove 0000`: loses the game, keeps the protocol alive.
+- `bps` message was a lie on USB (CDC ignores line coding): now says TTL-UART-only.
+- Wrapper startup auto-reset: no prompt within 60 s -> control-line reset via raw ioctl (never pyserial: its
+  constructor DTR/RTS pulse wedges the input endpoint, then writes block and reads go silent) + reopen, twice,
+  then exit 1. Recovered a wedged board twice this way incl. once via esptool hard reset; no power cycle needed.
+- Gates: desktop build clean (Dog-native md5 3a28c6be211b5d7d91774aa432b65936, includes TM-v3 tree state -
+  output-only change, strength N/A by construction); unit 18 OK / 0 fail (exit 124 timeout-with-OK = pass);
+  board flash OK, bench 14,299 nps warm (v0.7 14,315 same territory); 3-game board-vs-native 2+0.02 with the new
+  wrapper+firmware: 3/3 clean (53/24/49 plies, adjudication losses, zero stalls/forfeits/illegals).
+- Caught by the gate: `global serial_fd` after assignment = SyntaxError (ast.parse does not catch it, use
+  py_compile). Fixed before the passing run.
