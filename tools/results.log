@@ -8860,3 +8860,20 @@ CONFIG_ESP32S3_DATA_CACHE_LINE_SIZE 64 in app/build/config/sdkconfig.h). Main-tr
 benched 14,883/14,852/14,838 (+4.2% vs the 32B anchor). Side finding: Kconfig confirms the DCache is 8-way
 set associative, which the TRM never states. No Elo claim (would need asymmetric-clock selfplay); bench +
 cleanliness gates per speed-item precedent.
+
+[2026-09-18 PROBE P4a DCache auto-preload on weights: REJECT] ROM API exists and programs clean
+(Cache_Config_DCache_Autoload + Region, MISS trigger, +1 block, rc=0, region 0x3c5f0580/394816). Bench:
+14,715/14,713/14,772 vs 14,858 no-preload anchor (-0.8%). Mechanism: prefetched weight lines are evicted by
+TT traffic before the core reads them (32KB shared cache, ~0% TT hit rate), so preload is pure extra bus
+traffic. Reverted (nnue.cpp restored, reflashed, anchor bench 14,881/14,984/14,963 confirms the drag is
+gone). Cache-content-only change, search untouched.
+[2026-09-18 PROBE P4b GDMA weight staging: PARKED with design, not attempted] Kernel-shape audit
+(nnue_kernels.h apply()): every PIE pass consumes ALL op rows simultaneously per 16-lane tile, so there is
+no phase boundary to overlap a transfer across - only copy-then-compute, which moves identical bus bytes
+plus setup. Expected gain revised to low single digits vs high regression risk in the bit-exact eval core;
+parked per revert-otherwise discipline. Design for a fresh session: ESP32-only branch staging up to 4KB op
+rows into per-searcher internal SRAM (8KB for 2 searchers, needs runtime headroom check with direct-path
+fallback), staged-vs-direct boot selftest with silent fallback (pie_selftest pattern), verification ladder =
+unit suite + fixed-depth board-vs-desktop parity + bench + 3-game clean. Internal SRAM is not DCache-cached,
+so no coherence duty. P4a's failure strengthens the SRAM-staging half (dodges the eviction) but not the
+overlap half (kernel shape forbids it).
