@@ -8877,3 +8877,12 @@ fallback), staged-vs-direct boot selftest with silent fallback (pie_selftest pat
 unit suite + fixed-depth board-vs-desktop parity + bench + 3-game clean. Internal SRAM is not DCache-cached,
 so no coherence duty. P4a's failure strengthens the SRAM-staging half (dodges the eviction) but not the
 overlap half (kernel shape forbids it).
+
+[2026-09-18 PREBUILT v0.8-prebuilt] Release cut from clean worktree at HEAD bd1d96e (main-tree TM-v3 WIP
+left uncommitted, never shipped). Desktop Dog-native md5 25438ea499751c4c337fc4eefad0cefe; unit gate 18 OK /
+0 fail (exit 124 timeout-with-OK = pass). Board firmware (64-byte lines + USB hardening) flashed, bench
+14,987/15,014/14,999 warm (first 15k warm bench); 3-game board-vs-native 2+0.02 vs v0.7 binary: 3/3 clean
+(57/24/51 plies, adjudication losses, zero stalls/forfeits/illegals). Assets (sha256): Dog-native
+411ac9ee4b503599f633d935ca2d2e1cdca2cd1a08eff4f8c3b1ff5f8e5789d2, board-flash.zip
+34951c014007ea18485ec0e9a154191392c1932008b2059948b2bf70047e8530, plus SHA256SUMS.txt. Docs: release pointers
+to v0.8/bd1d96e (README, BRAG, AGENTS) + warm bench anchor to ~15.0k.

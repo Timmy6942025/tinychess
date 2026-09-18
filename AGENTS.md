@@ -18,7 +18,7 @@ This file tells coding agents how to work in this repo.
   `app/src/fathom`) before `git add`.
 - Leave untracked: `app/src/linux-windows/Dog-native`, `Dog-ruk`,
   `Dog-stats-prober` (prebuilt binaries, rebuilt by cmake; the latest published
-  release is on GitHub Releases as `v0.7-prebuilt`, built from `7f95313`).
+  release is on GitHub Releases as `v0.8-prebuilt`, built from `bd1d96e`).
 - Never commit the generated `app/build/` directory (gitignored).
 
 ## Repo facts
@@ -74,7 +74,7 @@ This file tells coding agents how to work in this repo.
   board temperature. Cool-board anchors: ~18,800 staged vs ~17,700 control
   (output-layer staging era, Aug 25); hot-board anchors: ~15,500 vs ~14,600
   same night. C9 era (Sep 2-3): 17,609 cool vs 14,213 warm same firmware;
-  C11 reflash measured 14,382 warm. History: ~8,300 pre-paired-fused rebuild,
+  C11 reflash measured 14,382 warm. Sep 18: 64-byte cache lines measure 14,987-15,014 warm (first 15k warm bench, +4.2% vs the 32-byte anchor, adopted). Thermal-drift probe same night: hot matched cool to the node, no recoverable drift. History: ~8,300 pre-paired-fused rebuild,
   6,857 at Tier-1. Keep this dev Pi off DOG-CHESS while benching (its httpd
   client load costs real nps).
 - Desktop native bench: roughly 350k-590k nps via the bench protocol depending on
