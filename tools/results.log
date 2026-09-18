@@ -8842,3 +8842,21 @@ Elo difference: -inf +/- nan, LOS: 4.2 %, DrawRatio: 0.0 %
   wrapper+firmware: 3/3 clean (53/24/49 plies, adjudication losses, zero stalls/forfeits/illegals).
 - Caught by the gate: `global serial_fd` after assignment = SyntaxError (ast.parse does not catch it, use
   py_compile). Fixed before the passing run.
+
+[2026-09-18 PROBE P1 thermal/timing-walkoff: REJECTED as a lever] Cold bench 14,264 -> 9.6-min full-load soak
+(bench long, 13,392 avg over mixed positions) -> immediate hot bench 14,264 (node counts 35,792 vs 35,795,
+same work) -> hot reboot for a fresh MSPI sample-point tune at hot temp -> 14,207 (-0.4%, noise). No thermal
+drift, no timing walk-off. The historical ~15% was almost certainly host-side load (dev Pi auto-joined to
+DOG-CHESS during those benches, cf. Aug 25 note), not silicon. No code change. Sources: trm.txt + IDF
+mspi_timing_tuning sources (tuning runs once at boot - hypothesis tested and dead).
+
+[2026-09-18 PROBE P2 64B DCache lines: KEEP] TRM allows 64B lines at either cache size (never tried; only
+16-vs-32 was gated, and the Aug-29 "do not retry either direction" note was speculation - 64B was never
+measured). Worktree same-evening bench: 32B anchor 14,264 vs 64B 14,797/14,836/14,810 (+3.9%). Worktree delta
+is 4 sdkconfig lines only (verified by git diff) -> search bit-identical by construction. 3-game
+board-vs-native 2+0.02 cleanliness gate 3/3 (1 mate + 2 adjudication losses, zero stalls/forfeits/illegals).
+Adopted to main-tree app/sdkconfig (edited directly per the Aug-29 lesson; verified
+CONFIG_ESP32S3_DATA_CACHE_LINE_SIZE 64 in app/build/config/sdkconfig.h). Main-tree firmware reflashed and
+benched 14,883/14,852/14,838 (+4.2% vs the 32B anchor). Side finding: Kconfig confirms the DCache is 8-way
+set associative, which the TRM never states. No Elo claim (would need asymmetric-clock selfplay); bench +
+cleanliness gates per speed-item precedent.
