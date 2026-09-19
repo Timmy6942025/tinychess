@@ -232,6 +232,14 @@
   #pgnBtn:focus-visible, #soundBtn:focus-visible, #seatBar button:focus-visible {
     outline: 2px solid var(--accent); outline-offset: 2px;
   }
+  /* Invisible native switch overlays: on iPhones the tap lands on a real
+     switch (the only gesture path that survives current WebKit) and ticks
+     the Taptic Engine. Transparent, keyboard- and reader-inert. */
+  .hsw { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0;
+    margin: 0; padding: 0; border: 0; background: transparent;
+    touch-action: manipulation; }
+  .pick button, .tcBtn, .big, #seatBar button, #pgnBtn, #soundBtn,
+  #promoGrid button, #postGameBar button { position: relative; }
   #controls button.danger { color: var(--danger); border-color: #4a2f2c; }
   #controls button.danger:hover { background: #2a1e1c; border-color: #5a3330; }
   #controls button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 800; }
@@ -960,6 +968,7 @@ function updateSoundBtn() {
   b.style.opacity = soundOn ? "1" : ".55";
   b.title = soundOn ? "Sound on, tap to mute" : "Sound off, tap to unmute";
   b.setAttribute("aria-label", b.title);
+  addHapticOverlay(b); // innerHTML above wipes the switch overlay
 }
 /* ---- haptics ----
    Android Chrome-family phones vibrate with full patterns. iPhones have no
@@ -989,11 +998,33 @@ function iosTick() {
   } catch (e) {}
 }
 // One place for every tap tick: board squares and all buttons. Runs inside
-// the gesture so the iPhone tick is allowed to fire.
+// the gesture so the iPhone tick is allowed to fire. Taps that land on a
+// native switch overlay skip the programmatic flip (the overlay ticked
+// already); board squares keep both, since the board's touchstart guard can
+// swallow the native tap on some iOS versions.
 document.addEventListener("pointerdown", (e) => {
   const t = e.target;
-  if (t && t.closest && (t.closest("button") || t.closest("#board"))) iosTick();
+  if (!t || !t.closest) return;
+  if (t.closest("#board")) { iosTick(); return; }
+  const btn = t.closest("button");
+  if (btn && !t.closest(".hsw")) iosTick();
 }, { capture: true, passive: true });
+
+// Native switch overlay: the finger lands on a real switch so iPhones tick
+// even where programmatic flips no longer fire. Clicks bubble to the host,
+// so no handler changes are needed. Safe to call twice on one element.
+function addHapticOverlay(el) {
+  try {
+    if (!el || el.querySelector(":scope > .hsw")) return;
+    const s = document.createElement("input");
+    s.type = "checkbox";
+    s.setAttribute("switch", "");
+    s.className = "hsw";
+    s.tabIndex = -1;
+    s.setAttribute("aria-hidden", "true");
+    el.appendChild(s);
+  } catch (e) {}
+}
 
 let prevMovesLen = 0, prevPc = null;
 function playMoveFeedback(model, checkSq) {
@@ -1020,6 +1051,7 @@ function buildBoard() {
     el.className = "sq";
     el.dataset.idx = i;
     boardEl.appendChild(el);
+    addHapticOverlay(el);
     sqEls.push(el);
   }
 }
@@ -1093,6 +1125,7 @@ function updateStatus() {
     const canPause = gameStarted && !gameOver && isOwner();
     pauseBtn.style.display = canPause ? "" : "none";
     pauseBtn.textContent = paused ? "Resume" : "Pause";
+    addHapticOverlay(pauseBtn); // textContent above wipes the switch overlay
     pauseBtn.disabled = serverSearching && !paused; // don't pause mid-search
     pauseBtn.style.opacity = pauseBtn.disabled ? ".5" : "";
   }
@@ -1349,6 +1382,7 @@ function showPremovePromo(from, to) {
     img.alt = p;
     img.draggable = false;
     b.appendChild(img);
+    addHapticOverlay(b);
     grid.appendChild(b);
     b.onclick = () => {
       $("promoOverlay").classList.remove("show");
@@ -1412,6 +1446,7 @@ function showPromo(from, to, opts, humanMs) {
     img.alt = p;
     img.draggable = false;
     b.appendChild(img);
+    addHapticOverlay(b);
     b.onclick = () => {
       $("promoOverlay").classList.remove("show");
       submitMove(sqName(from) + sqName(to) + p, humanMs);
@@ -1820,6 +1855,7 @@ function updateSeatBar() {
   }
   bar.innerHTML = html;
   bar.hidden = false;
+  bar.querySelectorAll("button").forEach(addHapticOverlay);
   bar.style.background = willTakeoverSoon ? "linear-gradient(180deg, #2a2418 0%, #1f1d15 100%)" : "";
   bar.style.borderColor = willTakeoverSoon ? "#3a3020" : "";
   const take = $("takeSeatBtn");
@@ -2030,6 +2066,9 @@ function buildTcGrid() {
 buildTcGrid();
 document.querySelectorAll("#colorPick button").forEach(b => b.classList.toggle("on", b.dataset.color === myColor));
 updateSoundBtn();
+// Native switch overlays on every static button (dynamic ones wire up where
+// they are created: promo grids, seat bar).
+document.querySelectorAll("button").forEach(addHapticOverlay);
 // One tap anywhere arms audio on iOS (needs a user gesture before beeps will sound)
 document.body.addEventListener("click", () => {
   if (soundOn && audioCtx && audioCtx.state === "suspended") audioCtx.resume().catch(()=>{});
@@ -2077,7 +2116,7 @@ $("pgnBtn").onclick = async () => {
     b.style.background = "var(--accent)";
     b.style.color = "#0f1a12";
     b.style.borderColor = "var(--accent)";
-    setTimeout(() => { b.textContent = orig; b.style.background=""; b.style.color=""; b.style.borderColor=""; }, 1400);
+    setTimeout(() => { b.textContent = orig; b.style.background=""; b.style.color=""; b.style.borderColor=""; addHapticOverlay(b); }, 1400);
   } catch (e) {
     // Fallback for browsers without async clipboard: select in a temp field
     const ta = document.createElement("textarea");
