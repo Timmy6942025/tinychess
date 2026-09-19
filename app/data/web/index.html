@@ -174,9 +174,14 @@
     display: block;
     filter: drop-shadow(0 1.5px 2px rgba(0,0,0,.38)) drop-shadow(0 4px 8px rgba(0,0,0,.12));
     user-select: none; -webkit-user-drag: none;
-    transition: transform .18s var(--ease-out), filter .18s var(--ease), opacity .15s var(--ease);
+    transition: transform .2s cubic-bezier(.34,1.56,.64,1), filter .18s var(--ease), opacity .15s var(--ease);
   }
-  .sq:active .piece { transform: scale(.97); }
+  .sq:active .piece { transform: scale(.93); }
+  @keyframes hintPop { from { transform: translate(-50%,-50%) scale(.4); opacity: 0; } to { transform: translate(-50%,-50%) scale(1); opacity: 1; } }
+  .sq .dot, .sq .ring { animation: hintPop .16s var(--ease-out); }
+  @keyframes shakeX { 0%,100% { transform: translateX(0); } 25% { transform: translateX(-4px); } 50% { transform: translateX(4px); } 75% { transform: translateX(-3px); } }
+  #board.shake { animation: shakeX .18s ease-in-out; }
+  .puff { position: fixed; z-index: 65; pointer-events: none; border-radius: 50%; }
   .sq.check::after {
     content: ""; position: absolute; inset: 0; z-index: 0;
     background: radial-gradient(circle, rgba(224,60,50,.55) 20%, rgba(224,60,50,.18) 70%);
@@ -818,6 +823,7 @@ function render() {
 
 /* ---- move animation (FLIP: piece jumps from its previous square) ---- */
 let animatedKey = "";
+const reduceMotion = (() => { try { return matchMedia("(prefers-reduced-motion: reduce)").matches; } catch (e) { return false; } })();
 function animateLastMove() {
   if (!lastMove) return;
   const key = moves.length + ":" + lastMove[1];
@@ -834,8 +840,37 @@ function animateLastMove() {
   requestAnimationFrame(() => requestAnimationFrame(() => {
     dest.style.transition = "transform .16s ease-out";
     dest.style.transform = "";
-    setTimeout(() => { dest.style.transition = ""; }, 220);
+    setTimeout(() => {
+      dest.style.transition = "";
+      // Landing pop: squashy overshoot settle, toy-like, skipped for reduced motion
+      if (!reduceMotion) {
+        try { dest.animate([{ transform: "scale(1.18)" }, { transform: "scale(1)" }], { duration: 220, easing: "cubic-bezier(.34,1.56,.64,1)" }); } catch (e) {}
+      }
+    }, 220);
   }));
+}
+// Capture dust puff: a few wood-colored dots burst from the landing square.
+function puffBurst(idx) {
+  if (reduceMotion) return;
+  try {
+    const el = sqEls[idx];
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+    for (let i = 0; i < 7; i++) {
+      const s = document.createElement("span");
+      s.className = "puff";
+      const sz = 4 + Math.random() * 5;
+      s.style.cssText = "left:" + cx + "px;top:" + cy + "px;width:" + sz + "px;height:" + sz + "px;background:" + (i % 2 ? "#f0d9b5" : "#b58863") + ";";
+      document.body.appendChild(s);
+      const ang = Math.random() * Math.PI * 2, dist = 24 + Math.random() * 30;
+      const dx = Math.cos(ang) * dist, dy = Math.sin(ang) * dist - 10;
+      try {
+        s.animate([{ transform: "translate(-50%,-50%)", opacity: 1 }, { transform: "translate(" + dx + "px," + dy + "px)", opacity: 0 }], { duration: 380 + Math.random() * 160, easing: "cubic-bezier(.2,.7,.3,1)" }).onfinish = () => s.remove();
+      } catch (e) { s.remove(); }
+      setTimeout(() => s.remove(), 800);
+    }
+  } catch (e) {}
 }
 
 /* ---- check detection (pseudo-attacks are exactly what check means) ---- */
@@ -957,6 +992,7 @@ function tone(freq, dur, gain, delay, type) {
     const t0 = ctx.currentTime + (delay || 0);
     const o = ctx.createOscillator(), g = ctx.createGain();
     o.type = type || "sine"; o.frequency.value = freq;
+    try { o.detune.value = Math.random() * 50 - 25; } catch (e2) {}
     g.gain.setValueAtTime(0, t0);
     g.gain.linearRampToValueAtTime(gain, t0 + .012);
     g.gain.exponentialRampToValueAtTime(.0001, t0 + dur);
@@ -1042,16 +1078,17 @@ function playMoveFeedback(model, checkSq) {
     ownMovePending = false;
     if (gameOver) { soundEnd(); if (mine) buzz([25, 60, 25, 60, 90]); }
     else if (checkSq >= 0) { soundCheck(); if (mine) buzz([15, 40, 15]); }
-    else if (pc < prevPc) { soundCapture(); if (mine) buzz([12, 25, 12]); }
+    else if (pc < prevPc) { soundCapture(); if (mine) buzz([12, 25, 12]); if (lastMove) puffBurst(lastMove[1]); }
     else { soundMove(); if (mine) buzz(12); }
   }
   prevMovesLen = moves.length;
   prevPc = pc;
 }
 function soundMove()   { thock(2200, .06, .5); }
-function soundCapture(){ thock(700, .09, .6); tone(140, .1, .12, 0); }
+function soundCapture(){ thock(700, .09, .6); tone(140, .1, .12, 0); tone(6000, .05, .04, .02); }
 function soundCheck()  { thock(2600, .05, .4); tone(880, .12, .1, .05); tone(1318, .16, .1, .14); }
 function soundEnd()    { tone(523, .16, .1, 0); tone(659, .16, .1, .13); tone(784, .3, .12, .26); }
+function soundIllegal(){ tone(200, .12, .1, 0, "triangle"); }
 
 function buildBoard() {
   boardEl.innerHTML = "";
@@ -1319,7 +1356,7 @@ function tryMove(from, to) {
   premove = null; // fresh manual intent replaces any queued premove
   const opts = (legalMap[from] || []).filter(t => t.to === to);
   sel = null;
-  if (!opts.length) { buzz(30); render(); return false; }
+  if (!opts.length) { buzz(30); soundIllegal(); illegalNudge(); render(); return false; }
   const humanMs = Math.max(0, Date.now() - replyAt);
   if (opts.some(t => t.promo)) {
     showPromo(from, to, opts, humanMs);
@@ -1442,8 +1479,52 @@ function maybeFirePremove() {
   showToast("Premove played: " + mv + ".");
   submitMove(mv, Math.max(0, Date.now() - replyAt), mv);
 }
-// Rebuilds a stored premove from its move string when a send is blocked
-// (paused, busy, seat taken) so the next idle turn retries it.
+// Illegal tap: short sideways shake plus a dull bonk. Soft fail, no modal.
+function illegalNudge() {
+  try {
+    const b = $("board");
+    if (!b || reduceMotion) return;
+    b.classList.remove("shake");
+    void b.offsetWidth;
+    b.classList.add("shake");
+    setTimeout(() => b.classList.remove("shake"), 240);
+  } catch (e) {}
+}
+// Win confetti: one short canvas burst, human wins only.
+function confettiBurst() {
+  if (reduceMotion) return;
+  try {
+    let c = $("confettiCv");
+    if (!c) {
+      c = document.createElement("canvas");
+      c.id = "confettiCv";
+      c.style.cssText = "position:fixed;inset:0;width:100vw;height:100vh;z-index:80;pointer-events:none;";
+      document.body.appendChild(c);
+    }
+    const ctx = c.getContext("2d");
+    c.width = window.innerWidth; c.height = window.innerHeight;
+    const colors = ["#74d068", "#f0d9b5", "#e8c37a", "#b58863", "#ffffff"];
+    const ps = [];
+    for (let i = 0; i < 120; i++) {
+      ps.push({ x: Math.random() * c.width, y: -30 - Math.random() * 60, w: 5 + Math.random() * 6, h: 8 + Math.random() * 8, vy: 3 + Math.random() * 4, vx: -1.5 + Math.random() * 3, r: Math.random() * Math.PI, vr: -0.1 + Math.random() * 0.2, c: colors[i % colors.length] });
+    }
+    const t0 = performance.now();
+    // Safety: never leave a stale canvas behind if frames stop (background tab).
+    setTimeout(() => { try { c.remove(); } catch (e) {} }, 4000);
+    (function tick() {
+      const el = performance.now() - t0;
+      ctx.clearRect(0, 0, c.width, c.height);
+      for (const p of ps) {
+        p.x += p.vx; p.y += p.vy; p.r += p.vr;
+        ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.r);
+        ctx.fillStyle = p.c; ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
+        ctx.restore();
+      }
+      if (el < 2200) requestAnimationFrame(tick);
+      else { ctx.clearRect(0, 0, c.width, c.height); c.remove(); }
+    })();
+  } catch (e) {}
+}
 function premoveFromMove(mv) {
   const fromSq = mv.slice(0, 2), toSq = mv.slice(2, 4);
   return { from: idxOf(fromSq), to: idxOf(toSq), fromSq, toSq, promo: mv[4] || null };
@@ -1813,6 +1894,7 @@ function showResult() {
     $("resultTitle").before(g);
   }
   g.innerHTML = glyph;
+  if (glyph === trophy) confettiBurst();
   // rematch is holder only, return to menu is for everyone
   $("rematchBtn").style.display = isOwner() ? "" : "none";
   $("giveUpBtn").style.display = "";
