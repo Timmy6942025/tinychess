@@ -487,8 +487,8 @@
     <input id="nameInput" maxlength="16" placeholder="Your name" autocomplete="off" autocapitalize="words" enterkeyhint="done" style="margin-bottom:14px;">
     <div style="font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.7px; font-weight:700; margin-bottom:8px;">Play as</div>
     <div class="pick" id="colorPick">
-      <button data-color="white" aria-label="Play as White">White, first</button>
-      <button data-color="black" aria-label="Play as Black">Black, second</button>
+      <button data-color="white" aria-label="Play as White">White</button>
+      <button data-color="black" aria-label="Play as Black">Black</button>
     </div>
     <div class="tc">
       <div class="lbl"><span>Time control</span><span id="tcLabel">5+3 blitz</span></div>
@@ -591,7 +591,6 @@ let lastMove = null;        // [fromIdx, toIdx] highlight
 let sel = null;
 let kbCursor = -1; // keyboard cursor square, -1 means off (shows on first arrow key)
 let premove = null; // {from,to,fromSq,toSq,promo} queued while the board thinks
-let pendingReplyFrom = -1; // moves.length (incl. our move) whose engine reply fires the premove
 let dragging = false;
 let dragFrom = -1;
 let flipOverride = null;    // null = auto (bottom = my color)
@@ -1249,18 +1248,20 @@ function showPremovePromo(from, to) {
       premove = { from, to, fromSq: sqName(from), toSq: sqName(to), promo: p };
       showToast("Premove " + premove.fromSq + premove.toSq + p + ". Tap it to cancel.");
       render();
-      maybeFirePremove(moves); // in case the reply landed while choosing
+      maybeFirePremove(); // in case the reply landed while choosing
     };
   });
   $("promoOverlay").classList.add("show");
 }
-// Exactly one engine reply ({our move} + 1) may trigger the stored premove,
-// validated against the fresh legal list. Anything else (mate, stalemate,
-// changed position with no exact match, ambiguous promotion) cancels it with
-// a toast. Never guesses: no exact legal match means no move.
-function maybeFirePremove(serverMoves) {
+// A stored premove fires when the position is back with us and the board is
+// idle, validated against the fresh legal list. Anything else (mate,
+// stalemate, changed position with no exact match, ambiguous promotion)
+// cancels it with a toast. Never guesses: no exact legal match means no move.
+// Turn-based instead of reply-count-based, so a slow poll, a duplicate reply,
+// or a still-set busy flag can delay it but never silently eat it.
+function maybeFirePremove() {
   if (!premove || !isOwner() || !gameStarted || gameOver || paused) return;
-  if (pendingReplyFrom < 0 || serverMoves.length !== pendingReplyFrom + 1) return;
+  if (boardThinking || serverSearching || engineToMove) return; // not our turn yet
   const f = premove.from, t = premove.to;
   const name = premove.fromSq + premove.toSq + (premove.promo || "");
   const opts = (legalMap[f] || []).filter(o => o.to === t);
@@ -1270,21 +1271,27 @@ function maybeFirePremove(serverMoves) {
   } else if (opts.length === 1) {
     chosen = opts[0];
   }
+  const mv = sqName(f) + sqName(t) + ((chosen && chosen.promo) || "");
   premove = null;
   if (!chosen) {
     showToast("Premove " + name + " is no longer legal.");
     render();
     return;
   }
-  const mv = sqName(f) + sqName(t) + (chosen.promo || "");
   showToast("Premove played: " + mv + ".");
-  submitMove(mv, Math.max(0, Date.now() - replyAt));
+  submitMove(mv, Math.max(0, Date.now() - replyAt), mv);
 }
-function submitMove(moveStr, humanMs) {
+// Rebuilds a stored premove from its move string when a send is blocked
+// (paused, busy, seat taken) so the next idle turn retries it.
+function premoveFromMove(mv) {
+  const fromSq = mv.slice(0, 2), toSq = mv.slice(2, 4);
+  return { from: idxOf(fromSq), to: idxOf(toSq), fromSq, toSq, promo: mv[4] || null };
+}
+function submitMove(moveStr, humanMs, fromPremove) {
   moves.push(moveStr);
   lastMove = [idxOf(moveStr.slice(0, 2)), idxOf(moveStr.slice(2, 4))];
   if (fen) fen = applyLocalMove(fen, moveStr);
-  postMove(humanMs);
+  postMove(humanMs, fromPremove || null);
 }
 
 function showPromo(from, to, opts, humanMs) {
@@ -1322,14 +1329,19 @@ async function fetchJson(path, opts, timeoutMs) {
   } finally { clearTimeout(t); }
 }
 
-async function postMove(humanMs) {
+async function postMove(humanMs, premoveRestore) {
   if (!isOwner()) return; // spectators never drive the game
-  // Fire token for a queued premove: the reply to THIS submission grows the
-  // server list to exactly token+1. Set here (not in submitMove) so the
-  // auto postMove(0) path for Black is covered too.
-  pendingReplyFrom = moves.length;
-  if (paused) { showToast("Game is paused. Resume to move."); return; }
-  if (serverSearching) { showToast("Board is thinking."); return; }
+  // A blocked send must not eat a stored premove: put it back so the next
+  // idle turn retries it. The checks below run synchronously, so nothing can
+  // change between the turn check in maybeFirePremove and these guards.
+  if (paused) {
+    if (premoveRestore) premove = premoveFromMove(premoveRestore);
+    showToast("Game is paused. Resume to move."); return;
+  }
+  if (serverSearching) {
+    if (premoveRestore) premove = premoveFromMove(premoveRestore);
+    showToast("Board is thinking."); return;
+  }
   boardThinking = true;
   moveSentAt = Date.now();
   updateStatus();
@@ -1398,6 +1410,7 @@ async function postMove(humanMs) {
       // 409 = seat taken or paused, 423 = board busy (searching)
       if (err.status === 409 || err.status === 423) {
         boardThinking = false; serverSearching = false;
+        if (premoveRestore) premove = premoveFromMove(premoveRestore);
         const txt = err.status === 423 ? "Board is busy. Try again." : "Game is paused or seat is busy.";
         showToast(txt);
         await refreshState();
@@ -1454,7 +1467,6 @@ async function refreshState() {
       if (boardThinking && moves.length > prevLen) {
         boardThinking = false;
         replyAt = Date.now();
-        maybeFirePremove(s.moves);
       }
       // Multi-device delight: when a new move lands that we didn't make ourselves,
       // briefly toast it so spectators feel instantly in sync. Debounced so a
@@ -1558,13 +1570,16 @@ async function refreshState() {
     const topIsWhite = myColor === "white" ? false : true; // top = opposite of myColor
     // Simpler: just highlight the active row via updateClocks, but add subtle thinking class
     document.querySelectorAll(".playerRow").forEach(el => el.classList.toggle("thinking", (whiteThinking || blackThinking) && el.classList.contains("active")));
+    // A stored premove fires off the latest server position, not the render
+    // cycle: re-derive the turn first so an unchanged poll still fires it.
+    if (fen) engineToMove = fenToSquares(fen).stm !== (myColor === "white" ? "w" : "b");
+    maybeFirePremove();
     // Only re-render the board when something visible changed — otherwise we
     // were thrashing the DOM on every poll and phones felt sluggish.
     // Still re-derive whose turn it is: an unchanged poll must not leave a
     // stale optimistic flag behind (e.g. a move that never reached the board).
     if (changed) render();
     else {
-      if (fen) engineToMove = fenToSquares(fen).stm !== (myColor === "white" ? "w" : "b");
       updateClocks(); updateStatus();
     }
     scheduleNextPoll(s);
@@ -1731,7 +1746,6 @@ async function giveUpBoard() {
   resultDismissed = true;
   // clear local game state immediately so multiple taps can't queue stale work
   premove = null;
-  pendingReplyFrom = -1;
   gameStarted = false;
   gameOver = false;
   gameResult = "";
@@ -1775,7 +1789,6 @@ async function startGame() {
   lastMove = null;
   sel = null;
   premove = null;
-  pendingReplyFrom = -1;
   fen = null;
   engineToMove = false;
   myName = ($("nameInput").value || "").trim().slice(0, 16);
