@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-<meta name="theme-color" content="#101418">
+<meta name="theme-color" content="#0e1317">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -66,7 +66,7 @@
   header { display: flex; align-items: center; gap: 10px; padding: 6px 2px 2px; flex: none; }
   header h1 { margin: 0; font-size: 17px; letter-spacing: 1.2px; font-weight: 800; display: flex; align-items: center; gap: 8px; }
   header h1::before { content: ""; width: 26px; height: 26px; border-radius: 8px; flex: none;
-    background: linear-gradient(135deg, var(--accent) 0%, #3f8f5c 100%) url('pieces/ejgfv/wn.png') center/20px 20px no-repeat;
+    background: url('pieces/ejgfv/wn.png') center/20px 20px no-repeat, linear-gradient(135deg, var(--accent) 0%, #3f8f5c 100%);
     box-shadow: 0 4px 12px rgba(116,208,104,.35); }
   .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--accent); flex: none; box-shadow: var(--accent-glow); position: relative; }
   .dot::after { content: ""; position: absolute; inset: -6px; border-radius: 50%; border: 1px solid rgba(110,203,99,.18); opacity: 0; animation: pulseDot 2.2s infinite; }
@@ -155,6 +155,10 @@
   .sq.last::before { content: ""; position: absolute; inset: 0; background: rgba(255,213,79,.42); }
   .sq.last.sel::before { background: rgba(255,213,79,.55); }
   .sq.pre { box-shadow: inset 0 0 0 3px rgba(96,165,250,.9); }
+  #board:focus { outline: none; }
+  #board:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+  .sq.kb { box-shadow: inset 0 0 0 2px rgba(255,255,255,.9), inset 0 0 0 5px var(--accent); }
+  .sq.kb.last::before { background: rgba(255,213,79,.55); }
   .sq:hover { filter: brightness(1.03); }
   #board.thinking { outline: 1px solid rgba(110,203,99,.22); outline-offset: 2px; box-shadow: var(--shadow), 0 0 0 6px rgba(110,203,99,.06); }
   .piece {
@@ -284,7 +288,7 @@
     overscroll-behavior: contain; transition: border-color .2s var(--ease), background .2s var(--ease);
     position: relative;
   }
-  #history:empty::before { content: "No moves yet. White to start."; color: var(--muted); font-style: normal; opacity: .85; }
+  #history:empty::before { content: "No moves yet."; color: var(--muted); font-style: normal; opacity: .85; }
   #history:hover { border-color: #2e3844; }
   #board.paused { opacity: .58; filter: saturate(.65) brightness(.95); }
   #board.gameOver { filter: saturate(.9); }
@@ -317,7 +321,7 @@
   }
   .pick button.on { border-color: var(--accent); background: rgba(116,208,104,.12); color: var(--accent); box-shadow: 0 0 0 1px var(--accent), 0 4px 14px rgba(116,208,104,.2); }
   .tc { margin-bottom: 18px; }
-  .tc .lbl { display: flex; justify-content: space-between; font-size: 13px; color: #7c8790; margin-bottom: 8px; }
+  .tc .lbl { display: flex; justify-content: space-between; font-size: 13px; color: var(--muted); margin-bottom: 8px; }
   .tcGrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
   .tcBtn {
     min-height: 52px; padding: 9px 4px; border-radius: 12px; border: 1px solid #2c3844;
@@ -435,7 +439,7 @@
     <div class="capbar" id="capTop"></div>
   </div>
 
-  <div id="boardWrap"><div id="board"></div></div>
+  <div id="boardWrap"><div id="board" tabindex="0" role="grid" aria-label="Chess board. Tab here, then use arrow keys and Enter to move."></div></div>
 
   <div class="playerRow" id="clockBottom">
     <div class="pcell">
@@ -457,7 +461,7 @@
     <span style="font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.9px; font-weight:700;">Moves</span>
     <span style="display:flex; gap:8px; align-items:center;">
       <button id="pgnBtn" title="Copy PGN to clipboard" style="font-size:12px; min-height:36px; padding:7px 14px; border-radius:999px; border:1px solid var(--border); background:var(--surface); color:var(--muted); cursor:pointer; font-weight:650; transition: all .15s var(--ease);">Copy PGN</button>
-      <button id="soundBtn" title="Toggle sound" aria-label="Toggle sound" style="font-size:14px; width:36px; height:36px; border-radius:999px; border:1px solid var(--border); background:var(--surface); color:var(--muted); cursor:pointer; display:grid; place-items:center; transition: all .15s var(--ease);">S</button>
+      <button id="soundBtn" title="Toggle sound" aria-label="Toggle sound" style="width:36px; height:36px; border-radius:999px; border:1px solid var(--border); background:var(--surface); color:var(--muted); cursor:pointer; display:grid; place-items:center; transition: all .15s var(--ease);"></button>
     </span>
   </div>
   <div id="history"></div>
@@ -472,7 +476,7 @@
 <div class="overlay" id="startOverlay">
   <div class="card">
     <div style="display:flex; align-items:center; gap:12px; margin-bottom:12px;">
-      <div style="width:42px; height:42px; border-radius:12px; background: linear-gradient(135deg, var(--accent) 0%, #3f8f5c 100%) url('pieces/ejgfv/wn.png') center/30px 30px no-repeat; box-shadow: 0 6px 16px rgba(116,208,104,.35); flex:none;" aria-hidden="true"></div>
+      <div style="width:42px; height:42px; border-radius:12px; background: url('pieces/ejgfv/wn.png') center/30px 30px no-repeat, linear-gradient(135deg, var(--accent) 0%, #3f8f5c 100%); box-shadow: 0 6px 16px rgba(116,208,104,.35); flex:none;" aria-hidden="true"></div>
       <div>
         <h2 style="margin:0; font-size:21px; letter-spacing:-.2px; font-weight:800;">Play the little board</h2>
         <div style="font-size:12.5px; color:var(--muted); margin-top:2px;">The box is the computer. Your phone is the board.</div>
@@ -507,7 +511,7 @@
 
 <div class="overlay" id="pauseOverlay">
   <div class="card" style="text-align:center;">
-    <div style="width:52px; height:52px; margin: 0 auto 12px; border-radius:16px; background: rgba(217,161,59,.14); border: 1px solid rgba(217,161,59,.4); display:grid; place-items:center; font-size:22px; font-weight:800; color: var(--warn);" aria-hidden="true">II</div>
+    <div style="width:52px; height:52px; margin: 0 auto 12px; border-radius:16px; background: rgba(217,161,59,.14); border: 1px solid rgba(217,161,59,.4); display:grid; place-items:center; color: var(--warn);" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16" rx="1.5"/><rect x="14" y="4" width="4" height="16" rx="1.5"/></svg></div>
     <div id="pauseTitle" style="font-size:21px; font-weight:800; margin-bottom:6px;">Game paused</div>
     <div id="pauseSub" style="color:var(--muted); font-size:13.5px; margin-bottom:18px;">Clocks are frozen. Resume when ready.</div>
     <button class="big" id="resumeBtn">Resume</button>
@@ -585,6 +589,7 @@ let legal = [];
 let legalMap = {};
 let lastMove = null;        // [fromIdx, toIdx] highlight
 let sel = null;
+let kbCursor = -1; // keyboard cursor square, -1 means off (shows on first arrow key)
 let premove = null; // {from,to,fromSq,toSq,promo} queued while the board thinks
 let pendingReplyFrom = -1; // moves.length (incl. our move) whose engine reply fires the premove
 let dragging = false;
@@ -751,6 +756,7 @@ function render() {
     const file = i % 8, rank = (i - file) / 8;
     el.className = "sq " + ((file + rank) % 2 === 0 ? "light" : "dark");
     if (sel === i) el.classList.add("sel");
+    if (kbCursor === i) el.classList.add("kb");
     if (lastMove && (lastMove[0] === i || lastMove[1] === i)) el.classList.add("last");
     if (checkSq === i) el.classList.add("check");
     if (premove && (premove.from === i || premove.to === i)) el.classList.add("pre");
@@ -902,10 +908,13 @@ function beep(freq, dur, type, gain, delay) {
 function updateSoundBtn() {
   const b = $("soundBtn");
   if (!b) return;
-  b.textContent = soundOn ? "♪" : "✕";
+  const on = '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" fill="currentColor" stroke="none"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.4 5.6a9 9 0 0 1 0 12.8"/></svg>';
+  const off = '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" fill="currentColor" stroke="none"/><line x1="15" y1="9" x2="21" y2="15"/><line x1="21" y1="9" x2="15" y2="15"/></svg>';
+  b.innerHTML = soundOn ? on : off;
   b.style.color = soundOn ? "var(--accent)" : "var(--muted)";
   b.style.opacity = soundOn ? "1" : ".55";
   b.title = soundOn ? "Sound on, tap to mute" : "Sound off, tap to unmute";
+  b.setAttribute("aria-label", b.title);
 }
 let prevMovesLen = 0, prevPc = null;
 function playMoveFeedback(model, checkSq) {
@@ -1096,6 +1105,7 @@ function inPremoveMode() {
 function onPointerDown(e) {
   if (!gameStarted || gameOver || paused || !fen) return;
   if (!isOwner()) return; // spectators don't move
+  kbCursor = -1; // touch takes over from the keyboard cursor
   const idx = sqIndexFromEvent(e);
   if (idx < 0) return;
   if (inPremoveMode()) {
@@ -1163,6 +1173,45 @@ function tryMove(from, to) {
 
 function handleMove(from, to) {
   tryMove(from, to);
+}
+
+/* ---- keyboard play: arrows move a cursor, Enter taps the square ---- */
+function kbMoveCursor(dFile, dRank) {
+  const flipped = flipOverride !== null ? flipOverride : myColor === "black";
+  if (kbCursor < 0) {
+    // start from the selected square, else from the player's back rank
+    kbCursor = sel !== null ? sel : (myColor === "white" ? 60 : 4);
+    render();
+    return;
+  }
+  let f = kbCursor % 8, r = (kbCursor - f) / 8;
+  // dRank -1 means visually up. The model is mirrored when flipped,
+  // so visual directions map to opposite model steps.
+  const m = flipped ? -1 : 1;
+  f = Math.max(0, Math.min(7, f + dFile * m));
+  r = Math.max(0, Math.min(7, r + dRank * m));
+  kbCursor = f + r * 8;
+  render();
+}
+
+function kbTap() {
+  if (!gameStarted || gameOver || paused || !fen) return;
+  if (!isOwner() || kbCursor < 0) return;
+  const idx = kbCursor;
+  if (inPremoveMode()) {
+    if (premove && (idx === premove.from || idx === premove.to)) {
+      premove = null;
+      sel = null;
+      showToast("Premove cancelled.");
+      render();
+      return;
+    }
+  }
+  if (sel !== null && sel !== idx && tryMove(sel, idx)) return;
+  const sq = fenToSquares(fen).squares[idx];
+  const mine = sq && sq.color === (myColor === "white" ? "w" : "b");
+  sel = mine ? idx : null;
+  render();
 }
 
 function setPremove(from, to) {
@@ -1341,6 +1390,7 @@ async function postMove(humanMs) {
       } else if (r.bestmove) {
         moves.push(r.bestmove);
         lastMove = [idxOf(r.bestmove.slice(0, 2)), idxOf(r.bestmove.slice(2, 4))];
+        if (fen) fen = applyLocalMove(fen, r.bestmove);
       }
       await refreshState();
       return;
@@ -1510,8 +1560,13 @@ async function refreshState() {
     document.querySelectorAll(".playerRow").forEach(el => el.classList.toggle("thinking", (whiteThinking || blackThinking) && el.classList.contains("active")));
     // Only re-render the board when something visible changed — otherwise we
     // were thrashing the DOM on every poll and phones felt sluggish.
+    // Still re-derive whose turn it is: an unchanged poll must not leave a
+    // stale optimistic flag behind (e.g. a move that never reached the board).
     if (changed) render();
-    else { updateClocks(); updateStatus(); }
+    else {
+      if (fen) engineToMove = fenToSquares(fen).stm !== (myColor === "white" ? "w" : "b");
+      updateClocks(); updateStatus();
+    }
     scheduleNextPoll(s);
     return s;
   } catch (err) {
@@ -1775,6 +1830,15 @@ buildBoard();
 boardEl.addEventListener("touchstart", e => e.preventDefault(), { passive: false });
 $("boardWrap").addEventListener("touchstart", e => e.preventDefault(), { passive: false });
 boardEl.addEventListener("pointerdown", onPointerDown);
+boardEl.addEventListener("keydown", (e) => {
+  const k = e.key;
+  if (k === "ArrowUp") { e.preventDefault(); kbMoveCursor(0, -1); }
+  else if (k === "ArrowDown") { e.preventDefault(); kbMoveCursor(0, 1); }
+  else if (k === "ArrowLeft") { e.preventDefault(); kbMoveCursor(-1, 0); }
+  else if (k === "ArrowRight") { e.preventDefault(); kbMoveCursor(1, 0); }
+  else if (k === "Enter" || k === " ") { e.preventDefault(); kbTap(); }
+  else if (k === "Escape") { sel = null; kbCursor = -1; render(); }
+});
 boardEl.addEventListener("pointermove", onPointerMove);
 boardEl.addEventListener("pointerup", onPointerUp);
 boardEl.addEventListener("pointercancel", () => {
@@ -1810,6 +1874,7 @@ function buildTcGrid() {
   $("tcLabel").textContent = `${cur.label} ${cur.cat}`;
 }
 buildTcGrid();
+document.querySelectorAll("#colorPick button").forEach(b => b.classList.toggle("on", b.dataset.color === myColor));
 updateSoundBtn();
 // One tap anywhere arms audio on iOS (needs a user gesture before beeps will sound)
 document.body.addEventListener("click", () => {
@@ -1860,8 +1925,21 @@ $("pgnBtn").onclick = async () => {
     b.style.borderColor = "var(--accent)";
     setTimeout(() => { b.textContent = orig; b.style.background=""; b.style.color=""; b.style.borderColor=""; }, 1400);
   } catch (e) {
-    // Fallback: show in a prompt
-    prompt("PGN:", pgn);
+    // Fallback for browsers without async clipboard: select in a temp field
+    const ta = document.createElement("textarea");
+    ta.value = pgn;
+    ta.setAttribute("readonly", "");
+    ta.style.position = "fixed";
+    ta.style.opacity = "0";
+    document.body.appendChild(ta);
+    ta.select();
+    try {
+      document.execCommand("copy");
+      showToast("PGN copied to clipboard.");
+    } catch (e2) {
+      showToast("Copy failed. Long-press the move list to copy.");
+    }
+    ta.remove();
   }
 };
 $("soundBtn").onclick = () => {
