@@ -105,6 +105,13 @@ constexpr int64_t SEAT_IDLE_TAKEOVER_MS = 3 * 60 * 1000; // abandoned-seat takeo
 std::atomic<bool> g_paused{false};
 std::atomic<int64_t> g_pause_started_ms{0}; // when the current pause began (esp_timer ms)
 std::atomic<bool> g_searching{false};
+// Game generation: bumped whenever a fresh game state is installed (/new,
+// /yield reset) or a terminal result is forced (/resign). The async search
+// worker captures it at spawn and drops its reply when stale, so a search
+// started under an old game can never clobber the new game's moves, clocks
+// or result (observed: /new mid-search led to a stale reply resurrecting
+// old moves and a phantom flag fall).
+std::atomic<int64_t> g_web_gen{0};
 std::mutex g_session_mutex; // guards g_web_moves, clocks, turn anchor, game_over (async writer vs /state reader)
 
 // Names end up in JSON served to every client: keep them boring.
@@ -612,6 +619,7 @@ esp_err_t handle_move(httpd_req_t *req)
 
 	std::unique_lock<std::mutex> req_lock(g_web_req_mutex);
 	std::unique_lock<std::mutex> sess_lock(g_session_mutex);
+	const int64_t gen_sync = g_web_gen.load();
 
 	// Idempotency: if the engine already answered this exact request (the
 	// page's fetch failed and retried, or a reloaded page re-sent the same
@@ -721,12 +729,15 @@ esp_err_t handle_move(httpd_req_t *req)
 		sess_lock.unlock();
 		req_lock.unlock();
 		// Detached worker: the search + clock booking + game-over handling.
-		std::thread([moves_snap, has_mt_snap, mt_snap, wtime_snap, btime_snap, winc_snap, binc_snap, book_snap, human_color_snap, seq_snap]() {
+		std::thread([moves_snap, has_mt_snap, mt_snap, wtime_snap, btime_snap, winc_snap, binc_snap, book_snap, human_color_snap, seq_snap, gen_snap = g_web_gen.load()]() {
 			bool ok = false;
 			// Serialize with any other /move — the engine is single-instance.
 			// Lock order is req then session to match the outer handler.
 			std::unique_lock<std::mutex> lk_req(g_web_req_mutex);
 			std::unique_lock<std::mutex> lk_sess(g_session_mutex);
+			// A fresh game (or resign) may have landed while queued: run the
+			// search anyway (harmless TT warmup) but drop every state write.
+			const bool fresh = (gen_snap == g_web_gen.load());
 			if (has_mt_snap) {
 				// Release session lock while the search runs so /state stays snappy
 				lk_sess.unlock();
@@ -740,8 +751,14 @@ esp_err_t handle_move(httpd_req_t *req)
 			const web_search_result_t last = web_engine_last_result();
 			if (!ok) {
 				printf("[web] async search timed out\n");
-				g_turn_started_ms = esp_timer_get_time() / 1000;
-				g_searching.store(false);
+				if (gen_snap == g_web_gen.load()) {
+					g_turn_started_ms = esp_timer_get_time() / 1000;
+					g_searching.store(false);
+				}
+				return;
+			}
+			if (gen_snap != g_web_gen.load()) {
+				printf("[web] async reply dropped (stale game)\n");
 				return;
 			}
 			int64_t &engine_clock = human_color_snap == "white" ? g_clock_black_ms : g_clock_white_ms;
@@ -773,7 +790,8 @@ esp_err_t handle_move(httpd_req_t *req)
 				       moves_snap.empty() ? "startpos" : moves_snap.back().c_str(),
 				       last.best_move.c_str(), last.score, last.depth);
 			}
-			g_searching.store(false);
+			if (gen_snap == g_web_gen.load())
+				g_searching.store(false);
 		}).detach();
 
 		httpd_resp_set_type(req, "application/json");
@@ -808,6 +826,14 @@ esp_err_t handle_move(httpd_req_t *req)
 	}
 
 	const web_search_result_t last = web_engine_last_result();
+
+	// A fresh game (or resign) may have landed during the blocking search:
+	// never mutate the new game's log, clocks or result from this reply.
+	if (gen_sync != g_web_gen.load()) {
+		printf("[web] /move: reply dropped (stale game)\n");
+		httpd_resp_set_type(req, "application/json");
+		return httpd_resp_sendstr(req, "{\"error\":\"stale\"}");
+	}
 
 	bool engine_flags = false;
 	if (book && !g_web_game_over) {
@@ -918,15 +944,15 @@ esp_err_t handle_new(httpd_req_t *req)
 	// legacy dev/test overrides
 	cJSON *base_json = cJSON_GetObjectItem(json, "base_ms");
 	cJSON *inc_json  = cJSON_GetObjectItem(json, "inc_ms");
-	bool has_custom = false;
+	bool has_base = false, has_inc = false;
 	int64_t custom_base = 0, custom_inc = 0;
 	if (base_json && cJSON_IsNumber(base_json) && base_json->valuedouble >= 1000) {
 		custom_base = (int64_t)base_json->valuedouble;
-		has_custom = true;
+		has_base = true;
 	}
 	if (inc_json && cJSON_IsNumber(inc_json) && inc_json->valuedouble >= 0) {
 		custom_inc = (int64_t)inc_json->valuedouble;
-		has_custom = true;
+		has_inc = true;
 	}
 	if (tc < 0 || tc >= kNumPresets) tc = kDefaultTc;
 	c = cJSON_GetObjectItem(json, "pid");
@@ -962,6 +988,8 @@ esp_err_t handle_new(httpd_req_t *req)
 		}
 	}
 
+	// Fresh game: invalidate any in-flight search reply before installing state.
+	g_web_gen.fetch_add(1);
 	if (!run_web_task([] { web_engine_set_position({}); })) {
 		printf("[web] /new: engine busy\n");
 		return httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "engine busy");
@@ -970,10 +998,13 @@ esp_err_t handle_new(httpd_req_t *req)
 	// fresh session: position reset (above), clocks at base, move log empty
 	g_web_human_color = color;
 	g_web_tc = tc;
-	if (has_custom) {
+	// Partial customs keep the preset side they omit: inc-only must not
+	// zero the base (that instant-flags the game on the next poll).
+	if (has_base)
 		g_base_ms = custom_base;
-		g_inc_ms  = custom_inc;
-	} else {
+	if (has_inc)
+		g_inc_ms = custom_inc;
+	if (!has_base && !has_inc) {
 		const TcPreset &p = preset_for_idx(tc);
 		g_base_ms = p.base_ms;
 		g_inc_ms  = p.inc_ms;
@@ -1094,6 +1125,7 @@ esp_err_t handle_yield(httpd_req_t *req)
 	// shows startpos with no game_over. Keep clocks at base for a
 	// tidy display; /new will overwrite them anyway.
 	if (g_web_game_over) {
+		g_web_gen.fetch_add(1);
 		g_web_moves.clear();
 		g_web_game_over = false;
 		g_web_game_result.clear();
@@ -1133,6 +1165,7 @@ esp_err_t handle_resign(httpd_req_t *req)
 	}
 	g_web_game_over   = true;
 	g_web_game_result = g_web_human_color == "white" ? "black_wins" : "white_wins";
+	g_web_gen.fetch_add(1);
 	printf("[web] resign -> %s\n", g_web_game_result.c_str());
 	char resp[220];
 	snprintf(resp, sizeof(resp),

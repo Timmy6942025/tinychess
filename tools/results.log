@@ -8913,3 +8913,19 @@ HEAD parity restored and verified (8 TM options, desktop rebuilt). Verdicts, all
   (the 81% maximum cap works), the bullet deficit fully diagnosed (adjust curve), the +115@2s shape.
   Re-entry, if ever: late-shape parity with orig (rising budgets) without reintroducing forfeit risk, judged
   by the same ladder. Tooling notes: cmake misses sub-second edits (touch first); TM_RESUME.txt marked PARKED.
+
+[2026-09-19 PREMOVE + web session hardening] Premove implemented, client-side only (index.html, no firmware
+protocol change, no clock risk): queue a move while the engine thinks, it fires on the reply inside one poll
+(~250-600ms), validated against the fresh legal list, exact-match only, ambiguous promotion cancels with a
+toast, mate/stalemate/game-over/pause/seat-loss discard it. 21-assertion Playwright suite against the live
+board, all green: plain-game regression, full premove chain (store/fire/continue), tap-to-cancel through the
+real input handler, illegal-after-reply cancel, black premove on the auto-post token path, promotion execute /
+ambiguous-cancel / chooser wiring.
+Bugs the suite caught, all fixed: (1) promo chooser buttons built but never attached (empty overlay);
+(2) toast sat over the bottom board row swallowing taps (now pointer-events:none, toasts never interactive);
+(3) REAL session race: /new (or resign/yield-reset) landing mid-search let the stale async reply clobber the
+fresh game (resurrected moves, phantom flag fall) - fixed with a game-generation counter (in-flight replies
+dropped, all paths incl. sync); (4) partial custom clock (inc-only) zeroed the base and instant-flagged -
+preset side now kept when omitted. Harness lessons: hide the start overlay (it eats taps), drain searches
+between scenarios, page-side sync before acting, book replies land in ~50ms so setup must be atomic.
+Firmware rebuilt + reflashed for the page + web.cpp fixes; desktop target still builds.

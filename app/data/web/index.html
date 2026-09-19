@@ -147,6 +147,7 @@
   .sq.sel { background: #f6e58d !important; box-shadow: inset 0 0 0 2px rgba(110,203,99,.55); }
   .sq.last { background: #f0d96b !important; }
   .sq.last.sel { background: #f6e58d !important; }
+  .sq.pre { box-shadow: inset 0 0 0 3px rgba(120,180,255,.85); }
   .sq:hover { filter: brightness(1.03); }
   #board.thinking { outline: 1px solid rgba(110,203,99,.22); outline-offset: 2px; box-shadow: var(--shadow), 0 0 0 6px rgba(110,203,99,.06); }
   .piece {
@@ -241,6 +242,7 @@
   /* toast */
   #toast {
     position: fixed; left: 50%; bottom: calc(16px + env(safe-area-inset-bottom));
+    pointer-events: none;
     transform: translateX(-50%); z-index: 70; display: none;
     background: #1f262e; color: #e8e6e1; border: 1px solid #2a343e;
     padding: 10px 14px; border-radius: 10px; font-size: 13px; max-width: 92vw;
@@ -567,6 +569,8 @@ let legal = [];
 let legalMap = {};
 let lastMove = null;        // [fromIdx, toIdx] highlight
 let sel = null;
+let premove = null; // {from,to,fromSq,toSq,promo} queued while the board thinks
+let pendingReplyFrom = -1; // moves.length (incl. our move) whose engine reply fires the premove
 let dragging = false;
 let dragFrom = -1;
 let flipOverride = null;    // null = auto (bottom = my color)
@@ -733,6 +737,7 @@ function render() {
     if (sel === i) el.classList.add("sel");
     if (lastMove && (lastMove[0] === i || lastMove[1] === i)) el.classList.add("last");
     if (checkSq === i) el.classList.add("check");
+    if (premove && (premove.from === i || premove.to === i)) el.classList.add("pre");
 
     let piece = el.querySelector(".piece");
     if (sq) {
@@ -979,6 +984,11 @@ function updateStatus() {
     return;
   }
   if (thinking) {
+    if (premove) {
+      $("statusline").textContent = "thinking… · premove " + premove.fromSq + premove.toSq + (premove.promo || "") + " (tap to cancel)";
+      $("statusline").className = "thinking";
+      return;
+    }
     $("statusline").innerHTML = '<span class="thinking-loader" aria-label="Thinking"></span>';
     $("statusline").className = "thinking";
     return;
@@ -1063,11 +1073,24 @@ function stopDrag() {
   if (dragFrom >= 0 && sqEls[dragFrom]) sqEls[dragFrom].classList.remove("dragSrc");
 }
 
+function inPremoveMode() {
+  return gameStarted && !gameOver && !paused && !!fen && (boardThinking || serverSearching || engineToMove);
+}
 function onPointerDown(e) {
-  if (!gameStarted || gameOver || paused || boardThinking || serverSearching || engineToMove || !fen) return;
+  if (!gameStarted || gameOver || paused || !fen) return;
   if (!isOwner()) return; // spectators don't move
   const idx = sqIndexFromEvent(e);
   if (idx < 0) return;
+  if (inPremoveMode()) {
+    // tapping a stored premove square cancels it
+    if (premove && (idx === premove.from || idx === premove.to)) {
+      premove = null;
+      sel = null;
+      showToast("Premove cancelled");
+      render();
+      return;
+    }
+  }
   // second tap on a legal target completes the move (tap-to-move)
   if (sel !== null && sel !== idx && tryMove(sel, idx)) return;
   const sq = fenToSquares(fen).squares[idx];
@@ -1106,6 +1129,8 @@ function tryMove(from, to) {
   // shared by drag-release and tap-to-move; returns false when from->to
   // is not a legal move (the caller then treats the tap as a re-select)
   if (from === null || from === to) { sel = null; render(); return false; }
+  if (inPremoveMode()) return setPremove(from, to);
+  premove = null; // fresh manual intent replaces any queued premove
   const opts = (legalMap[from] || []).filter(t => t.to === to);
   sel = null;
   if (!opts.length) { render(); return false; }
@@ -1123,6 +1148,72 @@ function handleMove(from, to) {
   tryMove(from, to);
 }
 
+function setPremove(from, to) {
+  sel = null;
+  const model = fen ? fenToSquares(fen) : null;
+  const pc = model && model.squares[from];
+  const mine = pc && pc.color === (myColor === "white" ? "w" : "b");
+  if (!mine) { render(); return false; }
+  const fromSq = sqName(from), toSq = sqName(to);
+  const toRank = (to - (to % 8)) / 8; // rank index 0 = 8th rank
+  const promoRank = (myColor === "white") ? 0 : 7;
+  if (pc.type === "p" && toRank === promoRank) {
+    showPremovePromo(from, to); // choice stored explicitly, validated at fire time
+    render();
+    return true;
+  }
+  premove = { from, to, fromSq, toSq, promo: null };
+  showToast("Premove: " + fromSq + toSq + " — tap it to cancel");
+  render();
+  return true;
+}
+function showPremovePromo(from, to) {
+  const grid = $("promoGrid");
+  grid.innerHTML = "";
+  ["q", "r", "b", "n"].forEach(p => {
+    const b = document.createElement("button");
+    const img = document.createElement("img");
+    img.src = pieceSrc(myColor[0], p);
+    img.alt = p;
+    img.draggable = false;
+    b.appendChild(img);
+    grid.appendChild(b);
+    b.onclick = () => {
+      $("promoOverlay").classList.remove("show");
+      premove = { from, to, fromSq: sqName(from), toSq: sqName(to), promo: p };
+      showToast("Premove: " + premove.fromSq + premove.toSq + p + " — tap it to cancel");
+      render();
+      maybeFirePremove(moves); // in case the reply landed while choosing
+    };
+  });
+  $("promoOverlay").classList.add("show");
+}
+// Exactly one engine reply ({our move} + 1) may trigger the stored premove,
+// validated against the fresh legal list. Anything else (mate, stalemate,
+// changed position with no exact match, ambiguous promotion) cancels it with
+// a toast. Never guesses: no exact legal match means no move.
+function maybeFirePremove(serverMoves) {
+  if (!premove || !isOwner() || !gameStarted || gameOver || paused) return;
+  if (pendingReplyFrom < 0 || serverMoves.length !== pendingReplyFrom + 1) return;
+  const f = premove.from, t = premove.to;
+  const name = premove.fromSq + premove.toSq + (premove.promo || "");
+  const opts = (legalMap[f] || []).filter(o => o.to === t);
+  let chosen = null;
+  if (premove.promo) {
+    chosen = opts.find(o => o.promo === premove.promo) || null;
+  } else if (opts.length === 1) {
+    chosen = opts[0];
+  }
+  premove = null;
+  if (!chosen) {
+    showToast("Premove " + name + " no longer legal");
+    render();
+    return;
+  }
+  const mv = sqName(f) + sqName(t) + (chosen.promo || "");
+  showToast("Premove played: " + mv);
+  submitMove(mv, Math.max(0, Date.now() - replyAt));
+}
 function submitMove(moveStr, humanMs) {
   moves.push(moveStr);
   lastMove = [idxOf(moveStr.slice(0, 2)), idxOf(moveStr.slice(2, 4))];
@@ -1167,6 +1258,10 @@ async function fetchJson(path, opts, timeoutMs) {
 
 async function postMove(humanMs) {
   if (!isOwner()) return; // spectators never drive the game
+  // Fire token for a queued premove: the reply to THIS submission grows the
+  // server list to exactly token+1. Set here (not in submitMove) so the
+  // auto postMove(0) path for Black is covered too.
+  pendingReplyFrom = moves.length;
   if (paused) { showToast("Game is paused — resume to move"); return; }
   if (serverSearching) { showToast("Board is thinking…"); return; }
   boardThinking = true;
@@ -1292,6 +1387,7 @@ async function refreshState() {
       if (boardThinking && moves.length > prevLen) {
         boardThinking = false;
         replyAt = Date.now();
+        maybeFirePremove(s.moves);
       }
       // Multi-device delight: when a new move lands that we didn't make ourselves,
       // briefly toast it so spectators feel instantly in sync. Debounced so a
@@ -1322,6 +1418,7 @@ async function refreshState() {
       }
     }
     if (s.game_over) {
+      premove = null;
       if (!resultDismissed) {
         gameOver = true;
         gameResult = s.result || "";
@@ -1360,6 +1457,7 @@ async function refreshState() {
         try { navigator.vibrate && navigator.vibrate([30,40,30]); } catch(e){}
       }
     }
+    if (!isOwner()) premove = null;
     prevQueueLen = queueList.length;
     prevOwnerId = ownerId;
     // Presence — how many phones are on the board right now
@@ -1560,6 +1658,8 @@ async function giveUpBoard() {
   $("startOverlay").classList.add("show");
   resultDismissed = true;
   // clear local game state immediately so multiple taps can't queue stale work
+  premove = null;
+  pendingReplyFrom = -1;
   gameStarted = false;
   gameOver = false;
   gameResult = "";
@@ -1602,6 +1702,8 @@ async function startGame() {
   moves = [];
   lastMove = null;
   sel = null;
+  premove = null;
+  pendingReplyFrom = -1;
   fen = null;
   engineToMove = false;
   myName = ($("nameInput").value || "").trim().slice(0, 16);
