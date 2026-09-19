@@ -227,6 +227,20 @@ esp_err_t handle_pieces(httpd_req_t *req)
 	return serve_file(req, spiffs_path);
 }
 
+// CC0 piece sounds live at /spiffs/web/sounds/*.mp3 (sharechess sfx set).
+esp_err_t handle_sounds(httpd_req_t *req)
+{
+	if (strstr(req->uri, ".."))
+		return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "bad path");
+	char spiffs_path[600];
+	int n = snprintf(spiffs_path, sizeof(spiffs_path), "/spiffs/web%s", req->uri);
+	if (n < 0 || (size_t)n >= sizeof(spiffs_path))
+		return httpd_resp_send_err(req, HTTPD_414_URI_TOO_LONG, "uri too long");
+	httpd_resp_set_type(req, "audio/mpeg");
+	httpd_resp_set_hdr(req, "Cache-Control", "public, max-age=86400");
+	return serve_file(req, spiffs_path);
+}
+
 // ---- Captive portal ----
 //
 // Minimal DNS responder: answers EVERY query with an A record pointing at
@@ -1313,6 +1327,7 @@ httpd_handle_t start_httpd()
 	httpd_uri_t pause = { .uri = "/pause", .method = HTTP_POST, .handler = handle_pause, .user_ctx = nullptr };
 	httpd_uri_t resume = { .uri = "/resume", .method = HTTP_POST, .handler = handle_resume, .user_ctx = nullptr };
 	httpd_uri_t pieces = { .uri = "/pieces/*", .method = HTTP_GET, .handler = handle_pieces, .user_ctx = nullptr };
+	httpd_uri_t sounds = { .uri = "/sounds/*", .method = HTTP_GET, .handler = handle_sounds, .user_ctx = nullptr };
 	httpd_register_uri_handler(server, &root);
 	httpd_register_uri_handler(server, &welcome);
 	httpd_register_uri_handler(server, &state);
@@ -1326,6 +1341,7 @@ httpd_handle_t start_httpd()
 	httpd_register_uri_handler(server, &pause);
 	httpd_register_uri_handler(server, &resume);
 	httpd_register_uri_handler(server, &pieces);
+	httpd_register_uri_handler(server, &sounds);
 	// LAST: the captive-portal catch-all for foreign-host probes
 	httpd_uri_t fallback = { .uri = "/*", .method = HTTP_GET, .handler = handle_catchall, .user_ctx = nullptr };
 	httpd_register_uri_handler(server, &fallback);
