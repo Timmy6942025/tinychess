@@ -52,6 +52,9 @@
     -webkit-user-select: none; user-select: none;
     -webkit-touch-callout: none;
   }
+  /* While a card is open the page behind it stays put (still blurred under
+     the overlay). The card itself keeps its own scroll for small screens. */
+  body.locked { overflow: hidden; }
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
   }
@@ -69,8 +72,8 @@
   header { display: flex; align-items: center; gap: 10px; padding: 6px 2px 2px; flex: none; }
   header h1 { margin: 0; font-size: 17px; letter-spacing: 1.2px; font-weight: 800; display: flex; align-items: center; gap: 8px; }
   header h1::before { content: ""; width: 26px; height: 26px; border-radius: 8px; flex: none;
-    background: url('pieces/ejgfv/wn.png') center/20px 20px no-repeat, linear-gradient(135deg, var(--accent) 0%, #3f8f5c 100%);
-    box-shadow: 0 4px 12px rgba(116,208,104,.35); }
+    background: url('pieces/ejgfv/bn.png') center/20px 20px no-repeat, linear-gradient(135deg, #f0d9b5 0%, #c8a06f 100%);
+    box-shadow: 0 2px 6px rgba(0,0,0,.45); }
   .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--accent); flex: none; box-shadow: var(--accent-glow); position: relative; }
   .dot::after { content: ""; position: absolute; inset: -6px; border-radius: 50%; border: 1px solid rgba(110,203,99,.18); opacity: 0; animation: pulseDot 2.2s infinite; }
   .dot.off { background: var(--warn); box-shadow: 0 0 8px rgba(217,161,59,.35); }
@@ -482,13 +485,13 @@
 <div class="overlay" id="startOverlay">
   <div class="card">
     <div style="display:flex; align-items:center; gap:12px; margin-bottom:12px;">
-      <div style="width:42px; height:42px; border-radius:12px; background: url('pieces/ejgfv/wn.png') center/30px 30px no-repeat, linear-gradient(135deg, var(--accent) 0%, #3f8f5c 100%); box-shadow: 0 6px 16px rgba(116,208,104,.35); flex:none;" aria-hidden="true"></div>
+      <div style="width:42px; height:42px; border-radius:12px; background: url('pieces/ejgfv/bn.png') center/30px 30px no-repeat, linear-gradient(135deg, #f0d9b5 0%, #c8a06f 100%); box-shadow: 0 2px 8px rgba(0,0,0,.45); flex:none;" aria-hidden="true"></div>
       <div>
-        <h2 style="margin:0; font-size:21px; letter-spacing:-.2px; font-weight:800;">Play the little board</h2>
+        <h2 style="margin:0; font-size:21px; letter-spacing:-.2px; font-weight:800;">Play against TinyChess</h2>
         <div style="font-size:12.5px; color:var(--muted); margin-top:2px;">The box is the computer. Your phone is the board.</div>
       </div>
     </div>
-    <div class="sub" style="margin-bottom:14px; line-height:1.55;">Tap a piece, then tap where it goes. Drag works too. The board replies on the other side and both clocks run live.</div>
+    <div class="sub" style="margin-bottom:14px; line-height:1.55;">Tap a piece, then tap where it goes. Drag works too. While the board thinks, tap your next move to queue it as a premove. The board replies on the other side and both clocks run live.</div>
     <label for="nameInput" style="font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.7px; font-weight:700; display:block; margin-bottom:6px;">Your name <span style="font-weight:400; text-transform:none; letter-spacing:0; opacity:.7;">(seen by watchers)</span></label>
     <input id="nameInput" maxlength="16" placeholder="Your name" autocomplete="off" autocapitalize="words" enterkeyhint="done" style="margin-bottom:14px;">
     <div style="font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.7px; font-weight:700; margin-bottom:8px;">Play as</div>
@@ -958,15 +961,48 @@ function updateSoundBtn() {
   b.title = soundOn ? "Sound on, tap to mute" : "Sound off, tap to unmute";
   b.setAttribute("aria-label", b.title);
 }
+/* ---- haptics ----
+   Android Chrome-family phones vibrate with full patterns. iPhones have no
+   Vibration API in any browser (WebKit ships none, all iOS browsers included,
+   Firefox removed it too), so taps there tick the Taptic Engine through a
+   hidden switch flipped inside the tap gesture, and the percussive sounds
+   cover everything async like replies and game end. */
+let canVibrate = false;
+try { canVibrate = typeof navigator.vibrate === "function" && navigator.vibrate(0); } catch (e) { canVibrate = false; }
+function buzz(p) {
+  if (!canVibrate) return;
+  try { navigator.vibrate(p); } catch (e) {}
+}
+let iosSwitch = null;
+function iosTick() {
+  try {
+    if (!iosSwitch) {
+      iosSwitch = document.createElement("input");
+      iosSwitch.type = "checkbox";
+      iosSwitch.setAttribute("switch", "");
+      iosSwitch.tabIndex = -1;
+      iosSwitch.setAttribute("aria-hidden", "true");
+      iosSwitch.style.cssText = "position:fixed;left:-10px;top:0;width:4px;height:4px;opacity:0;pointer-events:none;margin:0;";
+      document.body.appendChild(iosSwitch);
+    }
+    iosSwitch.checked = !iosSwitch.checked;
+  } catch (e) {}
+}
+// One place for every tap tick: board squares and all buttons. Runs inside
+// the gesture so the iPhone tick is allowed to fire.
+document.addEventListener("pointerdown", (e) => {
+  const t = e.target;
+  if (t && t.closest && (t.closest("button") || t.closest("#board"))) iosTick();
+}, { capture: true, passive: true });
+
 let prevMovesLen = 0, prevPc = null;
 function playMoveFeedback(model, checkSq) {
   const pc = model.squares.filter(Boolean).length;
   if (moves.length > prevMovesLen && prevPc !== null) {
-    if (gameOver) soundEnd();
-    else if (checkSq >= 0) soundCheck();
-    else if (pc < prevPc) soundCapture();
-    else soundMove();
-    try { navigator.vibrate && navigator.vibrate(12); } catch (err) { }
+    if (gameOver) { soundEnd(); buzz([25, 60, 25, 60, 90]); }
+    else if (checkSq >= 0) { soundCheck(); buzz([15, 40, 15]); }
+    else if (pc < prevPc) { soundCapture(); buzz([12, 25, 12]); }
+    else { soundMove(); buzz(12); }
   }
   prevMovesLen = moves.length;
   prevPc = pc;
@@ -1194,6 +1230,7 @@ function onPointerDown(e) {
   const mine = sq && sq.color === (myColor === "white" ? "w" : "b");
   if (mine) {
     sel = idx;
+    buzz(8); // selection tick (Android; iPhones already ticked in the gesture)
     dragging = true;
     dragFrom = idx;
     startDrag(idx);
@@ -1229,7 +1266,7 @@ function tryMove(from, to) {
   premove = null; // fresh manual intent replaces any queued premove
   const opts = (legalMap[from] || []).filter(t => t.to === to);
   sel = null;
-  if (!opts.length) { render(); return false; }
+  if (!opts.length) { buzz(30); render(); return false; }
   const humanMs = Math.max(0, Date.now() - replyAt);
   if (opts.some(t => t.promo)) {
     showPromo(from, to, opts, humanMs);
@@ -1603,7 +1640,7 @@ async function refreshState() {
       }
       if (prevOwnerId && !ownerId && !isOwner() && canTake()) {
         showToast("Board is free. Tap Take the board.", 2400);
-        try { navigator.vibrate && navigator.vibrate([30,40,30]); } catch(e){}
+        buzz([30, 40, 30]);
       }
     }
     if (!isOwner()) premove = null;
@@ -1791,7 +1828,7 @@ function updateSeatBar() {
       bar.hidden = true;
       $("startOverlay").classList.add("show");
       // Gentle haptic when it's your turn
-      try { navigator.vibrate && navigator.vibrate([20,30,20]); } catch(e){}
+      buzz([20, 30, 20]);
     };
     // Also nudge with a toast if you head the queue
     if (pos === 1) showToast("You are next. Get ready.", 2200);
@@ -1952,6 +1989,18 @@ boardEl.addEventListener("pointercancel", () => {
   dragFrom = -1;
 });
 boardEl.addEventListener("contextmenu", e => e.preventDefault());
+// While any card is open, freeze the page behind it. The overlay keeps its
+// own scroll, so small screens can still reach every button.
+(function lockBehindCards() {
+  const ids = ["startOverlay", "promoOverlay", "pauseOverlay", "resultOverlay"];
+  const sync = () => {
+    const open = ids.some(id => { const el = $(id); return el && el.classList.contains("show"); });
+    document.body.classList.toggle("locked", open);
+  };
+  const obs = new MutationObserver(sync);
+  ids.forEach(id => { const el = $(id); if (el) obs.observe(el, { attributes: true, attributeFilter: ["class"] }); });
+  sync();
+})();
 
 document.querySelectorAll("#colorPick button").forEach(b => {
   b.onclick = () => {
