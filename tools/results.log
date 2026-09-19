@@ -8886,3 +8886,30 @@ left uncommitted, never shipped). Desktop Dog-native md5 25438ea499751c4c337fc4e
 411ac9ee4b503599f633d935ca2d2e1cdca2cd1a08eff4f8c3b1ff5f8e5789d2, board-flash.zip
 34951c014007ea18485ec0e9a154191392c1932008b2059948b2bf70047e8530, plus SHA256SUMS.txt. Docs: release pointers
 to v0.8/bd1d96e (README, BRAG, AGENTS) + warm bench anchor to ~15.0k.
+
+[2026-09-19 TM v4 CAMPAIGN: PARKED, tree reverted to HEAD] Structural port of Stockfish's
+TimeManagement::init (income-anchored timeLeft, capped horizon 50, ply-growing share, 0.81ms maximum cap)
+plus three new knobs (TM_OptScale, TM_AdjustFloor, TM_MinRatio, TM_PlyBoost). All code reverted uncommitted;
+HEAD parity restored and verified (8 TM options, desktop rebuilt). Verdicts, all Threads=1 Hash=8:
+- leg1 1+0.01 v4 vs tm-orig: 30-61-109, -54.3 +/- 32.4, 0 forfeits. Structure safe, level starved.
+- trialA OptScale 1500 vs 1000 @1s (same binary): 49-49-102, 0.0. Level is not the lever. Killed.
+- Spend audit (20g PGN move times @1s): v4 late 14.1ms vs orig 23.7ms, mid identical. Stuck-out late.
+- trialB AdjustFloor 1000 vs 0 @1s: 61-30-109, +54.3 +/- 32.4, LOS 99.9%. SF's log-time adjust curve
+  halves the budget exactly when small clocks decide games. Diagnosis confirmed, size == whole deficit.
+- leg1b v4+floor vs orig @1s: 54-39-107, +26.1 +/- 32.9, 0 forfeits. PASS.
+- leg2 @2+0.02: 84-20-96, +115.2 +/- 34.8, LOS 100%, 0 forfeits. PASS. Largest single gain ever measured here.
+- leg5a @5+0.05: 17-29-154, -20.9 +/- 23.0. Replication leg5b: 29-34-137, -8.7 +/- 27.0. Pooled 400g -15 +/- 18.
+- trialC OptScale 1500 vs 1000 @5s: 17-33-150, -27.9. Richer spending hurts at 5s. Level dead both ways.
+- Spend audit @5s (20g): v4 open 164 / mid 132 / late 73 vs orig 76 / 113 / 147; deep researches >500ms:
+  v4 1 vs orig 25. Old code's horizon collapse accidentally produces match-winning late splurges at 5s.
+- trialD MinRatio 1000 vs 400 @5s: 19-20-161, -1.7 +/- 21.3. The 0.4 floor is not the lever. Killed.
+- Stop-code read (search.cpp:1197): spend blends min/2 (stable roots, desktop halving) to max (volatile).
+  Trace run (552 stop decisions, 4g @5s, needed `-debug all` - bare -debug is fatal in this cutechess build):
+  v4 budgets open 179/mid 236/late 111 (hump) vs orig 88/106/161 (rising). Shape, not level.
+- trialE PlyBoost 2000 vs 1000 @5s: 29-23-148, +10.4 +/- 24.5 (mirror match).
+- leg5c full config (floor1000+boost2000) vs orig @5s: 17-43-140, -45.4 +/- 26.1, LOS 0.0%. DECISIVE.
+  Lesson: self-play Elo is not transitive - mirror +10 became -45 vs a third shape. Never ship on mirror alone.
+- PARKED per the every-leg->0-or-no-commit rule. Durable findings kept: 0-forfeit structure at every TC
+  (the 81% maximum cap works), the bullet deficit fully diagnosed (adjust curve), the +115@2s shape.
+  Re-entry, if ever: late-shape parity with orig (rising budgets) without reintroducing forfeit risk, judged
+  by the same ladder. Tooling notes: cmake misses sub-second edits (touch first); TM_RESUME.txt marked PARKED.
