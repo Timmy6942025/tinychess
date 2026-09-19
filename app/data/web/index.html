@@ -237,7 +237,7 @@
      the Taptic Engine. Transparent, keyboard- and reader-inert. */
   .hsw { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0;
     margin: 0; padding: 0; border: 0; background: transparent;
-    touch-action: manipulation; }
+    -webkit-appearance: switch; touch-action: manipulation; }
   .pick button, .tcBtn, .big, #seatBar button, #pgnBtn, #soundBtn,
   #promoGrid button, #postGameBar button { position: relative; }
   #controls button.danger { color: var(--danger); border-color: #4a2f2c; }
@@ -610,6 +610,8 @@ let kbCursor = -1; // keyboard cursor square, -1 means off (shows on first arrow
 let premove = null; // {from,to,fromSq,toSq,promo} queued while the board thinks
 let dragging = false;
 let dragFrom = -1;
+let lastDragIdx = -1;
+const coarsePointer = (() => { try { return matchMedia("(pointer:coarse)").matches; } catch (e) { return false; } })();
 let flipOverride = null;    // null = auto (bottom = my color)
 
 /* ================= identity & seat (multi-player) ================= */
@@ -909,7 +911,11 @@ let audioCtx = null;
 function ac() {
   if (!soundOn) return null;
   try {
-    audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    if (!audioCtx) {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      try { audioCtx = new AC({ latencyHint: "interactive" }); }
+      catch (e2) { audioCtx = new AC(); }
+    }
     // Mobile browsers suspend AudioContext until a user gesture — resume quietly
     if (audioCtx.state === "suspended") audioCtx.resume().catch(()=>{});
     return audioCtx;
@@ -1026,14 +1032,18 @@ function addHapticOverlay(el) {
   } catch (e) {}
 }
 
-let prevMovesLen = 0, prevPc = null;
+let prevMovesLen = 0, prevPc = null, ownMovePending = false;
 function playMoveFeedback(model, checkSq) {
   const pc = model.squares.filter(Boolean).length;
   if (moves.length > prevMovesLen && prevPc !== null) {
-    if (gameOver) { soundEnd(); buzz([25, 60, 25, 60, 90]); }
-    else if (checkSq >= 0) { soundCheck(); buzz([15, 40, 15]); }
-    else if (pc < prevPc) { soundCapture(); buzz([12, 25, 12]); }
-    else { soundMove(); buzz(12); }
+    // Buzz only for our own moves. The engine's reply gets sound only —
+    // buzzing the opponent's move reads as wrong, especially in fast games.
+    const mine = ownMovePending;
+    ownMovePending = false;
+    if (gameOver) { soundEnd(); if (mine) buzz([25, 60, 25, 60, 90]); }
+    else if (checkSq >= 0) { soundCheck(); if (mine) buzz([15, 40, 15]); }
+    else if (pc < prevPc) { soundCapture(); if (mine) buzz([12, 25, 12]); }
+    else { soundMove(); if (mine) buzz(12); }
   }
   prevMovesLen = moves.length;
   prevPc = pc;
@@ -1266,6 +1276,7 @@ function onPointerDown(e) {
     buzz(8); // selection tick (Android; iPhones already ticked in the gesture)
     dragging = true;
     dragFrom = idx;
+    lastDragIdx = idx;
     startDrag(idx);
     // synthetic pointers (automation) have no active pointer id
     try { boardEl.setPointerCapture(e.pointerId); } catch (err) { }
@@ -1279,11 +1290,20 @@ function onPointerDown(e) {
 function onPointerMove(e) {
   if (!dragging) return;
   moveDrag(e);
+  // Scrub tick: each new square under the finger ticks on vibration-capable
+  // phones (Android). iPhones tick on touchdown via the switch overlay; the
+  // coarse-pointer gate keeps motorless desktops silent.
+  const idx = sqIndexFromEvent(e);
+  if (idx >= 0 && idx !== dragFrom && idx !== lastDragIdx) {
+    lastDragIdx = idx;
+    if (canVibrate && coarsePointer) buzz(6);
+  }
 }
 
 function onPointerUp(e) {
   if (!dragging) return;
   dragging = false;
+  lastDragIdx = -1;
   stopDrag();
   const idx = sqIndexFromEvent(e);
   // a plain tap (release on the same square) keeps the selection so the
@@ -1430,6 +1450,7 @@ function premoveFromMove(mv) {
 }
 function submitMove(moveStr, humanMs, fromPremove) {
   moves.push(moveStr);
+  ownMovePending = true;
   lastMove = [idxOf(moveStr.slice(0, 2)), idxOf(moveStr.slice(2, 4))];
   if (fen) fen = applyLocalMove(fen, moveStr);
   postMove(humanMs, fromPremove || null);
@@ -2022,6 +2043,7 @@ boardEl.addEventListener("pointerup", onPointerUp);
 boardEl.addEventListener("pointercancel", () => {
   stopDrag();
   dragging = false;
+  lastDragIdx = -1;
   dragFrom = -1;
 });
 boardEl.addEventListener("contextmenu", e => e.preventDefault());
