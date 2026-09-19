@@ -978,10 +978,41 @@ function ac() {
       try { audioCtx = new AC({ latencyHint: "interactive" }); }
       catch (e2) { audioCtx = new AC(); }
     }
-    // Mobile browsers suspend AudioContext until a user gesture — resume quietly
-    if (audioCtx.state === "suspended") audioCtx.resume().catch(()=>{});
+    // Most iPhones rest on silent, which mutes page audio by default.
+    // Playback mode plays through the silent switch (it ducks background
+    // audio instead; game taps are the point, so that trade is correct).
+    try {
+      if ("audioSession" in navigator && navigator.audioSession.type !== "playback") {
+        navigator.audioSession.type = "playback";
+      }
+    } catch (e3) {}
+    // Mobile browsers suspend AudioContext until a user gesture — resume quietly.
+    // "interrupted" (lock screen, call) needs the same resume or queued ticks
+    // fire as one chord on return.
+    if (audioCtx.state !== "running") audioCtx.resume().catch(()=>{});
     return audioCtx;
   } catch (err) { return null; }
+}
+// Felt thump under every knock: 190→65 Hz pitch-dropping body in the band
+// where the microspeaker still moves air and the palm is most sensitive.
+// Heard as weight, faintly felt through the chassis at higher volumes.
+function feltThump(peak, dur) {
+  const ctx = ac();
+  if (!ctx) return;
+  try {
+    const t0 = ctx.currentTime;
+    const o = ctx.createOscillator(), g = ctx.createGain();
+    o.type = "sine";
+    o.frequency.setValueAtTime(190, t0);
+    o.frequency.exponentialRampToValueAtTime(65, t0 + 0.045);
+    const hp = ctx.createBiquadFilter();
+    hp.type = "highpass"; hp.frequency.value = 120; hp.Q.value = 0.7;
+    g.gain.setValueAtTime(0, t0);
+    g.gain.linearRampToValueAtTime(peak || 0.9, t0 + 0.002);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + (dur || 0.08));
+    o.connect(hp); hp.connect(g); g.connect(ctx.destination);
+    o.start(t0); o.stop(t0 + (dur || 0.08) + 0.02);
+  } catch (err) { }
 }
 // Woody knock: filtered noise burst plus a quick pitch drop underneath.
 function thock(baseFreq, dur, gain) {
@@ -1048,6 +1079,10 @@ function updateSoundBtn() {
 let canVibrate = false;
 try { canVibrate = typeof navigator.vibrate === "function" && navigator.vibrate(0); } catch (e) { canVibrate = false; }
 function buzz(p) {
+  // Future API probe: lights up automatically if a browser ever ships it.
+  try {
+    if (typeof navigator.playHaptics === "function") { navigator.playHaptics("tick", 1.0); return; }
+  } catch (e) {}
   if (!canVibrate) return;
   try { navigator.vibrate(p); } catch (e) {}
 }
@@ -1111,9 +1146,9 @@ function playMoveFeedback(model, checkSq) {
   prevMovesLen = moves.length;
   prevPc = pc;
 }
-function soundMove()   { loadSfx(); if (!playSfx("move", 0.9)) thock(2200, .06, .5); }
-function soundCapture(){ loadSfx(); if (!playSfx("capture", 1)) { thock(700, .09, .6); tone(140, .1, .12, 0); tone(6000, .05, .04, .02); } }
-function soundCheck()  { loadSfx(); if (!playSfx("check", 0.9)) { thock(2600, .05, .4); tone(880, .12, .1, .05); tone(1318, .16, .1, .14); } }
+function soundMove()   { loadSfx(); feltThump(0.9, 0.08); if (!playSfx("move", 0.9)) thock(900, .06, .5); }
+function soundCapture(){ loadSfx(); feltThump(1.0, 0.09); if (!playSfx("capture", 1)) { thock(700, .09, .6); tone(140, .1, .12, 0); tone(6000, .05, .04, .02); } }
+function soundCheck()  { loadSfx(); feltThump(0.7, 0.07); if (!playSfx("check", 0.9)) { thock(1100, .05, .4); tone(880, .12, .1, .05); tone(1318, .16, .1, .14); } }
 function soundEnd()    { tone(523, .16, .1, 0); tone(659, .16, .1, .13); tone(784, .3, .12, .26); }
 function soundIllegal(){ tone(200, .12, .1, 0, "triangle"); }
 
