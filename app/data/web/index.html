@@ -7,6 +7,9 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%2374d068'/%3E%3Ctext x='32' y='45' font-size='36' text-anchor='middle' fill='%230d1a10'%3E%E2%99%9E%3C/text%3E%3C/svg%3E">
+<link rel="apple-touch-icon" href="pieces/ejgfv/wk.png">
+<link rel="manifest" href='data:application/manifest+json,{"name":"DOG-CHESS","short_name":"DOG-CHESS","display":"standalone","background_color":"%230e1317","theme_color":"%230e1317"}'>
 <title>DOG-CHESS</title>
 <style>
   :root {
@@ -31,7 +34,7 @@
     --shadow: 0 14px 44px rgba(0,0,0,.5), 0 2px 10px rgba(0,0,0,.32);
     --shadow-sm: 0 4px 18px rgba(0,0,0,.28);
     --ease: cubic-bezier(.2,.8,.2,1);
-    --ease-out: cubic-bezier(.16,1,.3,1);
+    --ease-out: cubic-bezier(.32,.72,0,1);
   }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; scrollbar-width: thin; scrollbar-color: #2a343e transparent; }
   *::-webkit-scrollbar { width: 6px; height: 6px; }
@@ -270,7 +273,7 @@
   @keyframes seatIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
   #seatBar button {
     background: var(--surface-2); color: var(--text); border: 1px solid var(--border-2);
-    border-radius: 999px; padding: 9px 16px; min-height: 40px; font-size: 13px; font-weight: 650; cursor: pointer; font-family: inherit;
+    border-radius: 999px; padding: 9px 18px; min-height: 44px; font-size: 13px; font-weight: 650; cursor: pointer; font-family: inherit;
     transition: all .15s var(--ease);
   }
   #seatBar button:hover { background: #2a343e; border-color: #3a4654; transform: translateY(-1px); }
@@ -289,6 +292,9 @@
     position: relative;
   }
   #history:empty::before { content: "No moves yet."; color: var(--muted); font-style: normal; opacity: .85; }
+  #history .mno { color: var(--muted-2); margin-right: 6px; }
+  #history .mv { color: #c3ccd4; background: rgba(255,255,255,.04); border-radius: 6px; padding: 1px 7px; margin-right: 6px; }
+  #history .mv.cur { color: var(--accent); background: rgba(116,208,104,.13); font-weight: 700; }
   #history:hover { border-color: #2e3844; }
   #board.paused { opacity: .58; filter: saturate(.65) brightness(.95); }
   #board.gameOver { filter: saturate(.9); }
@@ -460,8 +466,8 @@
   <div style="display:flex; align-items:center; justify-content:space-between; padding: 4px 2px 0; gap: 8px;">
     <span style="font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.9px; font-weight:700;">Moves</span>
     <span style="display:flex; gap:8px; align-items:center;">
-      <button id="pgnBtn" title="Copy PGN to clipboard" style="font-size:12px; min-height:36px; padding:7px 14px; border-radius:999px; border:1px solid var(--border); background:var(--surface); color:var(--muted); cursor:pointer; font-weight:650; transition: all .15s var(--ease);">Copy PGN</button>
-      <button id="soundBtn" title="Toggle sound" aria-label="Toggle sound" style="width:36px; height:36px; border-radius:999px; border:1px solid var(--border); background:var(--surface); color:var(--muted); cursor:pointer; display:grid; place-items:center; transition: all .15s var(--ease);"></button>
+      <button id="pgnBtn" title="Copy PGN to clipboard" style="font-size:12px; min-height:40px; padding:7px 16px; border-radius:999px; border:1px solid var(--border); background:var(--surface); color:var(--muted); cursor:pointer; font-weight:650; transition: all .15s var(--ease);">Copy PGN</button>
+      <button id="soundBtn" title="Toggle sound" aria-label="Toggle sound" style="width:40px; height:40px; border-radius:999px; border:1px solid var(--border); background:var(--surface); color:var(--muted); cursor:pointer; display:grid; place-items:center; transition: all .15s var(--ease);"></button>
     </span>
   </div>
   <div id="history"></div>
@@ -578,7 +584,7 @@ let boardThinking = false;  // /move request in flight
 let engineToMove = false;   // derived from the last fen
 let gameStarted = false;
 
-let clocks = { white: 600000, black: 600000 };
+let clocks = { white: 600000, black: 600000, inc: 0 };
 let clockSyncAt = Date.now();
 let moveSentAt = 0;
 let replyAt = Date.now();   // when the engine last replied (human clock base)
@@ -887,21 +893,58 @@ function renderCaptured(model) {
     (lead < 0 ? `<span class="lead">+${-lead}</span>` : "");
 }
 
-/* ---- sounds & haptics ---- */
+/* ---- sounds & haptics: short percussive taps, not phone beeps ---- */
 let audioCtx = null;
-function beep(freq, dur, type, gain, delay) {
-  if (!soundOn) return;
+function ac() {
+  if (!soundOn) return null;
   try {
     audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
     // Mobile browsers suspend AudioContext until a user gesture — resume quietly
     if (audioCtx.state === "suspended") audioCtx.resume().catch(()=>{});
-    const t0 = audioCtx.currentTime + (delay || 0);
-    const o = audioCtx.createOscillator(), g = audioCtx.createGain();
-    o.type = type || "sine"; o.frequency.value = freq;
-    g.gain.setValueAtTime(gain || .07, t0);
+    return audioCtx;
+  } catch (err) { return null; }
+}
+// Woody knock: filtered noise burst plus a quick pitch drop underneath.
+function thock(baseFreq, dur, gain) {
+  const ctx = ac();
+  if (!ctx) return;
+  try {
+    const t0 = ctx.currentTime;
+    const len = Math.max(1, Math.floor(ctx.sampleRate * dur));
+    const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / len);
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    const f = ctx.createBiquadFilter();
+    f.type = "lowpass"; f.frequency.value = baseFreq;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(gain, t0);
     g.gain.exponentialRampToValueAtTime(.0001, t0 + dur);
-    o.connect(g); g.connect(audioCtx.destination);
+    src.connect(f); f.connect(g); g.connect(ctx.destination);
+    src.start(t0);
+    const o = ctx.createOscillator(), g2 = ctx.createGain();
+    o.type = "sine";
+    o.frequency.setValueAtTime(baseFreq / 4, t0);
+    o.frequency.exponentialRampToValueAtTime(Math.max(40, baseFreq / 8), t0 + dur);
+    g2.gain.setValueAtTime(gain * .8, t0);
+    g2.gain.exponentialRampToValueAtTime(.0001, t0 + dur);
+    o.connect(g2); g2.connect(ctx.destination);
     o.start(t0); o.stop(t0 + dur);
+  } catch (err) { }
+}
+function tone(freq, dur, gain, delay, type) {
+  const ctx = ac();
+  if (!ctx) return;
+  try {
+    const t0 = ctx.currentTime + (delay || 0);
+    const o = ctx.createOscillator(), g = ctx.createGain();
+    o.type = type || "sine"; o.frequency.value = freq;
+    g.gain.setValueAtTime(0, t0);
+    g.gain.linearRampToValueAtTime(gain, t0 + .012);
+    g.gain.exponentialRampToValueAtTime(.0001, t0 + dur);
+    o.connect(g); g.connect(ctx.destination);
+    o.start(t0); o.stop(t0 + dur + .02);
   } catch (err) { }
 }
 function updateSoundBtn() {
@@ -928,10 +971,10 @@ function playMoveFeedback(model, checkSq) {
   prevMovesLen = moves.length;
   prevPc = pc;
 }
-function soundMove()   { beep(340, .07, "sine",   .06); }
-function soundCapture(){ beep(170, .1,  "square", .05); }
-function soundCheck()  { beep(660, .09, "sine",   .07); beep(880, .12, "sine", .07, .1); }
-function soundEnd()    { beep(392, .18, "sine",   .08); beep(494, .22, "sine", .08, .15); beep(587, .3, "sine", .08, .3); }
+function soundMove()   { thock(2200, .06, .5); }
+function soundCapture(){ thock(700, .09, .6); tone(140, .1, .12, 0); }
+function soundCheck()  { thock(2600, .05, .4); tone(880, .12, .1, .05); tone(1318, .16, .1, .14); }
+function soundEnd()    { tone(523, .16, .1, 0); tone(659, .16, .1, .13); tone(784, .3, .12, .26); }
 
 function buildBoard() {
   boardEl.innerHTML = "";
@@ -947,9 +990,12 @@ function buildBoard() {
 
 /* ================= clocks ================= */
 function fmtClock(ms) {
-  ms = Math.max(0, Math.ceil(ms / 1000) * 1000);
+  ms = Math.max(0, ms);
   const m = Math.floor(ms / 60000), s = Math.floor((ms % 60000) / 1000);
-  return m + ":" + String(s).padStart(2, "0");
+  if (ms < 10000 && m === 0) return "0:" + String(s).padStart(2, "0") + "." + Math.floor((ms % 1000) / 100);
+  const up = Math.ceil(ms / 1000) * 1000;
+  const um = Math.floor(up / 60000), us = Math.floor((up % 60000) / 1000);
+  return um + ":" + String(us).padStart(2, "0");
 }
 
 function updateClocks() {
@@ -972,13 +1018,25 @@ function updateClocks() {
   const top = topName === "White" ? w : b;
   const bot = topName === "White" ? b : w;
   $("clockTopName").textContent = topName;
-  $("clockBottomName").textContent = myColor;
+  const botLabel = myColor === "white" ? "White" : "Black";
+  $("clockBottomName").textContent = botLabel;
   $("clockTopTime").textContent = fmtClock(top);
   $("clockBottomTime").textContent = fmtClock(bot);
+  const inc = clocks.inc > 0 ? "+" + Math.round(clocks.inc / 1000) : "";
+  $("clockTopName").title = inc ? "Increment " + inc + "s per move" : "";
+  $("clockBottomName").title = $("clockTopName").title;
+  let incEl = $("incChip");
+  if (inc && !$("incChip")) {
+    incEl = document.createElement("span");
+    incEl.id = "incChip";
+    incEl.style.cssText = "font-size:10px;font-weight:700;color:var(--muted);border:1px solid var(--border);border-radius:999px;padding:1px 7px;margin-left:8px;letter-spacing:.4px;";
+    $("clockBottom").querySelector(".pcell").appendChild(incEl);
+  }
+  if ($("incChip")) $("incChip").textContent = inc ? inc + "s / move" : "";
   $("clockTop").classList.toggle("active", !gameOver && topName === stmName);
-  $("clockBottom").classList.toggle("active", !gameOver && myColor === stmName);
+  $("clockBottom").classList.toggle("active", !gameOver && botLabel === stmName);
   $("clockTop").classList.toggle("low", top < 60000 && topName !== stmName);
-  $("clockBottom").classList.toggle("low", bot < 60000 && myColor !== stmName);
+  $("clockBottom").classList.toggle("low", bot < 60000 && botLabel !== stmName);
 
   const humanActive = !gameOver && !boardThinking && myColor === stmName.toLowerCase();
   if (humanActive && bot <= 0) humanFlag();
@@ -1060,12 +1118,24 @@ function formattedMoves() {
 
 function updateHistory() {
   const fm = formattedMoves();
-  const rows = [];
+  const box = $("history");
+  box.innerHTML = "";
+  const frag = document.createDocumentFragment();
   for (let i = 0; i < fm.length; i += 2) {
-    rows.push((i / 2 + 1) + ". " + fm[i] + (fm[i + 1] ? " " + fm[i + 1] : ""));
+    const no = document.createElement("span");
+    no.className = "mno";
+    no.textContent = (i / 2 + 1) + ".";
+    frag.appendChild(no);
+    for (let k = i; k < Math.min(i + 2, fm.length); k++) {
+      const mv = document.createElement("span");
+      mv.className = "mv" + (k === fm.length - 1 ? " cur" : "");
+      mv.textContent = fm[k];
+      frag.appendChild(mv);
+    }
+    frag.appendChild(document.createTextNode(" "));
   }
-  $("history").textContent = rows.join("  ");
-  $("history").scrollTop = $("history").scrollHeight;
+  box.appendChild(frag);
+  box.scrollTop = box.scrollHeight;
 }
 
 /* ================= interaction ================= */
@@ -1370,14 +1440,14 @@ async function postMove(humanMs, premoveRestore) {
           if (s.game_over) {
             boardThinking = false; serverSearching = false;
             clockSyncAt = Date.now(); replyAt = Date.now();
-            if (s.clock) clocks = { white: s.clock.white, black: s.clock.black };
+            if (s.clock) clocks = { white: s.clock.white, black: s.clock.black, inc: s.clock.inc || 0 };
             // refreshState already set gameOver/result and rendered
             return;
           }
           if (s.moves && s.moves.length > startLen) {
             boardThinking = false; serverSearching = false;
             clockSyncAt = Date.now(); replyAt = Date.now();
-            if (s.clock) clocks = { white: s.clock.white, black: s.clock.black };
+            if (s.clock) clocks = { white: s.clock.white, black: s.clock.black, inc: s.clock.inc || 0 };
             updateStatus();
             return;
           }
@@ -1396,7 +1466,7 @@ async function postMove(humanMs, premoveRestore) {
       // Sync fallback (automated tests / old clients that expect bestmove)
       boardThinking = false; serverSearching = false;
       clockSyncAt = Date.now(); replyAt = Date.now();
-      if (r.clock) clocks = { white: r.clock.white, black: r.clock.black };
+      if (r.clock) clocks = { white: r.clock.white, black: r.clock.black, inc: (r.clock.inc || clocks.inc) };
       if (r.game_over) {
         gameOver = true; gameResult = r.result; showResult();
       } else if (r.bestmove) {
@@ -1455,7 +1525,7 @@ async function refreshState() {
       const f = idxOf(from);
       (legalMap[f] = legalMap[f] || []).push({ to: idxOf(to), promo });
     });
-    if (s.clock) { clocks = { white: s.clock.white, black: s.clock.black }; clockSyncAt = Date.now(); }
+    if (s.clock) { clocks = { white: s.clock.white, black: s.clock.black, inc: s.clock.inc || 0 }; clockSyncAt = Date.now(); }
     if (s.moves && s.moves.join(" ") !== moves.join(" ")) {
       const prevLen = moves.length;
       const prevFen = fen;
@@ -1529,7 +1599,7 @@ async function refreshState() {
       if (isOwner() && queueList.length > prevQueueLen) {
         const j = queueList[queueList.length - 1];
         showToast((j.name || "Someone") + " joined · #" + queueList.length, 1900);
-        try { beep(520,.08,"sine",.04); beep(660,.08,"sine",.04,.12); } catch(e){}
+        try { tone(660,.09,.08,0); tone(880,.1,.08,.1); } catch(e){}
       }
       if (prevOwnerId && !ownerId && !isOwner() && canTake()) {
         showToast("Board is free. Tap Take the board.", 2400);
@@ -1624,18 +1694,32 @@ function showPostGameBar() {
   if (bar) { bar.hidden = false; bar.style.display = "flex"; }
 }
 function showResult() {
-  let title, sub;
+  let title, sub, glyph;
+  const trophy = '<svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="#74d068" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 21h8"/><path d="M12 17v4"/><path d="M7 4h10v5a5 5 0 0 1-10 0V4z"/><path d="M7 6H4a1 1 0 0 0-1 1c0 2.5 2 4 4 4"/><path d="M17 6h3a1 1 0 0 1 1 1c0 2.5-2 4-4 4"/></svg>';
+  const pawn = '<svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="#8a97a3" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="3.2"/><path d="M9 13.5c-1.6 1-2.5 2.4-2.5 4h11c0-1.6-.9-3-2.5-4"/><path d="M5.5 20.5h13"/></svg>';
+  const half = '<svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="#e8c37a" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 3.5v17"/></svg>';
   if (gameResult === "draw") {
     title = "Draw";
     sub = "Well played. " + Math.ceil(moves.length / 2) + " moves.";
+    glyph = half;
   } else {
     const humanWon = (gameResult === "white_wins" && myColor === "white") ||
                      (gameResult === "black_wins" && myColor === "black");
     title = humanWon ? "You win." : "Board wins.";
     sub = gameResult.replace("_", " ") + ", " + Math.ceil(moves.length / 2) + " moves";
+    glyph = humanWon ? trophy : pawn;
   }
   $("resultTitle").textContent = title;
   $("resultSub").textContent = sub;
+  let g = $("resultGlyph");
+  if (!g) {
+    g = document.createElement("div");
+    g.id = "resultGlyph";
+    g.setAttribute("aria-hidden", "true");
+    g.style.cssText = "margin-bottom:10px;";
+    $("resultTitle").before(g);
+  }
+  g.innerHTML = glyph;
   // rematch is holder only, return to menu is for everyone
   $("rematchBtn").style.display = isOwner() ? "" : "none";
   $("giveUpBtn").style.display = "";
@@ -1651,6 +1735,14 @@ function humanFlag() {
   gameResult = myColor === "white" ? "black_wins" : "white_wins";
   $("resultTitle").textContent = "Out of time.";
   $("resultSub").textContent = "Your clock reached zero.";
+  if (!$("resultGlyph")) {
+    const g = document.createElement("div");
+    g.id = "resultGlyph";
+    g.setAttribute("aria-hidden", "true");
+    g.style.cssText = "margin-bottom:10px;";
+    g.innerHTML = '<svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="#8a97a3" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 7v5l3.5 2"/></svg>';
+    $("resultTitle").before(g);
+  }
   $("viewBoardBtn").style.display = "";
   hidePostGameBar();
   $("resultOverlay").classList.add("show");
@@ -1800,7 +1892,7 @@ async function startGame() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ color: myColor, tc, level: tc, pid: PID, name: myName })
     }, 30000);
-    if (r.clock) clocks = { white: r.clock.white, black: r.clock.black };
+    if (r.clock) clocks = { white: r.clock.white, black: r.clock.black, inc: (r.clock.inc || clocks.inc) };
     clockSyncAt = Date.now();
     replyAt = Date.now();
   } catch (err) {
@@ -1960,7 +2052,7 @@ $("soundBtn").onclick = () => {
   localStorage.setItem("dog_sound", soundOn ? "on" : "off");
   updateSoundBtn();
   showToast(soundOn ? "Sound on." : "Sound off.", 1200);
-  if (soundOn) { try { beep(520,.08,"sine",.05); } catch(e){} }
+  if (soundOn) { try { tone(660,.09,.08,0); } catch(e){} }
 };
 $("startBtn").onclick = startGame;
 $("resignBtn").onclick = async () => {
