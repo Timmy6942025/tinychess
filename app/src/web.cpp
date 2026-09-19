@@ -1158,8 +1158,10 @@ esp_err_t handle_resign(httpd_req_t *req)
 		httpd_resp_set_status(req, "409 Conflict");
 		return httpd_resp_sendstr(req, resp);
 	}
-	if (g_web_game_over || g_web_moves.empty()) {
-		// nothing to resign from
+	if (g_web_game_over || g_owner_pid.empty()) {
+		// nothing live to resign from: free seat, or terminal already shown.
+		// A held seat with zero moves is still a live game (fresh /new), so
+		// the holder can resign it and reach the result screen.
 		httpd_resp_set_type(req, "application/json");
 		return httpd_resp_sendstr(req, "{\"ok\":true}");
 	}
